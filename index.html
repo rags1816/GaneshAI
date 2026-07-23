@@ -775,23 +775,57 @@
 
         // Blessings database from Blessings1.docx
         const adultBlessings = [
+            "I bless you with the removal of professional and personal roadblocks to ensure success.",
+            "I grant you the grace of financial stability, wealth, and career growth.",
+            "I bless you with the emotional capacity to handle high-stress situations with calm.",
+            "I bless you with the wisdom to weigh choices objectively and make sound judgments.",
+            "I bless you with a peaceful, loving, and supportive family environment.",
+            "I grant you the ability to be thankful for life's blessings and maintain self-improvement.",
+            "I bless you with the discipline to avoid greed, anger, or unhealthy attachments.",
+            "I bless you to forgive easily and help those in need.",
+            "I grant you the wisdom to release things that are beyond your control.",
+            "I wish you a deeper connection to your inner self and finding peace amidst a busy life.",
             "I bless you with profound clarity of mind, patient wisdom, and inner strength.",
-            "May all professional obstacles dissolve, opening wide doors to prosperity.",
-            "I grant you emotional resilience and a peaceful heart, shielding you from stress.",
+            "May all professional obstacles dissolve, opening wide doors to prosperity and success.",
+            "I grant you emotional resilience and a peaceful heart, shielding you from anxiety.",
+            "May My divine energy rejuvenate your physical body, infusing you with robust health.",
             "I bless your home with harmony, lasting unity, and a deep sense of security.",
-            "Remember to breathe deeply and surrender your burdens completely into My hands.",
-            "I bless you with financial stability, wealth, and career growth.",
-            "I bless you with the discipline to avoid greed, anger, or unhealthy attachments."
+            "When the weights of responsibility feel too heavy, surrender your burdens into My hands.",
+            "May you always possess the integrity, humility, and patience to handle hard situations.",
+            "I bless your hard work so that it bears rich fruit, ensuring you never lack resources.",
+            "May My presence be a constant anchor in your life, grounding you in spiritual peace.",
+            "I bless your journey with continuous growth, purposeful action, and vibrant well-being.",
+            "May your heart beat with steady strength and your body remain flexible and resilient.",
+            "I bless you with the wisdom to balance hard work with mindful rest, protecting your vitality."
         ];
 
         const childBlessings = [
-            "I bless your young mind with sharp focus, a quick memory, and joyful curiosity.",
+            "I bless you to explore, learn, and absorb new knowledge eagerly.",
+            "I bless you with the boon of concentration to stay grounded during studies.",
+            "I grant you the courage to bounce back quickly when faced with difficult subjects.",
+            "I bless you with the grace to remain polite and grounded, much like Ganesha's nature.",
+            "I grant you the inspiration to think outside the box and express yourself freely.",
+            "I grant you the wisdom to make healthy, positive lifestyle choices from a young age.",
+            "I bless you with inner strength to overcome fears in making friends or public speaking.",
+            "I grant you the ability to find simple, childlike happiness in everyday moments.",
+            "I grant you the blessing of attracting honest, supportive, and kind friends.",
+            "I bless you with the shield of grace to keep you safe and guide your journey.",
+            "I bless you to be guided safely past financial, mental, and physical hurdles.",
+            "I bless you with clarity, sharp focus, and success in studies or new ventures.",
+            "I bless you with attracting material success, abundance, and good fortune.",
+            "I grant your wish of creating a balanced, calm, and positive environment.",
+            "I bless your young mind with sharp focus, memory, and joyful curiosity to learn.",
             "May your heart always be fearless and filled with kind thoughts for everyone.",
-            "Whenever a lesson feels too difficult, remember that I am right beside you.",
+            "Whenever a school lesson feels too difficult, remember that I am right beside you.",
+            "I grant you the wisdom of My large ears to listen carefully and grow wise.",
             "May My blessings protect you from harm and guide your steps safely.",
-            "May you always speak words as sweet as the modaks I love.",
-            "I bless you with inner strength to overcome fears and find childlike happiness.",
-            "I bless your body with robust health, deep immunity, and a strong glowing energy."
+            "I fill your spirit with boundless energy to play and explore the world with joy.",
+            "May you always speak words as sweet as the modaks I love, spreading happiness.",
+            "I bless your body with robust health, deep immunity, and strong glowing energy.",
+            "When you feel sad or alone, close your eyes and call My name for instant comfort.",
+            "I bless your entire childhood with endless wonder, creative ideas, and a bright smile.",
+            "I grant you deep, peaceful sleep at night so your body can rest and wake up full of energy.",
+            "I bless every meal you eat to nourish your bones, sharpen your mind, and make you strong."
         ];
 
         let mouseStep = 0; // 0 = Ganapathimantrai, 1 = Ganapathimantra2, 2 = Ganpathimantra1
@@ -1124,7 +1158,7 @@
                 playMantraLoop();
                 
                 // Increment immediately at start of play (matches ESP32)
-                mouseStep = (mouseStep + 1) % 3;
+                mouseStep = (mouseStep + 1) % mantraTracks.length;
                 
                 autoReturnTimer = setTimeout(() => {
                     changeState("AMBIENT", 30000); // 30s idle time
@@ -1132,18 +1166,18 @@
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
                 
-                // Fetch a single blessing corresponding to the active loop track (child for step 0, adult for steps 1 & 2)
-                const isChildTrack = (feetStep === 0);
+                // Fetch a single blessing corresponding to the active loop track (child on even steps, adult on odd steps)
+                const isChildTrack = (feetStep % 2 === 0);
                 const list = isChildTrack ? childBlessings : adultBlessings;
                 const singleBlessing = list[Math.floor(Math.random() * list.length)];
                 const textMsg = `   [BLESSING] ${singleBlessing}   `;
                 setOledText(textMsg);
                 
-                // Play from Feet loop (Ganpathimantra1 -> Ganapathimantra2 -> Ganapathimantrai)
+                // Play from Feet loop
                 playFeetLoop();
                 
                 // Increment immediately at start of play (matches ESP32)
-                feetStep = (feetStep + 1) % 3;
+                feetStep = (feetStep + 1) % mantraTracks.length;
                 
                 // Lock screen on this blessing for 12 seconds, then resume rolling loop
                 feetDisplayTimer = setTimeout(() => {
@@ -1177,9 +1211,8 @@
         // Triggers
         function triggerMantra() {
             initAudio();
-            // Determine playtime based on next track (dynamic duration)
-            let d = mouseStep === 0 ? 24000 : (mouseStep === 1 ? 27000 : 28000);
-            changeState("MANTRA_ACTIVE", d);
+            const track = mantraTracks[mouseStep];
+            changeState("MANTRA_ACTIVE", track.duration);
         }
  
         function triggerFeetMantra() {
