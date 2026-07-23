@@ -847,7 +847,13 @@
 
         let mouseStep = 0; 
         let feetStep = 0;  
-        const globalMantraPlayer = new Audio();
+
+        // Pre-instantiate all audio elements at page load to bypass iOS user-gesture restrictions
+        const mantraAudioElements = mantraTracks.map(track => {
+            const aud = new Audio(track.file);
+            aud.preload = "auto";
+            return aud;
+        });
 
         function stopHum() {
             if (synthInterval) clearInterval(synthInterval);
@@ -857,13 +863,13 @@
                 oscillator = null;
             }
             
-            // Halt the global dynamic track player
-            if (globalMantraPlayer) {
+            // Pause all pre-instantiated players
+            mantraAudioElements.forEach(p => {
                 try {
-                    globalMantraPlayer.pause();
-                    globalMantraPlayer.currentTime = 0;
+                    p.pause();
+                    p.currentTime = 0;
                 } catch(e){}
-            }
+            });
 
             // Stop other possible preloaded tracks
             if (isRealBellPlaying) {
@@ -896,13 +902,12 @@
             stopHum();
 
             const track = mantraTracks[mouseStep];
+            const player = mantraAudioElements[mouseStep];
             isRealMantraPlaying = true;
 
-            // Reuse the single global player instance
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
+            player.volume = volume / 30;
 
-            globalMantraPlayer.play().then(() => {
+            player.play().then(() => {
                 console.log("Playing Mouse Loop: " + track.file);
             }).catch((err) => {
                 isRealMantraPlaying = false;
@@ -917,13 +922,12 @@
             stopHum();
 
             const track = mantraTracks[feetStep];
+            const player = mantraAudioElements[feetStep];
             isRealFeetMantraPlaying = true;
 
-            // Reuse the single global player instance
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
+            player.volume = volume / 30;
 
-            globalMantraPlayer.play().then(() => {
+            player.play().then(() => {
                 console.log("Playing Feet Loop: " + track.file);
             }).catch((err) => {
                 isRealFeetMantraPlaying = false;
