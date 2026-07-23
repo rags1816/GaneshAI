@@ -1013,14 +1013,22 @@
                 blessings++;
                 setOledText(languages[selectedLang].mantra);
                 
-                // Play 5s Bell immediately
-                playBellTone(250, 5.0);
-                // Play 19s Mantra after bell finishes (at 5 seconds)
-                setTimeout(() => {
-                    if (state === "MANTRA_ACTIVE") { // Check if not stopped in between
-                        playHum(220, 19); 
-                    }
-                }, 5000);
+                // Play the custom Ganapathimantrai.mp3 directly (contains both bell and mantra)
+                mantraAudio.volume = volume / 30;
+                isRealMantraPlaying = true;
+                mantraAudio.play().then(() => {
+                    console.log("Playing custom Ganapathimantrai.mp3");
+                }).catch((err) => {
+                    isRealMantraPlaying = false;
+                    console.log("Ganapathimantrai.mp3 failed, using synthesized fallback:", err);
+                    // Synthesized fallback sequence
+                    playBellTone(250, 5.0);
+                    setTimeout(() => {
+                        if (state === "MANTRA_ACTIVE") {
+                            synthesizeHum(220, 19);
+                        }
+                    }, 5000);
+                });
                 
                 autoReturnTimer = setTimeout(() => {
                     if (pirEnabled) changeState("AMBIENT", 30000);
