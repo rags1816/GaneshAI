@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ganapati AI - Live App Simulation (Advanced Voice & Themes)</title>
+    <style>
+        :root {
+            --bg-color: #030812;
+            --card-bg: rgba(10, 25, 47, 0.65);
+            --border-color: rgba(0, 242, 254, 0.25);
+            --text-color: #e2f1ff;
+            --accent-teal: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-gold: #ffd700;
+            --accent-green: #00ff87;
+            --accent-purple: #ec008c;
+            --accent-red: #ff4b4b;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background: radial-gradient(circle at center, #0a1931 0%, var(--bg-color) 100%);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Phone mockup wrapper */
+        .phone-frame {
+            width: 100%;
+            max-width: 410px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 40px;
+            padding: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6), 0 0 30px rgba(0, 242, 254, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            position: relative;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .peacock-feather {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 6px;
+            background: linear-gradient(135deg, var(--accent-teal), var(--accent-blue));
+            clip-path: polygon(50% 0%, 100% 38%, 82% 80%, 50% 100%, 18% 80%, 0% 38%);
+            position: relative;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .peacock-feather::after {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 25%;
+            width: 50%;
+            height: 50%;
+            background: radial-gradient(var(--accent-gold), var(--accent-green), transparent);
+            border-radius: 50%;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0;
+            background: linear-gradient(to right, var(--accent-teal), var(--accent-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        h2 {
+            font-size: 10px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 1px 0 0 0;
+        }
+
+        /* Simulated Hardware Area */
+        .hardware-preview {
+            background: rgba(2, 10, 23, 0.85);
+            border: 1px solid rgba(0, 242, 254, 0.2);
+            border-radius: 20px;
+            padding: 12px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hardware-title {
+            font-size: 9px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            align-self: flex-start;
+        }
+
+        /* simulated OLED */
+        .oled-screen {
+            width: 180px;
+            height: 80px;
+            background-color: #000000;
+            border: 2px solid #333333;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 4px;
+            box-shadow: inset 0 0 10px rgba(0,242,254,0.3);
+        }
+
+        .oled-border {
+            border: 1px solid #00f2fe;
+            width: calc(100% - 10px);
+            height: calc(100% - 10px);
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+
+        .oled-line-top {
+            border-bottom: 1px solid #00f2fe;
+            width: 100%;
+            height: 14px;
+            position: absolute;
+            top: 0; left: 0;
+            font-size: 7px;
+            color: #00f2fe;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .oled-line-bottom {
+            border-top: 1px solid #00f2fe;
+            width: 100%;
+            height: 14px;
+            position: absolute;
+            bottom: 0; left: 0;
+            font-size: 7px;
+            color: #00f2fe;
+            display: flex;
+            align-items: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .oled-main-area {
+            position: absolute;
+            top: 16px;
+            bottom: 16px;
+            left: 4px;
+            right: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .oled-text {
+            color: #00f2fe;
+            font-size: 10px;
+            white-space: nowrap;
+            position: absolute;
+            transform: translateX(180px);
+        }
+
+        /* simulated LED Ring (Hollow Core - No Om Logo) */
+        .led-ring-container {
+            width: 90px;
+            height: 90px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle, transparent 35%, rgba(0, 242, 254, 0.05) 70%);
+            border-radius: 50%;
+        }
+
+        .led-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #111;
+            position: absolute;
+            transition: background-color 0.1s, box-shadow 0.1s;
+        }
+
+        /* Controls Section */
+        .status-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .status-card {
+            background: rgba(2, 12, 27, 0.5);
+            border: 1px solid rgba(0, 242, 254, 0.1);
+            border-radius: 12px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 9px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+
+        .status-val {
+            font-size: 13px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .status-active {
+            color: var(--accent-green);
+            text-shadow: 0 0 8px rgba(0, 255, 135, 0.3);
+        }
+
+        .section-title {
+            font-size: 11px;
+            color: var(--accent-teal);
+            margin: 12px 0 6px 0;
+            border-bottom: 1px solid rgba(0, 242, 254, 0.15);
+            padding-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .btn-triple {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        button {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.1));
+            border: 1px solid var(--border-color);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.25), rgba(0, 242, 254, 0.25));
+            border-color: var(--accent-teal);
+            transform: translateY(-1px);
+        }
+
+        .btn-action {
+            background: linear-gradient(135deg, var(--accent-teal), var(--accent-blue));
+            color: #030812;
+            border: none;
+        }
+
+        .btn-action:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 4px 10px rgba(0, 242, 254, 0.3);
+        }
+
+        .btn-stroke {
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-purple));
+            color: #030812;
+            border: none;
+        }
+        .btn-stroke:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 4px 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .btn-stop {
+            background: rgba(255, 75, 75, 0.1);
+            border: 1px solid rgba(255, 75, 75, 0.3);
+            color: #ff4b4b;
+        }
+
+        .btn-stop:hover {
+            background: rgba(255, 75, 75, 0.25);
+            border-color: #ff4b4b;
+        }
+
+        .slider-container {
+            margin-bottom: 10px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #a8b2d1;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-teal);
+            cursor: pointer;
+            box-shadow: 0 0 6px var(--accent-teal);
+        }
+
+        .select-input {
+            width: 100%;
+            background: rgba(2, 12, 27, 0.8);
+            border: 1px solid var(--border-color);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .toggle-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 18px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-toggle {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: .4s;
+            border-radius: 18px;
+        }
+
+        .slider-toggle:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider-toggle {
+            background-color: var(--accent-teal);
+        }
+
+        input:checked + .slider-toggle:before {
+            transform: translateX(18px);
+        }
+
+        footer {
+            text-align: center;
+            font-size: 9px;
+            color: #8892b0;
+            margin-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <header>
+            <div class="peacock-feather"></div>
+            <h1>Ganapati AI</h1>
+            <h2>Control Hub 2026</h2>
+        </header>
+
+        <!-- Live Physical Setup Mockup -->
+        <div class="hardware-preview">
+            <div class="hardware-title">Live Hardware Simulation</div>
+            
+            <div class="led-ring-container" id="led-ring">
+                <!-- 24 LEDs generated by JS -->
+            </div>
+
+            <div class="oled-screen">
+                <div class="oled-border">
+                    <div class="oled-line-top">
+                        <span>GANAPATI AI</span>
+                        <span id="oled-state-lbl">[STANDBY]</span>
+                    </div>
+                    <div class="oled-main-area">
+                        <div class="oled-text" id="oled-scroller">Welcome!</div>
+                    </div>
+                    <div class="oled-line-bottom">
+                        <span id="oled-hits-lbl">Devotional Hits: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- UI App Controls -->
+        <div class="status-container">
+            <div class="status-card">
+                <div class="status-label">System State</div>
+                <div id="state-val" class="status-val">STANDBY</div>
+            </div>
+            <div class="status-card">
+                <div class="status-label">Blessings Today</div>
+                <div id="count-val" class="status-val">0</div>
+            </div>
+        </div>
+
+        <!-- Advanced Pitch Simulator Config -->
+        <div style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 8px; margin-bottom: 12px; border: 1px dashed var(--border-color);">
+            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">AI MIC SETTINGS (SIMULATION)</div>
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <div style="flex: 1;">
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Devotee Pitch</span>
+                    <select id="voice-pitch-select" class="select-input" style="padding: 4px; font-size: 10px;">
+                        <option value="child">Child (High Pitch, >240Hz)</option>
+                        <option value="adult" selected>Adult (Low Pitch, <240Hz)</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Active Language</span>
+                    <select id="lang-select" class="select-input" style="padding: 4px; font-size: 10px;" onchange="updateLanguage()">
+                        <option value="en">English</option>
+                        <option value="sa">Sanskrit / Hindi</option>
+                        <option value="mr">Marathi</option>
+                        <option value="ta">Tamil</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title">Manual Triggers</div>
+        <div class="btn-triple">
+            <button class="btn-action" onclick="triggerMantra()">
+                <span>🕉️ Mantra</span>
+                <span style="font-size: 7px; font-weight: normal;">(Mouse: 15s)</span>
+            </button>
+            <button class="btn-action" onclick="triggerBlessing()">
+                <span>👣 Feet Touch</span>
+                <span style="font-size: 7px; font-weight: normal;">(AI Voice)</span>
+            </button>
+            <button class="btn-stroke" onclick="triggerMouseStroke()">
+                <span>🐭 Mouse Back</span>
+                <span style="font-size: 7px; font-weight: normal;">(Talk-Back)</span>
+            </button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="btn-stop" style="flex: 1;" onclick="triggerStop()">⏹️ Stop Sound / Reset State</button>
+        </div>
+
+        <div class="section-title">Theme of the Day</div>
+        <div style="margin-bottom: 12px;">
+            <select id="theme-select" class="select-input" onchange="updateTheme()">
+                <option value="tue">Tuesday: Ganesha Theme (Maroon & Gold)</option>
+                <option value="mon">Monday: Shiva Theme (Ice Blue & Cyan)</option>
+                <option value="wed">Wednesday: Wisdom Theme (Peacock Teal)</option>
+                <option value="thu">Thursday: Guru Theme (Bright Gold/Yellow)</option>
+                <option value="fri">Friday: Shakti Theme (Lotus Pink & Violet)</option>
+                <option value="sat">Saturday: Discipline Theme (Indigo & Purple)</option>
+                <option value="sun">Sunday: Sun Theme (Ruby Red & Gold)</option>
+            </select>
+        </div>
+
+        <div class="section-title">LED Customization</div>
+        <div class="slider-container">
+            <div class="slider-label">
+                <span>Brightness</span>
+                <span id="bright-lbl">60%</span>
+            </div>
+            <input type="range" id="bright-slider" class="slider" min="0" max="255" value="150" oninput="updateBrightness()">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <div class="slider-label">Default LED Pattern</div>
+            <select id="pattern-select" class="select-input" onchange="updatePattern()">
+                <option value="0">Peacock Wave</option>
+                <option value="1">Circuit Pulse</option>
+                <option value="2">Golden Aura</option>
+                <option value="3">Rainbow Dream</option>
+            </select>
+        </div>
+
+        <div class="section-title">Audio Settings</div>
+        <div class="slider-container" style="margin-bottom: 12px;">
+            <div class="slider-label">
+                <span>Volume</span>
+                <span id="vol-lbl">15</span>
+            </div>
+            <input type="range" id="vol-slider" class="slider" min="0" max="30" value="15" oninput="updateVolume()">
+        </div>
+
+        <div class="section-title">System Settings</div>
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">PIR Motion Detector</span>
+            <label class="switch">
+                <input type="checkbox" id="pir-toggle" checked onchange="togglePIR()">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+        
+        <div class="toggle-container" style="margin-bottom: 5px;">
+            <span style="font-size: 12px; color: #a8b2d1;">Simulate PIR Detection</span>
+            <button style="padding: 2px 6px; font-size: 9px;" onclick="triggerPIR()">Trigger PIR</button>
+        </div>
+
+        <footer>
+            Lord of Wisdom &bull; 2026 Theme
+        </footer>
+    </div>
+
+    <script>
+        // System variables
+        let state = "STANDBY";
+        let blessings = 0;
+        let brightness = 150;
+        let pattern = 0; // Default
+        let volume = 15;
+        let pirEnabled = true;
+        let selectedLang = "en";
+        let selectedTheme = "tue";
+
+        // Multilingual Database
+        const languages = {
+            en: {
+                welcome: "Welcome!",
+                mantra: "   Om Gan Ganapataye Namaha! May the Lord of Wisdom optimize your life's neural networks.   ",
+                adultBlessing: "   Blessings: Wishing you deep intellect, peace, and spiritual growth.   ",
+                childBlessing: "   Blessings: Happy coding! Study hard and keep smiling.   ",
+                standby: "Ready for blessings"
+            },
+            sa: {
+                welcome: "स्वागतम्!",
+                mantra: "   ॐ गं गणपतये नमः। वक्रतुण्ड महाकाय सूर्यकोटि समप्रभ।   ",
+                adultBlessing: "   आशीर्वाद: बुद्धिं यशो वीर्यं बलमस्तु सदा। सुख शान्ति समृद्धि च।   ",
+                childBlessing: "   आशीर्वाद: विद्यां ददाति विनयम्। नित्यं प्रसन्नो भव।   ",
+                standby: "आशीर्वादाय सिद्धः"
+            },
+            mr: {
+                welcome: "सुस्वागतम!",
+                mantra: "   ॐ गं गणपतये नमः। मंगलमूर्ती मोरया! गणपती बाप्पा मोरया!   ",
+                adultBlessing: "   आशीर्वाद: तुमच्या आयुष्यातील सर्व अडथळे दूर होवोत. सुख-समृद्धी लाभो!   ",
+                childBlessing: "   आशीर्वाद: खूप अभ्यास कर, मोठा हो आणि नेहमी हसत राहा!   ",
+                standby: "बाप्पा मोरया"
+            },
+            ta: {
+                welcome: "வரவேற்பு!",
+                mantra: "   ஓம் கம் கணபதயே நமஹ! மங்கள மூர்த்தி மோரையா!   ",
+                adultBlessing: "   ஆசீர்வாதம்: உங்கள் வாழ்வில் உள்ள அனைத்து தடைகளும் நீங்கி வெற்றி பெறட்டும்.   ",
+                childBlessing: "   ஆசீர்வாதம்: நன்முறையில் கல்வி கற்று, வாழ்வில் சிறந்து விளங்குவாயாக!   ",
+                standby: "ஆசீர்வாதம் தயார்"
+            }
+        };
+
+        // Theme colors configurations
+        const themes = {
+            tue: { primary: "#800020", secondary: "#ffd700", name: "Tuesday Ganesha" }, // Maroon & Gold
+            mon: { primary: "#00f2fe", secondary: "#4facfe", name: "Monday Shiva" }, // Cyan & Blue
+            wed: { primary: "#00b4db", secondary: "#00ff87", name: "Wednesday Wisdom" }, // Teal & Green
+            thu: { primary: "#ffd700", secondary: "#ffa500", name: "Thursday Guru" }, // Gold & Orange
+            fri: { primary: "#ec008c", secondary: "#b92b27", name: "Friday Shakti" }, // Pink & Magenta
+            sat: { primary: "#4b0082", secondary: "#4facfe", name: "Saturday Discipline" }, // Indigo & Blue
+            sun: { primary: "#ff4b4b", secondary: "#ffd700", name: "Sunday Sun" } // Red & Gold
+        };
+
+        // OLED animation variables
+        let scrollTimer = null;
+        let scrollX = 180;
+        let textWidth = 0;
+        let currentText = "Welcome!";
+
+        // LED Animation variables
+        const numLeds = 24;
+        const ledDots = [];
+        let animationFrameId = null;
+        let hueOffset = 0;
+
+        // Sound Synthesis (Web Audio API)
+        let audioCtx = null;
+
+        // Generate simulated LED Dots
+        const ledRing = document.getElementById('led-ring');
+        for (let i = 0; i < numLeds; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'led-dot';
+            const angle = (i * 360 / numLeds) * (Math.PI / 180);
+            const radius = 38; // px
+            const x = Math.round(45 + radius * Math.cos(angle) - 3);
+            const y = Math.round(45 + radius * Math.sin(angle) - 3);
+            dot.style.left = `${x}px`;
+            dot.style.top = `${y}px`;
+            ledRing.appendChild(dot);
+            ledDots.push(dot);
+        }
+
+        // Initialize Audio context on first click
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Bell Sound Synthesis
+        function playBellTone(freq = 880, duration = 1.5) {
+            initAudio();
+            if (!audioCtx || volume === 0) return;
+            const volRatio = volume / 30;
+            const now = audioCtx.currentTime;
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.frequency.setValueAtTime(freq, now);
+            
+            const oscHarmonic = audioCtx.createOscillator();
+            const gainHarmonic = audioCtx.createGain();
+            oscHarmonic.frequency.setValueAtTime(freq * 2.05, now);
+            
+            gainNode.gain.setValueAtTime(0.3 * volRatio, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            
+            gainHarmonic.gain.setValueAtTime(0.1 * volRatio, now);
+            gainHarmonic.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(gainNode);
+            oscHarmonic.connect(gainHarmonic);
+            gainNode.connect(audioCtx.destination);
+            gainHarmonic.connect(audioCtx.destination);
+
+            osc.start(now);
+            oscHarmonic.start(now);
+            osc.stop(now + duration);
+            oscHarmonic.stop(now + duration);
+        }
+
+        // Shloka Synth Hum
+        let soundSource = null;
+        let soundSourceAmp = null;
+        
+        function playHum(freq = 220, duration = 15) {
+            initAudio();
+            if (!audioCtx || volume === 0) return;
+            stopHum();
+
+            const volRatio = volume / 30;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            soundSourceAmp = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(freq, now);
+            
+            const vibrato = audioCtx.createOscillator();
+            const vibratoGain = audioCtx.createGain();
+            vibrato.frequency.setValueAtTime(5.5, now);
+            vibratoGain.gain.setValueAtTime(2.5, now);
+            vibrato.connect(vibratoGain);
+            vibratoGain.connect(osc.frequency);
+            
+            soundSourceAmp.gain.setValueAtTime(0.12 * volRatio, now);
+            soundSourceAmp.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(soundSourceAmp);
+            soundSourceAmp.connect(audioCtx.destination);
+
+            vibrato.start();
+            osc.start(now);
+            soundSource = osc;
+            
+            setTimeout(() => {
+                vibrato.stop();
+                try { osc.stop(); } catch(e) {}
+            }, duration * 1000);
+        }
+
+        function stopHum() {
+            if (soundSource) {
+                try {
+                    soundSourceAmp.gain.setValueAtTime(0, audioCtx.currentTime);
+                    soundSource.stop();
+                } catch(e) {}
+                soundSource = null;
+            }
+        }
+
+        // Update UI Text & Labels
+        function updateUI() {
+            document.getElementById('state-val').innerText = state;
+            const stateLbl = document.getElementById('oled-state-lbl');
+            const stateVal = document.getElementById('state-val');
+            
+            if (state === "STANDBY") {
+                stateLbl.innerText = "[STANDBY]";
+                stateVal.className = "status-val";
+                document.getElementById('oled-scroller').style.display = 'none';
+            } else {
+                stateLbl.innerText = `[${state}]`;
+                stateVal.className = "status-val status-active";
+                document.getElementById('oled-scroller').style.display = 'block';
+            }
+
+            document.getElementById('count-val').innerText = blessings;
+            document.getElementById('oled-hits-lbl').innerText = `Devotional Hits: ${blessings}`;
+            document.getElementById('bright-lbl').innerText = Math.round((brightness/255)*100) + "%";
+            document.getElementById('vol-lbl').innerText = volume;
+        }
+
+        // Text Scroll Simulator
+        function setOledText(text) {
+            currentText = text;
+            const scroller = document.getElementById('oled-scroller');
+            scroller.innerText = text;
+            scroller.style.transform = `translateX(180px)`;
+            scrollX = 180;
+            textWidth = text.length * 6.5; 
+
+            if (scrollTimer) clearInterval(scrollTimer);
+            
+            const isWelcome = (text === languages.en.welcome || text === languages.sa.welcome || text === languages.mr.welcome || text === languages.ta.welcome);
+            if (state !== "STANDBY" && !isWelcome && text !== "") {
+                scrollTimer = setInterval(() => {
+                    scrollX -= 2;
+                    if (scrollX < -textWidth) {
+                        scrollX = 180;
+                    }
+                    scroller.style.transform = `translateX(${scrollX}px)`;
+                }, 80);
+            } else {
+                scroller.style.transform = `translateX(35px)`; // center
+            }
+        }
+
+        // LED Animations
+        function drawLeds() {
+            if (state === "STANDBY") {
+                ledDots.forEach(dot => {
+                    dot.style.backgroundColor = '#111';
+                    dot.style.boxShadow = 'none';
+                });
+                hueOffset = 0;
+            } else if (state === "RECORDING") {
+                // Flash yellow to indicate active voice capturing
+                ledDots.forEach(dot => {
+                    dot.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
+                    dot.style.boxShadow = '0 0 10px rgba(255, 215, 0, 0.8)';
+                });
+            } else {
+                hueOffset += 1.5;
+                const brightRatio = brightness / 255;
+                
+                // Color override based on pitch triggers, themes, or custom patterns
+                let activePattern = pattern;
+                let childRainbow = false;
+                let activeThemeColor = themes[selectedTheme];
+
+                if (state === "FEET_ACTIVE") {
+                    const pitch = document.getElementById('voice-pitch-select').value;
+                    if (pitch === "child") {
+                        childRainbow = true; // Child trigger: Rainbow!
+                    } else {
+                        activePattern = 0; // Adult trigger: Peacock wave!
+                    }
+                } else if (state === "MANTRA_ACTIVE") {
+                    activePattern = 1; // Circuit Pulse
+                }
+
+                ledDots.forEach((dot, i) => {
+                    let color = {r: 0, g: 0, b: 0};
+                    
+                    if (childRainbow) {
+                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
+                        color = hslToRgb(indexHue / 360, 1.0, 0.5);
+                    } 
+                    else if (state === "AMBIENT") {
+                        // Ambient state matches the selected Weekly Theme colors!
+                        const breath = Math.sin(hueOffset * 0.04) * 0.4 + 0.6; // pulse
+                        const c1 = hexToRgb(activeThemeColor.primary);
+                        const c2 = hexToRgb(activeThemeColor.secondary);
+                        // Blend theme colors
+                        const ratio = (i / numLeds);
+                        color = {
+                            r: Math.round((c1.r * (1-ratio) + c2.r * ratio) * breath),
+                            g: Math.round((c1.g * (1-ratio) + c2.g * ratio) * breath),
+                            b: Math.round((c1.b * (1-ratio) + c2.b * ratio) * breath)
+                        };
+                    }
+                    else if (activePattern == 0) { // Peacock Wave
+                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
+                        const h = 170 + (indexHue % 80); // Teal to Cobalt
+                        color = hslToRgb(h / 360, 1.0, 0.5);
+                    } 
+                    else if (activePattern == 1) { // Circuit Pulse (Cyan base + Gold bits)
+                        const breath = Math.sin(hueOffset * 0.05) * 0.5 + 0.5;
+                        const val = Math.round(50 + 150 * breath);
+                        color = {r: 0, g: val, b: val + 20};
+                        
+                        if (Math.random() < 0.05 && i === Math.floor(Math.random() * numLeds)) {
+                            color = {r: 255, g: 215, b: 0}; // gold
+                        }
+                    } 
+                    else if (activePattern == 2) { // Golden Aura
+                        const breath = Math.sin(hueOffset * 0.03) * 0.4 + 0.6;
+                        const val = Math.round(200 * breath);
+                        color = {r: val, g: Math.round(val * 0.7), b: 0};
+                    } 
+                    else if (activePattern == 3) { // Rainbow Dream
+                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
+                        color = hslToRgb(indexHue / 360, 1.0, 0.5);
+                    }
+
+                    // Apply brightness and display
+                    const r = Math.round(color.r * brightRatio);
+                    const g = Math.round(color.g * brightRatio);
+                    const b = Math.round(color.b * brightRatio);
+                    const rgbStr = `rgb(${r},${g},${b})`;
+                    dot.style.backgroundColor = rgbStr;
+                    dot.style.boxShadow = brightRatio > 0.1 ? `0 0 10px ${rgbStr}` : 'none';
+                });
+            }
+            animationFrameId = requestAnimationFrame(drawLeds);
+        }
+
+        // HSL Helper
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s == 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        // Hex to RGB
+        function hexToRgb(hex) {
+            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 242, b: 254 };
+        }
+
+        // State Machine Triggers
+        let autoReturnTimer = null;
+
+        function changeState(newState, duration = 0) {
+            state = newState;
+            updateUI();
+            
+            if (autoReturnTimer) clearTimeout(autoReturnTimer);
+
+            if (newState === "STANDBY") {
+                setOledText("");
+                stopHum();
+            } else if (newState === "AMBIENT") {
+                setOledText(languages[selectedLang].welcome);
+                stopHum();
+                if (duration > 0) {
+                    autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
+                }
+            } else if (newState === "MANTRA_ACTIVE") {
+                blessings++;
+                setOledText(languages[selectedLang].mantra);
+                playBellTone(880, 2.0);
+                setTimeout(() => playHum(293.66, 13), 1000); // 13s hum shloka loop (15s total)
+                
+                autoReturnTimer = setTimeout(() => {
+                    if (pirEnabled) changeState("AMBIENT", 30000);
+                    else changeState("STANDBY");
+                }, duration);
+            } else if (newState === "FEET_ACTIVE") {
+                blessings++;
+                const pitch = document.getElementById('voice-pitch-select').value;
+                const textMsg = (pitch === "child") ? languages[selectedLang].childBlessing : languages[selectedLang].adultBlessing;
+                setOledText(textMsg);
+                
+                // Audio synthesis adjusts based on pitch selection
+                const bellFreq = (pitch === "child") ? 1320 : 660; // Child gets a higher-pitched chime!
+                const humFreq = (pitch === "child") ? 440 : 220; // Child gets a higher flute shloka!
+                
+                playBellTone(bellFreq, 1.5);
+                setTimeout(() => playHum(humFreq, 10.5), 1000); // 12s total
+                
+                autoReturnTimer = setTimeout(() => {
+                    if (pirEnabled) changeState("AMBIENT", 30000);
+                    else changeState("STANDBY");
+                }, duration);
+            }
+        }
+
+        // Dropdown Events
+        function updateLanguage() {
+            selectedLang = document.getElementById('lang-select').value;
+            if (state === "AMBIENT") {
+                setOledText(languages[selectedLang].welcome);
+            } else if (state === "STANDBY") {
+                // keep quiet
+            }
+        }
+
+        function updateTheme() {
+            selectedTheme = document.getElementById('theme-select').value;
+            // Force redraw of ambient LEDs to match new theme colors
+            if (state === "AMBIENT") {
+                updateUI();
+            }
+        }
+
+        // Triggers
+        function triggerMantra() {
+            changeState("MANTRA_ACTIVE", 15000);
+        }
+
+        function triggerBlessing() {
+            changeState("FEET_ACTIVE", 12000);
+        }
+
+        // Talk-Back Squeaky Mouse Feature
+        function triggerMouseStroke() {
+            initAudio();
+            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                stopHum();
+            }
+
+            changeState("RECORDING");
+            setOledText("   [Mouse Recording] Speak now...   ");
+
+            // Request input via browser voice input or prompt box
+            setTimeout(() => {
+                let userText = "";
+                let fallbackUsed = false;
+                
+                // Only try voice recognition on secure HTTPS contexts, otherwise fall back to prompt
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRecognition && window.location.protocol === "https:") {
+                    try {
+                        const recognition = new SpeechRecognition();
+                        recognition.lang = selectedLang === "en" ? 'en-US' : (selectedLang === "ta" ? 'ta-IN' : 'mr-IN');
+                        recognition.start();
+                        recognition.onresult = function(event) {
+                            userText = event.results[0][0].transcript;
+                            speakMouseRepeat(userText);
+                        };
+                        recognition.onerror = function() {
+                            if (!fallbackUsed) {
+                                fallbackUsed = true;
+                                userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
+                                speakMouseRepeat(userText);
+                            }
+                        };
+                    } catch (e) {
+                        if (!fallbackUsed) {
+                            fallbackUsed = true;
+                            userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
+                            speakMouseRepeat(userText);
+                        }
+                    }
+                } else {
+                    userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
+                    speakMouseRepeat(userText);
+                }
+            }, 500);
+        }
+
+        // Squeaky Talk-Back Output
+        function speakMouseRepeat(text) {
+            if (!text || text.trim() === "") {
+                if (pirEnabled) changeState("AMBIENT", 20000);
+                else changeState("STANDBY");
+                return;
+            }
+
+            changeState("AMBIENT", 15000);
+            setOledText(`   Mouse says: "${text}"   `);
+
+            // Use browser speech synthesis to repeat back with high pitch & rate
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Language selection for voice output
+            if (selectedLang === "ta") utterance.lang = 'ta-IN';
+            else if (selectedLang === "sa" || selectedLang === "mr") utterance.lang = 'hi-IN';
+            else utterance.lang = 'en-US';
+
+            utterance.pitch = 2.0; // SQUEAKY!
+            utterance.rate = 1.35;  // FASTER!
+            utterance.volume = volume / 30;
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function triggerStop() {
+            window.speechSynthesis.cancel();
+            changeState("STANDBY");
+        }
+
+        function triggerPIR() {
+            if (pirEnabled && state === "STANDBY") {
+                changeState("AMBIENT", 30000);
+            }
+        }
+
+        function updateBrightness() {
+            brightness = document.getElementById('bright-slider').value;
+            updateUI();
+        }
+
+        function updatePattern() {
+            pattern = document.getElementById('pattern-select').value;
+        }
+
+        function updateVolume() {
+            volume = document.getElementById('vol-slider').value;
+            updateUI();
+        }
+
+        // Toggle functions
+        function togglePIR() {
+            pirEnabled = document.getElementById('pir-toggle').checked;
+        }
+
+        // Start animation loop
+        drawLeds();
+        // Start in Standby
+        changeState("STANDBY");
+    </script>
+</body>
+</html>
