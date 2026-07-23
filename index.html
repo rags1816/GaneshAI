@@ -671,10 +671,13 @@
             ledDots.push(dot);
         }
 
-        // Initialize Audio context on first click
+        // Initialize Audio context on first click and resume if suspended
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
             }
         }
 
