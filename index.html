@@ -933,23 +933,44 @@
             currentText = text;
             const scroller = document.getElementById('oled-scroller');
             scroller.innerText = text;
-            scroller.style.transform = `translateX(180px)`;
-            scrollX = 180;
-            textWidth = text.length * 6.5; 
-
-            if (scrollTimer) clearInterval(scrollTimer);
             
-            const isWelcome = (text === languages.en.welcome || text === languages.sa.welcome || text === languages.mr.welcome || text === languages.ta.welcome);
-            if (state !== "STANDBY" && !isWelcome && text !== "") {
-                scrollTimer = setInterval(() => {
-                    scrollX -= 2;
-                    if (scrollX < -textWidth) {
-                        scrollX = 180;
-                    }
-                    scroller.style.transform = `translateX(${scrollX}px)`;
-                }, 80);
+            if (scrollTimer) clearInterval(scrollTimer);
+
+            if (state === "FEET_ACTIVE") {
+                // Blessing mode: static, wrapped, centered, and GOLD!
+                scroller.style.whiteSpace = 'normal';
+                scroller.style.textAlign = 'center';
+                scroller.style.color = '#ffd700'; // Gold
+                scroller.style.textShadow = '0 0 6px rgba(255, 215, 0, 0.4)';
+                scroller.style.transform = 'none';
+                scroller.style.position = 'relative';
+                scroller.style.width = '100%';
+                scroller.style.fontSize = '9px';
+                scroller.style.lineHeight = '1.2';
             } else {
-                scroller.style.transform = `translateX(35px)`; // center
+                // Normal rolling mode: cyan, scrolling, single line
+                scroller.style.whiteSpace = 'nowrap';
+                scroller.style.color = '#00f2fe'; // Cyan
+                scroller.style.textShadow = 'none';
+                scroller.style.position = 'absolute';
+                scroller.style.width = 'auto';
+                scroller.style.fontSize = '10px';
+                scroller.style.transform = `translateX(180px)`;
+                scrollX = 180;
+                textWidth = text.length * 6.5; 
+
+                const isWelcome = (text === languages.en.welcome || text === languages.sa.welcome || text === languages.mr.welcome || text === languages.ta.welcome);
+                if (state !== "STANDBY" && !isWelcome && text !== "") {
+                    scrollTimer = setInterval(() => {
+                        scrollX -= 2;
+                        if (scrollX < -textWidth) {
+                            scrollX = 180;
+                        }
+                        scroller.style.transform = `translateX(${scrollX}px)`;
+                    }, 80);
+                } else {
+                    scroller.style.transform = `translateX(35px)`; // center
+                }
             }
         }
 
