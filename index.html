@@ -847,7 +847,7 @@
 
         let mouseStep = 0; 
         let feetStep = 0;  
-        let currentWebAudio = null;
+        const globalMantraPlayer = new Audio();
 
         function stopHum() {
             if (synthInterval) clearInterval(synthInterval);
@@ -856,14 +856,38 @@
                 oscillator.disconnect();
                 oscillator = null;
             }
-            if (currentWebAudio) {
+            
+            // Halt the global dynamic track player
+            if (globalMantraPlayer) {
                 try {
-                    currentWebAudio.pause();
-                    currentWebAudio.currentTime = 0;
+                    globalMantraPlayer.pause();
+                    globalMantraPlayer.currentTime = 0;
                 } catch(e){}
             }
+
+            // Stop other possible preloaded tracks
+            if (isRealBellPlaying) {
+                bellAudio.pause();
+                bellAudio.currentTime = 0;
+                isRealBellPlaying = false;
+            }
+            mantraAudio.pause();
+            mantraAudio.currentTime = 0;
+            feetMantra1.pause();
+            feetMantra1.currentTime = 0;
+            feetMantra2.pause();
+            feetMantra2.currentTime = 0;
+            
             isRealMantraPlaying = false;
             isRealFeetMantraPlaying = false;
+
+            if (soundSource) {
+                try {
+                    soundSourceAmp.gain.setValueAtTime(0, audioCtx.currentTime);
+                    soundSource.stop();
+                } catch(e) {}
+                soundSource = null;
+            }
         }
 
         function playMantraLoop() {
@@ -874,10 +898,11 @@
             const track = mantraTracks[mouseStep];
             isRealMantraPlaying = true;
 
-            currentWebAudio = new Audio(track.file);
-            currentWebAudio.volume = volume / 30;
+            // Reuse the single global player instance
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
 
-            currentWebAudio.play().then(() => {
+            globalMantraPlayer.play().then(() => {
                 console.log("Playing Mouse Loop: " + track.file);
             }).catch((err) => {
                 isRealMantraPlaying = false;
@@ -894,10 +919,11 @@
             const track = mantraTracks[feetStep];
             isRealFeetMantraPlaying = true;
 
-            currentWebAudio = new Audio(track.file);
-            currentWebAudio.volume = volume / 30;
+            // Reuse the single global player instance
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
 
-            currentWebAudio.play().then(() => {
+            globalMantraPlayer.play().then(() => {
                 console.log("Playing Feet Loop: " + track.file);
             }).catch((err) => {
                 isRealFeetMantraPlaying = false;
@@ -937,34 +963,6 @@
                 vibrato.stop();
                 try { osc.stop(); } catch(e) {}
             }, duration * 1000);
-        }
-
-        function stopHum() {
-            // Stop custom MP3s if playing
-            if (isRealBellPlaying) {
-                bellAudio.pause();
-                bellAudio.currentTime = 0;
-                isRealBellPlaying = false;
-            }
-            
-            // Halt all possible mantra audio tracks
-            mantraAudio.pause();
-            mantraAudio.currentTime = 0;
-            feetMantra1.pause();
-            feetMantra1.currentTime = 0;
-            feetMantra2.pause();
-            feetMantra2.currentTime = 0;
-            
-            isRealMantraPlaying = false;
-            isRealFeetMantraPlaying = false;
-
-            if (soundSource) {
-                try {
-                    soundSourceAmp.gain.setValueAtTime(0, audioCtx.currentTime);
-                    soundSource.stop();
-                } catch(e) {}
-                soundSource = null;
-            }
         }
 
         // Update UI Text & Labels
@@ -1228,9 +1226,8 @@
  
         function triggerFeetMantra() {
             initAudio();
-            // Determine playtime based on next track (dynamic duration)
-            let d = feetStep === 0 ? 28000 : (feetStep === 1 ? 27000 : 24000);
-            changeState("FEET_ACTIVE", d);
+            const track = mantraTracks[feetStep];
+            changeState("FEET_ACTIVE", track.duration);
         }
 
         // Squeaky Talk-Back Output
