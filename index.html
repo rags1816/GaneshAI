@@ -641,6 +641,13 @@
         const ledDots = [];
         let animationFrameId = null;
         let hueOffset = 0;
+        
+        // Bell and Mantra Audio Elements
+        const bellAudio = new Audio('Ganapathibell.mp3');
+        const mantraAudio = new Audio('Ganapathimantra.mp3');
+        
+        let isRealBellPlaying = false;
+        let isRealMantraPlaying = false;
 
         // Sound Synthesis (Web Audio API)
         let audioCtx = null;
@@ -670,14 +677,27 @@
         // True Temple Bell Sound Synthesis with 5-Second Beating Oscillation
         function playBellTone(freq = 250, duration = 5.0) {
             initAudio();
-            if (!audioCtx || volume === 0) return;
+            if (volume === 0) return;
+            
+            // Set volume based on dashboard slider
+            bellAudio.volume = volume / 30;
+            
+            isRealBellPlaying = true;
+            bellAudio.play().then(() => {
+                console.log("Playing custom Ganapathibell.mp3");
+            }).catch((err) => {
+                isRealBellPlaying = false;
+                console.log("Ganapathibell.mp3 not found or blocked, falling back to synthesizer:", err);
+                synthesizeBell(freq, duration);
+            });
+        }
+
+        function synthesizeBell(freq, duration) {
+            if (!audioCtx) return;
             const volRatio = volume / 30;
             const now = audioCtx.currentTime;
-
-            // Deep temple bell pitch mapping
             const baseFreq = freq > 400 ? freq / 3.2 : freq;
 
-            // 1. Prime frequency pairs (creating a 2.5Hz "beating" wave oscillation)
             const osc1 = audioCtx.createOscillator();
             const gain1 = audioCtx.createGain();
             osc1.type = "sine";
@@ -692,7 +712,6 @@
             gain2.gain.setValueAtTime(0.25 * volRatio, now);
             gain2.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-            // 2. Secondary Bronze Resonance Harmonics (decline at faster intervals)
             const harmonics = [
                 { ratio: 1.2, gain: 0.15, decay: 3.5 }, // Minor third
                 { ratio: 1.5, gain: 0.12, decay: 3.0 }, // Perfect fifth
@@ -732,9 +751,23 @@
         
         function playHum(freq = 220, duration = 15) {
             initAudio();
-            if (!audioCtx || volume === 0) return;
+            if (volume === 0) return;
             stopHum();
 
+            mantraAudio.volume = volume / 30;
+
+            isRealMantraPlaying = true;
+            mantraAudio.play().then(() => {
+                console.log("Playing custom Ganapathimantra.mp3");
+            }).catch((err) => {
+                isRealMantraPlaying = false;
+                console.log("Ganapathimantra.mp3 not found or blocked, falling back to synthesizer:", err);
+                synthesizeHum(freq, duration);
+            });
+        }
+
+        function synthesizeHum(freq, duration) {
+            if (!audioCtx) return;
             const volRatio = volume / 30;
             const now = audioCtx.currentTime;
 
@@ -767,6 +800,18 @@
         }
 
         function stopHum() {
+            // Stop custom MP3s if playing
+            if (isRealBellPlaying) {
+                bellAudio.pause();
+                bellAudio.currentTime = 0;
+                isRealBellPlaying = false;
+            }
+            if (isRealMantraPlaying) {
+                mantraAudio.pause();
+                mantraAudio.currentTime = 0;
+                isRealMantraPlaying = false;
+            }
+
             if (soundSource) {
                 try {
                     soundSourceAmp.gain.setValueAtTime(0, audioCtx.currentTime);
