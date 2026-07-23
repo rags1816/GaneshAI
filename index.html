@@ -506,11 +506,11 @@
         <div class="btn-group">
             <button class="btn-action" onclick="triggerMantra()">
                 <span>🐭 Mouse Back</span>
-                <span style="font-size: 8px; font-weight: normal;">(Mantra: 24s)</span>
+                <span style="font-size: 8px; font-weight: normal;">(Mantra: 30s)</span>
             </button>
-            <button class="btn-action" onclick="triggerFeetBell()">
+            <button class="btn-action" onclick="triggerFeetMantra()">
                 <span>👣 Feet Touch</span>
-                <span style="font-size: 8px; font-weight: normal;">(AI Voice Blessing)</span>
+                <span style="font-size: 8px; font-weight: normal;">(Ganesha Mantras: 30s)</span>
             </button>
         </div>
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -645,9 +645,13 @@
         // Bell and Mantra Audio Elements
         const bellAudio = new Audio('Ganapathibell.mp3');
         const mantraAudio = new Audio('Ganapathimantrai.mp3');
+        const feetMantra1 = new Audio('Ganeshmantra1.mp3');
+        const feetMantra2 = new Audio('Ganeshmantra2.mp3');
         
         let isRealBellPlaying = false;
         let isRealMantraPlaying = false;
+        let isRealFeetMantraPlaying = false;
+        let alternateMantra = false; // false = Ganeshmantra1, true = Ganeshmantra2
 
         // Sound Synthesis (Web Audio API)
         let audioCtx = null;
@@ -758,12 +762,34 @@
 
             isRealMantraPlaying = true;
             mantraAudio.play().then(() => {
-                console.log("Playing custom Ganapathimantra.mp3");
+                console.log("Playing custom Ganapathimantrai.mp3");
             }).catch((err) => {
                 isRealMantraPlaying = false;
-                console.log("Ganapathimantra.mp3 not found or blocked, falling back to synthesizer:", err);
+                console.log("Ganapathimantrai.mp3 not found or blocked, falling back to synthesizer:", err);
                 synthesizeHum(freq, duration);
             });
+        }
+
+        function playFeetMantra() {
+            initAudio();
+            if (volume === 0) return;
+            stopHum();
+
+            const activeAudio = alternateMantra ? feetMantra2 : feetMantra1;
+            const activeName = alternateMantra ? 'Ganeshmantra2.mp3' : 'Ganeshmantra1.mp3';
+
+            activeAudio.volume = volume / 30;
+            isRealFeetMantraPlaying = true;
+
+            activeAudio.play().then(() => {
+                console.log("Playing custom " + activeName);
+            }).catch((err) => {
+                isRealFeetMantraPlaying = false;
+                console.log(activeName + " not found, falling back to synthesizer:", err);
+                synthesizeHum(alternateMantra ? 440 : 220, 26);
+            });
+
+            alternateMantra = !alternateMantra; // Toggle alternating state
         }
 
         function synthesizeHum(freq, duration) {
@@ -810,6 +836,13 @@
                 mantraAudio.pause();
                 mantraAudio.currentTime = 0;
                 isRealMantraPlaying = false;
+            }
+            if (isRealFeetMantraPlaying) {
+                feetMantra1.pause();
+                feetMantra1.currentTime = 0;
+                feetMantra2.pause();
+                feetMantra2.currentTime = 0;
+                isRealFeetMantraPlaying = false;
             }
 
             if (soundSource) {
@@ -1025,7 +1058,7 @@
                     playBellTone(250, 5.0);
                     setTimeout(() => {
                         if (state === "MANTRA_ACTIVE") {
-                            synthesizeHum(220, 19);
+                            synthesizeHum(220, 25);
                         }
                     }, 5000);
                 });
@@ -1034,40 +1067,20 @@
                     if (pirEnabled) changeState("AMBIENT", 30000);
                     else changeState("STANDBY");
                 }, duration);
-            } else if (newState === "FEET_BELL") {
-                // Step 1 of Feet Touch: Play 5s Bell
-                setOledText("   [Temple Bell Chiming] Prepare to speak...   ");
-                playBellTone(250, 5.0);
-                
-                // Transition to Recording after 5 seconds
-                autoReturnTimer = setTimeout(() => {
-                    changeState("RECORDING", 3000);
-                }, 5000);
-            } else if (newState === "RECORDING") {
-                // Step 2 of Feet Touch: Listen for voice (3 seconds)
-                setOledText("   [AI Voice Processing] Speak now: 'Morya!'   ");
-                stopHum();
-                
-                // Transition to active blessing after 3 seconds
-                autoReturnTimer = setTimeout(() => {
-                    changeState("FEET_ACTIVE");
-                }, duration);
             } else if (newState === "FEET_ACTIVE") {
-                // Step 3 of Feet Touch: Deliver Blessing
                 blessings++;
-                const pitch = document.getElementById('voice-pitch-select').value;
-                const textMsg = (pitch === "child") ? languages[selectedLang].childBlessing : languages[selectedLang].adultBlessing;
+                
+                // Display the combined rolling blessings
+                const textMsg = "   [BLESSINGS] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
                 setOledText(textMsg);
                 
-                const humFreq = (pitch === "child") ? 440 : 220;
-                const playTime = (pitch === "child") ? 12000 : 15000;
-                
-                playHum(humFreq, playTime / 1000);
+                // Play the alternating Ganeshmantra1/2 directly
+                playFeetMantra();
                 
                 autoReturnTimer = setTimeout(() => {
                     if (pirEnabled) changeState("AMBIENT", 30000);
                     else changeState("STANDBY");
-                }, playTime);
+                }, duration);
             }
         }
 
@@ -1081,22 +1094,28 @@
 
         function updateTheme() {
             selectedTheme = document.getElementById('theme-select').value;
-            if (state === "AMBIENT") {
+            if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
                 updateUI();
             }
         }
 
         // Triggers
         function triggerMantra() {
-            if (state === "MANTRA_ACTIVE") return; // Ignore trigger during lockout
             initAudio();
-            changeState("MANTRA_ACTIVE", 24000); // 24-sec lockout duration
+            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                changeState("STANDBY");
+            } else {
+                changeState("MANTRA_ACTIVE", 30000); // 30-sec lockout duration
+            }
         }
 
-        function triggerFeetBell() {
-            if (state === "MANTRA_ACTIVE") return; // Ignore trigger during lockout
+        function triggerFeetMantra() {
             initAudio();
-            changeState("FEET_BELL", 5000); // Start 5s bell chime
+            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                changeState("STANDBY");
+            } else {
+                changeState("FEET_ACTIVE", 30000); // 30-sec lockout duration
+            }
         }
 
         // Squeaky Talk-Back Output
