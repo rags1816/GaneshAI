@@ -645,8 +645,8 @@
         // Bell and Mantra Audio Elements
         const bellAudio = new Audio('Ganapathibell.mp3');
         const mantraAudio = new Audio('Ganapathimantrai.mp3');
-        const feetMantra1 = new Audio('Ganeshmantra1.mp3');
-        const feetMantra2 = new Audio('Ganeshmantra2.mp3');
+        const feetMantra1 = new Audio('Ganapathimantra1.mp3');
+        const feetMantra2 = new Audio('Ganapathimantra2.mp3');
         
         let isRealBellPlaying = false;
         let isRealMantraPlaying = false;
@@ -779,7 +779,7 @@
             stopHum();
 
             const activeAudio = alternateMantra ? feetMantra2 : feetMantra1;
-            const activeName = alternateMantra ? 'Ganeshmantra2.mp3' : 'Ganeshmantra1.mp3';
+            const activeName = alternateMantra ? 'Ganapathimantra2.mp3' : 'Ganapathimantra1.mp3';
 
             activeAudio.volume = volume / 30;
             isRealFeetMantraPlaying = true;
