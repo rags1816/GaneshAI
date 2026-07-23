@@ -828,38 +828,61 @@
             "I bless every meal you eat to nourish your bones, sharpen your mind, and make you strong."
         ];
 
-        let mouseStep = 0; // 0 = Ganapathimantrai, 1 = Ganapathimantra2, 2 = Ganpathimantra1
-        let feetStep = 0;  // 0 = Ganpathimantra1, 1 = Ganapathimantra2, 2 = Ganapathimantrai
+        const mantraTracks = [
+            { file: "Ganapathimantrai.mp3", duration: 24000, dfTrack: 1 },
+            { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
+            { file: "Ganapathimantra2.mp3", duration: 27360, dfTrack: 4 },
+            { file: "Ganeshmantra3.mp3", duration: 55350, dfTrack: 5 },
+            { file: "Ganeshmantra4.mp3", duration: 155530, dfTrack: 6 },
+            { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
+            { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
+            { file: "Ganeshmantra7.mp3", duration: 136700, dfTrack: 9 },
+            { file: "Ganeshmantra8.mp3", duration: 125520, dfTrack: 10 },
+            { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
+            { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
+            { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
+            { file: "Ganeshmantra12.mp3", duration: 175730, dfTrack: 14 },
+            { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
+        ];
+
+        let mouseStep = 0; 
+        let feetStep = 0;  
+        let currentWebAudio = null;
+
+        function stopHum() {
+            if (synthInterval) clearInterval(synthInterval);
+            if (oscillator) {
+                try { oscillator.stop(); } catch(e){}
+                oscillator.disconnect();
+                oscillator = null;
+            }
+            if (currentWebAudio) {
+                try {
+                    currentWebAudio.pause();
+                    currentWebAudio.currentTime = 0;
+                } catch(e){}
+            }
+            isRealMantraPlaying = false;
+            isRealFeetMantraPlaying = false;
+        }
 
         function playMantraLoop() {
             initAudio();
             if (volume === 0) return;
             stopHum();
 
-            let activeAudio, activeName, playSecs;
-            if (mouseStep === 0) {
-                activeAudio = mantraAudio; // Ganapathimantrai.mp3 (24s)
-                activeName = 'Ganapathimantrai.mp3';
-                playSecs = 24;
-            } else if (mouseStep === 1) {
-                activeAudio = feetMantra2; // Ganapathimantra2.mp3 (27s)
-                activeName = 'Ganapathimantra2.mp3';
-                playSecs = 27;
-            } else {
-                activeAudio = feetMantra1; // Ganpathimantra1.mp3 (28s)
-                activeName = 'Ganpathimantra1.mp3';
-                playSecs = 28;
-            }
-
-            activeAudio.volume = volume / 30;
+            const track = mantraTracks[mouseStep];
             isRealMantraPlaying = true;
 
-            activeAudio.play().then(() => {
-                console.log("Playing Mouse Loop: " + activeName);
+            currentWebAudio = new Audio(track.file);
+            currentWebAudio.volume = volume / 30;
+
+            currentWebAudio.play().then(() => {
+                console.log("Playing Mouse Loop: " + track.file);
             }).catch((err) => {
                 isRealMantraPlaying = false;
-                console.log(activeName + " failed to play, using synth:", err);
-                synthesizeHum(220, playSecs);
+                console.log(track.file + " failed to play, using synth:", err);
+                synthesizeHum(220, track.duration / 1000);
             });
         }
 
@@ -868,30 +891,18 @@
             if (volume === 0) return;
             stopHum();
 
-            let activeAudio, activeName, playSecs;
-            if (feetStep === 0) {
-                activeAudio = feetMantra1; // Ganpathimantra1.mp3 (28s)
-                activeName = 'Ganpathimantra1.mp3';
-                playSecs = 28;
-            } else if (feetStep === 1) {
-                activeAudio = feetMantra2; // Ganapathimantra2.mp3 (27s)
-                activeName = 'Ganapathimantra2.mp3';
-                playSecs = 27;
-            } else {
-                activeAudio = mantraAudio; // Ganapathimantrai.mp3 (24s)
-                activeName = 'Ganapathimantrai.mp3';
-                playSecs = 24;
-            }
-
-            activeAudio.volume = volume / 30;
+            const track = mantraTracks[feetStep];
             isRealFeetMantraPlaying = true;
 
-            activeAudio.play().then(() => {
-                console.log("Playing Feet Loop: " + activeName);
+            currentWebAudio = new Audio(track.file);
+            currentWebAudio.volume = volume / 30;
+
+            currentWebAudio.play().then(() => {
+                console.log("Playing Feet Loop: " + track.file);
             }).catch((err) => {
                 isRealFeetMantraPlaying = false;
-                console.log(activeName + " failed to play, using synth:", err);
-                synthesizeHum(220, playSecs);
+                console.log(track.file + " failed to play, using synth:", err);
+                synthesizeHum(220, track.duration / 1000);
             });
         }
 
