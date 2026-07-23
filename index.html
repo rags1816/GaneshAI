@@ -846,13 +846,6 @@
         const globalMantraPlayer = new Audio();
 
         function stopHum() {
-            if (synthInterval) clearInterval(synthInterval);
-            if (oscillator) {
-                try { oscillator.stop(); } catch(e){}
-                oscillator.disconnect();
-                oscillator = null;
-            }
-            
             if (globalMantraPlayer) {
                 try {
                     globalMantraPlayer.pause();
@@ -878,45 +871,7 @@
             }
         }
 
-        function playMantraLoop() {
-            initAudio();
-            if (volume === 0) return;
-            stopHum();
 
-            const track = mantraTracks[mouseStep];
-            isRealMantraPlaying = true;
-
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
-
-            globalMantraPlayer.play().then(() => {
-                console.log("Playing Mouse Loop: " + track.file);
-            }).catch((err) => {
-                isRealMantraPlaying = false;
-                console.log(track.file + " failed to play, using synth:", err);
-                synthesizeHum(220, track.duration / 1000);
-            });
-        }
-
-        function playFeetLoop() {
-            initAudio();
-            if (volume === 0) return;
-            stopHum();
-
-            const track = mantraTracks[feetStep];
-            isRealFeetMantraPlaying = true;
-
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
-
-            globalMantraPlayer.play().then(() => {
-                console.log("Playing Feet Loop: " + track.file);
-            }).catch((err) => {
-                isRealFeetMantraPlaying = false;
-                console.log(track.file + " failed to play, using synth:", err);
-                synthesizeHum(220, track.duration / 1000);
-            });
-        }
 
         function synthesizeHum(freq, duration) {
             if (!audioCtx) return;
@@ -1149,9 +1104,6 @@
                 const textMsg = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
                 setOledText(textMsg);
                 
-                // Play from Mouse loop (Ganapathimantrai -> Ganapathimantra2 -> Ganpathimantra1)
-                playMantraLoop();
-                
                 // Increment immediately at start of play (matches ESP32)
                 mouseStep = (mouseStep + 1) % mantraTracks.length;
                 
@@ -1167,9 +1119,6 @@
                 const singleBlessing = list[Math.floor(Math.random() * list.length)];
                 const textMsg = `   [BLESSING] ${singleBlessing}   `;
                 setOledText(textMsg);
-                
-                // Play from Feet loop
-                playFeetLoop();
                 
                 // Increment immediately at start of play (matches ESP32)
                 feetStep = (feetStep + 1) % mantraTracks.length;
@@ -1206,19 +1155,43 @@
         // Triggers
         function triggerMantra() {
             initAudio();
-            // Instantly play/unlock the global audio element inside direct user tap thread
-            globalMantraPlayer.play().catch(() => {});
-            
+            stopHum(); // Stop any currently playing audio / synth hum
+
             const track = mantraTracks[mouseStep];
+            isRealMantraPlaying = true;
+
+            // Load and play immediately inside the user touch event thread
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
+            globalMantraPlayer.play().then(() => {
+                console.log("Playing Mouse Loop: " + track.file);
+            }).catch((err) => {
+                isRealMantraPlaying = false;
+                console.log(track.file + " failed to play, using synth:", err);
+                synthesizeHum(220, track.duration / 1000);
+            });
+            
             changeState("MANTRA_ACTIVE", track.duration);
         }
  
         function triggerFeetMantra() {
             initAudio();
-            // Instantly play/unlock the global audio element inside direct user tap thread
-            globalMantraPlayer.play().catch(() => {});
-            
+            stopHum(); // Stop any currently playing audio / synth hum
+
             const track = mantraTracks[feetStep];
+            isRealFeetMantraPlaying = true;
+
+            // Load and play immediately inside the user touch event thread
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
+            globalMantraPlayer.play().then(() => {
+                console.log("Playing Feet Loop: " + track.file);
+            }).catch((err) => {
+                isRealFeetMantraPlaying = false;
+                console.log(track.file + " failed to play, using synth:", err);
+                synthesizeHum(220, track.duration / 1000);
+            });
+            
             changeState("FEET_ACTIVE", track.duration);
         }
 
