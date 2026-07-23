@@ -773,26 +773,92 @@
             });
         }
 
-        function playFeetMantra() {
+        // Blessings database from Blessings1.docx
+        const adultBlessings = [
+            "I bless you with profound clarity of mind, patient wisdom, and inner strength.",
+            "May all professional obstacles dissolve, opening wide doors to prosperity.",
+            "I grant you emotional resilience and a peaceful heart, shielding you from stress.",
+            "I bless your home with harmony, lasting unity, and a deep sense of security.",
+            "Remember to breathe deeply and surrender your burdens completely into My hands.",
+            "I bless you with financial stability, wealth, and career growth.",
+            "I bless you with the discipline to avoid greed, anger, or unhealthy attachments."
+        ];
+
+        const childBlessings = [
+            "I bless your young mind with sharp focus, a quick memory, and joyful curiosity.",
+            "May your heart always be fearless and filled with kind thoughts for everyone.",
+            "Whenever a lesson feels too difficult, remember that I am right beside you.",
+            "May My blessings protect you from harm and guide your steps safely.",
+            "May you always speak words as sweet as the modaks I love.",
+            "I bless you with inner strength to overcome fears and find childlike happiness.",
+            "I bless your body with robust health, deep immunity, and a strong glowing energy."
+        ];
+
+        let mouseStep = 0; // 0 = Ganapathimantrai, 1 = Ganapathimantra2, 2 = Ganpathimantra1
+        let feetStep = 0;  // 0 = Ganpathimantra1, 1 = Ganapathimantra2, 2 = Ganapathimantrai
+
+        function playMantraLoop() {
             initAudio();
             if (volume === 0) return;
             stopHum();
 
-            const activeAudio = alternateMantra ? feetMantra2 : feetMantra1;
-            const activeName = alternateMantra ? 'Ganapathimantra2.mp3' : 'Ganpathimantra1.mp3';
+            let activeAudio, activeName, playSecs;
+            if (mouseStep === 0) {
+                activeAudio = mantraAudio; // Ganapathimantrai.mp3 (24s)
+                activeName = 'Ganapathimantrai.mp3';
+                playSecs = 24;
+            } else if (mouseStep === 1) {
+                activeAudio = feetMantra2; // Ganapathimantra2.mp3 (27s)
+                activeName = 'Ganapathimantra2.mp3';
+                playSecs = 27;
+            } else {
+                activeAudio = feetMantra1; // Ganpathimantra1.mp3 (28s)
+                activeName = 'Ganpathimantra1.mp3';
+                playSecs = 28;
+            }
+
+            activeAudio.volume = volume / 30;
+            isRealMantraPlaying = true;
+
+            activeAudio.play().then(() => {
+                console.log("Playing Mouse Loop: " + activeName);
+            }).catch((err) => {
+                isRealMantraPlaying = false;
+                console.log(activeName + " failed to play, using synth:", err);
+                synthesizeHum(220, playSecs);
+            });
+        }
+
+        function playFeetLoop() {
+            initAudio();
+            if (volume === 0) return;
+            stopHum();
+
+            let activeAudio, activeName, playSecs;
+            if (feetStep === 0) {
+                activeAudio = feetMantra1; // Ganpathimantra1.mp3 (28s)
+                activeName = 'Ganpathimantra1.mp3';
+                playSecs = 28;
+            } else if (feetStep === 1) {
+                activeAudio = feetMantra2; // Ganapathimantra2.mp3 (27s)
+                activeName = 'Ganapathimantra2.mp3';
+                playSecs = 27;
+            } else {
+                activeAudio = mantraAudio; // Ganapathimantrai.mp3 (24s)
+                activeName = 'Ganapathimantrai.mp3';
+                playSecs = 24;
+            }
 
             activeAudio.volume = volume / 30;
             isRealFeetMantraPlaying = true;
 
             activeAudio.play().then(() => {
-                console.log("Playing custom " + activeName);
+                console.log("Playing Feet Loop: " + activeName);
             }).catch((err) => {
                 isRealFeetMantraPlaying = false;
-                console.log(activeName + " not found, falling back to synthesizer:", err);
-                synthesizeHum(alternateMantra ? 440 : 220, 26);
+                console.log(activeName + " failed to play, using synth:", err);
+                synthesizeHum(220, playSecs);
             });
-
-            alternateMantra = !alternateMantra; // Toggle alternating state
         }
 
         function synthesizeHum(freq, duration) {
@@ -835,18 +901,17 @@
                 bellAudio.currentTime = 0;
                 isRealBellPlaying = false;
             }
-            if (isRealMantraPlaying) {
-                mantraAudio.pause();
-                mantraAudio.currentTime = 0;
-                isRealMantraPlaying = false;
-            }
-            if (isRealFeetMantraPlaying) {
-                feetMantra1.pause();
-                feetMantra1.currentTime = 0;
-                feetMantra2.pause();
-                feetMantra2.currentTime = 0;
-                isRealFeetMantraPlaying = false;
-            }
+            
+            // Halt all possible mantra audio tracks
+            mantraAudio.pause();
+            mantraAudio.currentTime = 0;
+            feetMantra1.pause();
+            feetMantra1.currentTime = 0;
+            feetMantra2.pause();
+            feetMantra2.currentTime = 0;
+            
+            isRealMantraPlaying = false;
+            isRealFeetMantraPlaying = false;
 
             if (soundSource) {
                 try {
@@ -1035,12 +1100,14 @@
             updateUI();
             
             if (autoReturnTimer) clearTimeout(autoReturnTimer);
-
+ 
             if (newState === "STANDBY") {
                 setOledText("");
                 stopHum();
             } else if (newState === "AMBIENT") {
-                setOledText(languages[selectedLang].welcome);
+                // In Ambient, roll the entire combined blessings loop
+                const textMsg = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+                setOledText(textMsg);
                 stopHum();
                 if (duration > 0) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
@@ -1049,44 +1116,37 @@
                 blessings++;
                 setOledText(languages[selectedLang].mantra);
                 
-                // Play the custom Ganapathimantrai.mp3 directly (contains both bell and mantra)
-                mantraAudio.volume = volume / 30;
-                isRealMantraPlaying = true;
-                mantraAudio.play().then(() => {
-                    console.log("Playing custom Ganapathimantrai.mp3");
-                }).catch((err) => {
-                    isRealMantraPlaying = false;
-                    console.log("Ganapathimantrai.mp3 failed, using synthesized fallback:", err);
-                    // Synthesized fallback sequence
-                    playBellTone(250, 5.0);
-                    setTimeout(() => {
-                        if (state === "MANTRA_ACTIVE") {
-                            synthesizeHum(220, 25);
-                        }
-                    }, 5000);
-                });
+                // Play from Mouse loop (Ganapathimantrai -> Ganapathimantra2 -> Ganpathimantra1)
+                playMantraLoop();
+                
+                // Increment immediately at start of play (matches ESP32)
+                mouseStep = (mouseStep + 1) % 3;
                 
                 autoReturnTimer = setTimeout(() => {
-                    if (pirEnabled) changeState("AMBIENT", 30000);
-                    else changeState("STANDBY");
+                    changeState("AMBIENT", 30000); // 30s idle time
                 }, duration);
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
                 
-                // Display the combined rolling blessings
-                const textMsg = "   [BLESSINGS] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+                // Fetch a single blessing corresponding to the active loop track (child for step 0, adult for steps 1 & 2)
+                const isChildTrack = (feetStep === 0);
+                const list = isChildTrack ? childBlessings : adultBlessings;
+                const singleBlessing = list[Math.floor(Math.random() * list.length)];
+                const textMsg = `   [BLESSING] ${singleBlessing}   `;
                 setOledText(textMsg);
                 
-                // Play the alternating Ganeshmantra1/2 directly
-                playFeetMantra();
+                // Play from Feet loop (Ganpathimantra1 -> Ganapathimantra2 -> Ganapathimantrai)
+                playFeetLoop();
+                
+                // Increment immediately at start of play (matches ESP32)
+                feetStep = (feetStep + 1) % 3;
                 
                 autoReturnTimer = setTimeout(() => {
-                    if (pirEnabled) changeState("AMBIENT", 30000);
-                    else changeState("STANDBY");
+                    changeState("AMBIENT", 30000); // 30s idle time
                 }, duration);
             }
         }
-
+ 
         // Dropdown Events
         function updateLanguage() {
             selectedLang = document.getElementById('lang-select').value;
@@ -1094,31 +1154,27 @@
                 setOledText(languages[selectedLang].welcome);
             }
         }
-
+ 
         function updateTheme() {
             selectedTheme = document.getElementById('theme-select').value;
             if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
                 updateUI();
             }
         }
-
+ 
         // Triggers
         function triggerMantra() {
             initAudio();
-            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
-                changeState("STANDBY");
-            } else {
-                changeState("MANTRA_ACTIVE", 30000); // 30-sec lockout duration
-            }
+            // Determine playtime based on next track (dynamic duration)
+            let d = mouseStep === 0 ? 24000 : (mouseStep === 1 ? 27000 : 28000);
+            changeState("MANTRA_ACTIVE", d);
         }
-
+ 
         function triggerFeetMantra() {
             initAudio();
-            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
-                changeState("STANDBY");
-            } else {
-                changeState("FEET_ACTIVE", 30000); // 30-sec lockout duration
-            }
+            // Determine playtime based on next track (dynamic duration)
+            let d = feetStep === 0 ? 28000 : (feetStep === 1 ? 27000 : 24000);
+            changeState("FEET_ACTIVE", d);
         }
 
         // Squeaky Talk-Back Output
