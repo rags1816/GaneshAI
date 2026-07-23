@@ -642,11 +642,7 @@
         let animationFrameId = null;
         let hueOffset = 0;
         
-        // Bell and Mantra Audio Elements
         const bellAudio = new Audio('Ganapathibell.mp3');
-        const mantraAudio = new Audio('Ganapathimantrai.mp3');
-        const feetMantra1 = new Audio('Ganpathimantra1.mp3');
-        const feetMantra2 = new Audio('Ganapathimantra2.mp3');
         
         let isRealBellPlaying = false;
         let isRealMantraPlaying = false;
@@ -847,13 +843,7 @@
 
         let mouseStep = 0; 
         let feetStep = 0;  
-
-        // Pre-instantiate all audio elements at page load to bypass iOS user-gesture restrictions
-        const mantraAudioElements = mantraTracks.map(track => {
-            const aud = new Audio(track.file);
-            aud.preload = "auto";
-            return aud;
-        });
+        const globalMantraPlayer = new Audio();
 
         function stopHum() {
             if (synthInterval) clearInterval(synthInterval);
@@ -863,26 +853,18 @@
                 oscillator = null;
             }
             
-            // Pause all pre-instantiated players
-            mantraAudioElements.forEach(p => {
+            if (globalMantraPlayer) {
                 try {
-                    p.pause();
-                    p.currentTime = 0;
+                    globalMantraPlayer.pause();
+                    globalMantraPlayer.currentTime = 0;
                 } catch(e){}
-            });
+            }
 
-            // Stop other possible preloaded tracks
             if (isRealBellPlaying) {
                 bellAudio.pause();
                 bellAudio.currentTime = 0;
                 isRealBellPlaying = false;
             }
-            mantraAudio.pause();
-            mantraAudio.currentTime = 0;
-            feetMantra1.pause();
-            feetMantra1.currentTime = 0;
-            feetMantra2.pause();
-            feetMantra2.currentTime = 0;
             
             isRealMantraPlaying = false;
             isRealFeetMantraPlaying = false;
@@ -902,12 +884,12 @@
             stopHum();
 
             const track = mantraTracks[mouseStep];
-            const player = mantraAudioElements[mouseStep];
             isRealMantraPlaying = true;
 
-            player.volume = volume / 30;
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
 
-            player.play().then(() => {
+            globalMantraPlayer.play().then(() => {
                 console.log("Playing Mouse Loop: " + track.file);
             }).catch((err) => {
                 isRealMantraPlaying = false;
@@ -922,12 +904,12 @@
             stopHum();
 
             const track = mantraTracks[feetStep];
-            const player = mantraAudioElements[feetStep];
             isRealFeetMantraPlaying = true;
 
-            player.volume = volume / 30;
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
 
-            player.play().then(() => {
+            globalMantraPlayer.play().then(() => {
                 console.log("Playing Feet Loop: " + track.file);
             }).catch((err) => {
                 isRealFeetMantraPlaying = false;
@@ -1224,12 +1206,18 @@
         // Triggers
         function triggerMantra() {
             initAudio();
+            // Instantly play/unlock the global audio element inside direct user tap thread
+            globalMantraPlayer.play().catch(() => {});
+            
             const track = mantraTracks[mouseStep];
             changeState("MANTRA_ACTIVE", track.duration);
         }
  
         function triggerFeetMantra() {
             initAudio();
+            // Instantly play/unlock the global audio element inside direct user tap thread
+            globalMantraPlayer.play().catch(() => {});
+            
             const track = mantraTracks[feetStep];
             changeState("FEET_ACTIVE", track.duration);
         }
