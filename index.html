@@ -1094,12 +1094,14 @@
 
         // State Machine Triggers
         let autoReturnTimer = null;
+        let feetDisplayTimer = null;
 
         function changeState(newState, duration = 0) {
             state = newState;
             updateUI();
             
             if (autoReturnTimer) clearTimeout(autoReturnTimer);
+            if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
  
             if (newState === "STANDBY") {
                 setOledText("");
@@ -1114,7 +1116,9 @@
                 }
             } else if (newState === "MANTRA_ACTIVE") {
                 blessings++;
-                setOledText(languages[selectedLang].mantra);
+                // Keep blessings rolling during Mouse Back playback!
+                const textMsg = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+                setOledText(textMsg);
                 
                 // Play from Mouse loop (Ganapathimantrai -> Ganapathimantra2 -> Ganpathimantra1)
                 playMantraLoop();
@@ -1140,6 +1144,14 @@
                 
                 // Increment immediately at start of play (matches ESP32)
                 feetStep = (feetStep + 1) % 3;
+                
+                // Lock screen on this blessing for 12 seconds, then resume rolling loop
+                feetDisplayTimer = setTimeout(() => {
+                    if (state === "FEET_ACTIVE") {
+                        const rollingText = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+                        setOledText(rollingText);
+                    }
+                }, 12000);
                 
                 autoReturnTimer = setTimeout(() => {
                     changeState("AMBIENT", 30000); // 30s idle time
