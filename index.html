@@ -8,7 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Ganapati AI">
-    <!-- App Icons -->
+    <!-- App Icons & Manifest -->
+    <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="180x180" href="https://img.icons8.com/color/180/ganesha.png">
     <link rel="apple-touch-icon" sizes="180x180" href="https://img.icons8.com/color/180/ganesha.png">
     <style>
@@ -502,18 +503,14 @@
         </div>
 
         <div class="section-title">Manual Triggers</div>
-        <div class="btn-triple">
+        <div class="btn-group">
             <button class="btn-action" onclick="triggerMantra()">
-                <span>🕉️ Mantra</span>
-                <span style="font-size: 7px; font-weight: normal;">(Mouse: 15s)</span>
-            </button>
-            <button class="btn-action" onclick="triggerBlessing()">
-                <span>👣 Feet Touch</span>
-                <span style="font-size: 7px; font-weight: normal;">(AI Voice)</span>
-            </button>
-            <button class="btn-stroke" onclick="triggerMouseStroke()">
                 <span>🐭 Mouse Back</span>
-                <span style="font-size: 7px; font-weight: normal;">(Talk-Back)</span>
+                <span style="font-size: 8px; font-weight: normal;">(Mantra: 24s)</span>
+            </button>
+            <button class="btn-action" onclick="triggerFeetBell()">
+                <span>👣 Feet Touch</span>
+                <span style="font-size: 8px; font-weight: normal;">(AI Voice Blessing)</span>
             </button>
         </div>
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -670,36 +667,63 @@
             }
         }
 
-        // Bell Sound Synthesis
-        function playBellTone(freq = 880, duration = 1.5) {
+        // True Temple Bell Sound Synthesis with 5-Second Beating Oscillation
+        function playBellTone(freq = 250, duration = 5.0) {
             initAudio();
             if (!audioCtx || volume === 0) return;
             const volRatio = volume / 30;
             const now = audioCtx.currentTime;
-            
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            osc.frequency.setValueAtTime(freq, now);
-            
-            const oscHarmonic = audioCtx.createOscillator();
-            const gainHarmonic = audioCtx.createGain();
-            oscHarmonic.frequency.setValueAtTime(freq * 2.05, now);
-            
-            gainNode.gain.setValueAtTime(0.3 * volRatio, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-            
-            gainHarmonic.gain.setValueAtTime(0.1 * volRatio, now);
-            gainHarmonic.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-            osc.connect(gainNode);
-            oscHarmonic.connect(gainHarmonic);
-            gainNode.connect(audioCtx.destination);
-            gainHarmonic.connect(audioCtx.destination);
+            // Deep temple bell pitch mapping
+            const baseFreq = freq > 400 ? freq / 3.2 : freq;
 
-            osc.start(now);
-            oscHarmonic.start(now);
-            osc.stop(now + duration);
-            oscHarmonic.stop(now + duration);
+            // 1. Prime frequency pairs (creating a 2.5Hz "beating" wave oscillation)
+            const osc1 = audioCtx.createOscillator();
+            const gain1 = audioCtx.createGain();
+            osc1.type = "sine";
+            osc1.frequency.setValueAtTime(baseFreq, now);
+            gain1.gain.setValueAtTime(0.25 * volRatio, now);
+            gain1.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = "sine";
+            osc2.frequency.setValueAtTime(baseFreq + 2.5, now);
+            gain2.gain.setValueAtTime(0.25 * volRatio, now);
+            gain2.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            // 2. Secondary Bronze Resonance Harmonics (decline at faster intervals)
+            const harmonics = [
+                { ratio: 1.2, gain: 0.15, decay: 3.5 }, // Minor third
+                { ratio: 1.5, gain: 0.12, decay: 3.0 }, // Perfect fifth
+                { ratio: 2.0, gain: 0.10, decay: 2.5 }, // Octave
+                { ratio: 2.6, gain: 0.08, decay: 2.0 }, // Upper minor third
+                { ratio: 3.0, gain: 0.05, decay: 1.5 }  // Upper fifth
+            ];
+
+            harmonics.forEach(h => {
+                const oscH = audioCtx.createOscillator();
+                const gainH = audioCtx.createGain();
+                oscH.type = "sine";
+                oscH.frequency.setValueAtTime(baseFreq * h.ratio, now);
+                gainH.gain.setValueAtTime(h.gain * volRatio, now);
+                gainH.gain.exponentialRampToValueAtTime(0.001, now + h.decay);
+
+                oscH.connect(gainH);
+                gainH.connect(audioCtx.destination);
+                oscH.start(now);
+                oscH.stop(now + h.decay);
+            });
+
+            osc1.connect(gain1);
+            osc2.connect(gain2);
+            gain1.connect(audioCtx.destination);
+            gain2.connect(audioCtx.destination);
+
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + duration);
+            osc2.stop(now + duration);
         }
 
         // Shloka Synth Hum
@@ -943,30 +967,54 @@
             } else if (newState === "MANTRA_ACTIVE") {
                 blessings++;
                 setOledText(languages[selectedLang].mantra);
-                playBellTone(880, 2.0);
-                setTimeout(() => playHum(293.66, 13), 1000); // 13s hum shloka loop (15s total)
+                
+                // Play 5s Bell immediately
+                playBellTone(250, 5.0);
+                // Play 19s Mantra after bell finishes (at 5 seconds)
+                setTimeout(() => {
+                    if (state === "MANTRA_ACTIVE") { // Check if not stopped in between
+                        playHum(220, 19); 
+                    }
+                }, 5000);
                 
                 autoReturnTimer = setTimeout(() => {
                     if (pirEnabled) changeState("AMBIENT", 30000);
                     else changeState("STANDBY");
                 }, duration);
+            } else if (newState === "FEET_BELL") {
+                // Step 1 of Feet Touch: Play 5s Bell
+                setOledText("   [Temple Bell Chiming] Prepare to speak...   ");
+                playBellTone(250, 5.0);
+                
+                // Transition to Recording after 5 seconds
+                autoReturnTimer = setTimeout(() => {
+                    changeState("RECORDING", 3000);
+                }, 5000);
+            } else if (newState === "RECORDING") {
+                // Step 2 of Feet Touch: Listen for voice (3 seconds)
+                setOledText("   [AI Voice Processing] Speak now: 'Morya!'   ");
+                stopHum();
+                
+                // Transition to active blessing after 3 seconds
+                autoReturnTimer = setTimeout(() => {
+                    changeState("FEET_ACTIVE");
+                }, duration);
             } else if (newState === "FEET_ACTIVE") {
+                // Step 3 of Feet Touch: Deliver Blessing
                 blessings++;
                 const pitch = document.getElementById('voice-pitch-select').value;
                 const textMsg = (pitch === "child") ? languages[selectedLang].childBlessing : languages[selectedLang].adultBlessing;
                 setOledText(textMsg);
                 
-                // Audio synthesis adjusts based on pitch selection
-                const bellFreq = (pitch === "child") ? 1320 : 660; // Child gets a higher-pitched chime!
-                const humFreq = (pitch === "child") ? 440 : 220; // Child gets a higher flute shloka!
+                const humFreq = (pitch === "child") ? 440 : 220;
+                const playTime = (pitch === "child") ? 12000 : 15000;
                 
-                playBellTone(bellFreq, 1.5);
-                setTimeout(() => playHum(humFreq, 10.5), 1000); // 12s total
+                playHum(humFreq, playTime / 1000);
                 
                 autoReturnTimer = setTimeout(() => {
                     if (pirEnabled) changeState("AMBIENT", 30000);
                     else changeState("STANDBY");
-                }, duration);
+                }, playTime);
             }
         }
 
@@ -975,14 +1023,11 @@
             selectedLang = document.getElementById('lang-select').value;
             if (state === "AMBIENT") {
                 setOledText(languages[selectedLang].welcome);
-            } else if (state === "STANDBY") {
-                // keep quiet
             }
         }
 
         function updateTheme() {
             selectedTheme = document.getElementById('theme-select').value;
-            // Force redraw of ambient LEDs to match new theme colors
             if (state === "AMBIENT") {
                 updateUI();
             }
@@ -990,58 +1035,15 @@
 
         // Triggers
         function triggerMantra() {
-            changeState("MANTRA_ACTIVE", 15000);
-        }
-
-        function triggerBlessing() {
-            changeState("FEET_ACTIVE", 12000);
-        }
-
-        // Talk-Back Squeaky Mouse Feature
-        function triggerMouseStroke() {
+            if (state === "MANTRA_ACTIVE") return; // Ignore trigger during lockout
             initAudio();
-            if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
-                stopHum();
-            }
+            changeState("MANTRA_ACTIVE", 24000); // 24-sec lockout duration
+        }
 
-            changeState("RECORDING");
-            setOledText("   [Mouse Recording] Speak now...   ");
-
-            // Request input via browser voice input or prompt box
-            setTimeout(() => {
-                let userText = "";
-                let fallbackUsed = false;
-                
-                // Only try voice recognition on secure HTTPS contexts, otherwise fall back to prompt
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (SpeechRecognition && window.location.protocol === "https:") {
-                    try {
-                        const recognition = new SpeechRecognition();
-                        recognition.lang = selectedLang === "en" ? 'en-US' : (selectedLang === "ta" ? 'ta-IN' : 'mr-IN');
-                        recognition.start();
-                        recognition.onresult = function(event) {
-                            userText = event.results[0][0].transcript;
-                            speakMouseRepeat(userText);
-                        };
-                        recognition.onerror = function() {
-                            if (!fallbackUsed) {
-                                fallbackUsed = true;
-                                userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
-                                speakMouseRepeat(userText);
-                            }
-                        };
-                    } catch (e) {
-                        if (!fallbackUsed) {
-                            fallbackUsed = true;
-                            userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
-                            speakMouseRepeat(userText);
-                        }
-                    }
-                } else {
-                    userText = prompt("Talk to the mouse (or type what you said):", "Ganapathi Bappa Morya!");
-                    speakMouseRepeat(userText);
-                }
-            }, 500);
+        function triggerFeetBell() {
+            if (state === "MANTRA_ACTIVE") return; // Ignore trigger during lockout
+            initAudio();
+            changeState("FEET_BELL", 5000); // Start 5s bell chime
         }
 
         // Squeaky Talk-Back Output
