@@ -1436,7 +1436,7 @@
                     const finishAarti = () => {
                         if (state !== "AARTI_MODE") return;
                         isRealMantraPlaying = false;
-                        playChime(); // closing chime
+                        playBellTone(250, 2.0); // same temple bell, signalling the ritual has closed
                         changeState("AMBIENT", AMBIENT_IDLE_MS);
                     };
 
