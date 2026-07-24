@@ -823,6 +823,11 @@
             "I grant you deep, peaceful sleep at night so your body can rest and wake up full of energy.",
             "I bless every meal you eat to nourish your bones, sharpen your mind, and make you strong."
         ];
+        const combinedBlessings = [
+            ...adultBlessings,
+            ...childBlessings
+        ];
+        let currentBlessingIndex = 0;
 
         const mantraTracks = [
             { file: "Ganapathimantrai.mp3", duration: 24000, dfTrack: 1 },
@@ -965,6 +970,14 @@
                         scrollX -= 2;
                         if (scrollX < -textWidth) {
                             scrollX = 180;
+                            // When a message finishes scrolling, load the next blessing from the 48-blessings loop!
+                            if (state === "AMBIENT" || state === "MANTRA_ACTIVE") {
+                                const nextBlessing = combinedBlessings[currentBlessingIndex];
+                                currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
+                                const nextText = `   [BLESSING] ${nextBlessing}   `;
+                                scroller.innerText = nextText;
+                                textWidth = nextText.length * 6.5;
+                            }
                         }
                         scroller.style.transform = `translateX(${scrollX}px)`;
                     }, 80);
