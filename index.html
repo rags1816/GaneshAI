@@ -504,17 +504,25 @@
 
         <div class="section-title">Manual Triggers</div>
         <div class="btn-group">
-            <button class="btn-action" onclick="triggerMantra()">
+            <button class="btn-action" id="mouse-pad-btn"
+                onmousedown="onMousePadDown()" onmouseup="onMousePadUp()" onmouseleave="onMousePadCancel()"
+                ontouchstart="onMousePadDown()" ontouchend="onMousePadUp()" ontouchcancel="onMousePadCancel()">
                 <span>🐭 Mouse Back</span>
                 <span style="font-size: 8px; font-weight: normal;">(Mantra: 30s)</span>
             </button>
-            <button class="btn-action" onclick="triggerFeetMantra()">
+            <button class="btn-action" id="feet-pad-btn"
+                onmousedown="onFeetPadDown()" onmouseup="onFeetPadUp()" onmouseleave="onFeetPadCancel()"
+                ontouchstart="onFeetPadDown()" ontouchend="onFeetPadUp()" ontouchcancel="onFeetPadCancel()">
                 <span>👣 Feet Touch</span>
                 <span style="font-size: 8px; font-weight: normal;">(Ganesha Mantras: 30s)</span>
             </button>
         </div>
+        <div style="font-size: 10px; opacity: 0.6; margin: -6px 0 10px 2px;">Hold both pads together for 15s to close the temple for the night</div>
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
             <button class="btn-stop" style="flex: 1;" onclick="triggerStop()">⏹️ Stop Sound / Reset State</button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="btn-stop" style="flex: 1;" onclick="closeTemple()">🔔 Close Temple (Night Mode)</button>
         </div>
 
         <div class="section-title">Theme of the Day</div>
@@ -545,6 +553,7 @@
                 <option value="1">Circuit Pulse</option>
                 <option value="2">Golden Aura</option>
                 <option value="3">Rainbow Dream</option>
+                <option value="4">Diya Flicker (Warm)</option>
             </select>
         </div>
 
@@ -585,6 +594,14 @@
         // multiple entries of the 48-blessing list (was 30000ms, too short even for
         // the welcome banner alone to finish one scroll pass).
         const AMBIENT_IDLE_MS = 120000;
+        // Aarti Mode: if a devotee hasn't touched anything for this long while
+        // the device is idle in AMBIENT, it runs a short scripted ritual
+        // sequence (bell -> LED build -> chant -> closing chime) instead of
+        // just continuing to scroll blessings, then settles back to AMBIENT.
+        const AARTI_IDLE_MS = 60000;
+        let aartiTimer = null;
+        let aartiBuildActive = false;
+        const AARTI_FALLBACK_DURATION_MS = 240000; // GaneshAarti.mp3 is ~4 minutes
         // Tracks whether the welcome banner has already played for the current
         // "wake" cycle. It should only show once per STANDBY->AMBIENT wake, not on
         // every AMBIENT/MANTRA_ACTIVE/FEET_ACTIVE transition in between - otherwise
@@ -860,14 +877,58 @@
             { file: "Ganeshmantra12.mp3", duration: 175730, dfTrack: 14 },
             { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
         ];
+        // Aarti's own track lives separately from mantraTracks - it must never
+        // get cycled into regular Mouse Back / Feet Touch rotation.
+        const AARTI_TRACK_FILE = "GaneshAarti.mp3";
 
         let mouseStep = 0; 
         let feetStep = 0;  
         const globalMantraPlayer = new Audio();
 
+        // Audio-reactive breathing setup: both the real mp3 (globalMantraPlayer)
+        // and the synthesized fallback hum route through this shared bus, so
+        // whichever one is actually producing sound drives the same analyser -
+        // the LED "breathing" then follows real audio energy instead of a fixed
+        // sine wave that merely happens to run at the same time.
+        let mantraAnalyser = null;
+        let mantraFreqData = null;
+        let mantraBusGain = null;
+        let mantraSourceNode = null;
+        function ensureMantraAudioGraph() {
+            if (!audioCtx) return;
+            if (!mantraBusGain) {
+                mantraBusGain = audioCtx.createGain();
+                mantraAnalyser = audioCtx.createAnalyser();
+                mantraAnalyser.fftSize = 256;
+                mantraFreqData = new Uint8Array(mantraAnalyser.frequencyBinCount);
+                mantraBusGain.connect(mantraAnalyser);
+                mantraAnalyser.connect(audioCtx.destination);
+            }
+            if (!mantraSourceNode) {
+                try {
+                    mantraSourceNode = audioCtx.createMediaElementSource(globalMantraPlayer);
+                    mantraSourceNode.connect(mantraBusGain);
+                } catch (e) {
+                    // Already connected, or blocked (e.g. cross-origin file) - the
+                    // sine-wave breathing fallback below still works fine either way.
+                    console.log("Mantra analyser hookup skipped:", e);
+                }
+            }
+        }
+        function getMantraEnergy() {
+            if (!mantraAnalyser || !(isRealMantraPlaying || isRealFeetMantraPlaying || soundSource)) return null;
+            mantraAnalyser.getByteFrequencyData(mantraFreqData);
+            let sum = 0;
+            for (let k = 0; k < mantraFreqData.length; k++) sum += mantraFreqData[k];
+            const avg = sum / mantraFreqData.length / 255; // 0..1
+            if (avg <= 0.001) return null; // nothing actually flowing through the bus yet
+            return avg;
+        }
+
         function stopHum() {
             if (globalMantraPlayer) {
                 try {
+                    globalMantraPlayer.onended = null; // don't let an interrupted Aarti chant finish late
                     globalMantraPlayer.pause();
                     globalMantraPlayer.currentTime = 0;
                 } catch(e){}
@@ -895,6 +956,7 @@
 
         function synthesizeHum(freq, duration) {
             if (!audioCtx) return;
+            ensureMantraAudioGraph();
             const volRatio = volume / 30;
             const now = audioCtx.currentTime;
 
@@ -914,7 +976,10 @@
             soundSourceAmp.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
             osc.connect(soundSourceAmp);
-            soundSourceAmp.connect(audioCtx.destination);
+            // Route through the shared analyser bus (falls back to direct
+            // destination if the bus isn't available for some reason) so the
+            // LED ring can breathe in time with the actual sound.
+            soundSourceAmp.connect(mantraBusGain || audioCtx.destination);
 
             vibrato.start();
             osc.start(now);
@@ -934,6 +999,10 @@
             
             if (state === "STANDBY") {
                 stateLbl.innerText = "[STANDBY]";
+                stateVal.className = "status-val";
+                document.getElementById('oled-scroller').style.display = 'none';
+            } else if (state === "TEMPLE_CLOSED") {
+                stateLbl.innerText = "[CLOSED \ud83c\udf19]";
                 stateVal.className = "status-val";
                 document.getElementById('oled-scroller').style.display = 'none';
             } else {
@@ -992,6 +1061,7 @@
                                 const nextText = `   [BLESSING] ${nextBlessing}   `;
                                 scroller.innerText = nextText;
                                 textWidth = scroller.scrollWidth;
+                                onNewBlessingShown(nextBlessing);
                             }
                         }
                         scroller.style.transform = `translateX(${scrollX}px)`;
@@ -1016,8 +1086,11 @@
             };
         }
 
-        function circuitPulseColor(i, hueOffset, c1, c2) {
-            const breath = Math.sin(hueOffset * 0.05) * 0.5 + 0.5;
+        function circuitPulseColor(i, hueOffset, c1, c2, breathOverride) {
+            // breathOverride, when provided (0..1), comes from live mantra audio
+            // energy instead of a fixed sine wave - makes the ring visibly
+            // "breathe" with the chant rather than on its own separate clock.
+            const breath = (breathOverride != null) ? breathOverride : (Math.sin(hueOffset * 0.05) * 0.5 + 0.5);
             let color = {
                 r: Math.round(c1.r * breath),
                 g: Math.round(c1.g * breath),
@@ -1045,9 +1118,100 @@
             return hslToRgb(indexHue / 360, 1.0, 0.5);
         }
 
+        function diyaFlickerColor(i, hueOffset) {
+            // Warm oil-lamp flicker - intentionally ignores the theme palette,
+            // like an actual diya flame does. Each LED flickers independently.
+            const base = 0.55 + Math.sin(hueOffset * 0.07 + i * 1.3) * 0.15;
+            const flicker = Math.random() * 0.25;
+            const intensity = Math.max(0.15, Math.min(1, base + flicker));
+            return {
+                r: Math.round(255 * intensity),
+                g: Math.round(140 * intensity * 0.75),
+                b: Math.round(20 * intensity * 0.3)
+            };
+        }
+
+        // Blends color `b` into color `a` by amount `t` (0 = all a, 1 = all b).
+        // Used to give each blessing's mood (prosperity/wisdom/peace/strength) a
+        // subtle tint on top of the day's theme colors.
+        function blendColor(a, b, t) {
+            return {
+                r: Math.round(a.r * (1 - t) + b.r * t),
+                g: Math.round(a.g * (1 - t) + b.g * t),
+                b: Math.round(a.b * (1 - t) + b.b * t)
+            };
+        }
+
+        // Blessing mood tagging - lightweight keyword classification so all 48
+        // blessings get a fitting color nudge without hand-tagging each one.
+        const BLESSING_MOODS = {
+            prosperity: { r: 255, g: 200, b: 40 },  // warm gold
+            wisdom:     { r: 80, g: 170, b: 255 },  // cool blue
+            peace:      { r: 140, g: 220, b: 170 }, // soft green-teal
+            strength:   { r: 255, g: 90, b: 60 }    // warm red-orange
+        };
+        const BLESSING_MOOD_KEYWORDS = {
+            prosperity: ['wealth', 'financial', 'success', 'prosper', 'career', 'abundan', 'growth', 'opportunit'],
+            wisdom:     ['wisdom', 'wise', 'clarity', 'mind', 'judgment', 'judgeme', 'knowledge', 'intellect', 'learn'],
+            peace:      ['peace', 'calm', 'patien', 'forgive', 'harmony', 'loving', 'family', 'gentle', 'kind'],
+            strength:   ['strength', 'discipline', 'courage', 'resilien', 'protect', 'obstacle', 'roadblock', 'hurdle', 'stress']
+        };
+        function classifyBlessingMood(text) {
+            const lower = text.toLowerCase();
+            for (const mood in BLESSING_MOOD_KEYWORDS) {
+                if (BLESSING_MOOD_KEYWORDS[mood].some(kw => lower.includes(kw))) {
+                    return BLESSING_MOODS[mood];
+                }
+            }
+            return null; // no strong match - just use the theme colors as-is
+        }
+        let currentMoodColor = null;
+
+        // --- New-blessing moment: sparkle sweep + soft chime ---------------
+        let sparkleStartTime = 0;
+        let sparkleEndTime = 0;
+        const SPARKLE_DURATION_MS = 700;
+
+        function onNewBlessingShown(blessingText) {
+            currentMoodColor = classifyBlessingMood(blessingText);
+            sparkleStartTime = Date.now();
+            sparkleEndTime = sparkleStartTime + SPARKLE_DURATION_MS;
+            playChime();
+        }
+
+        // Short, isolated bell-like ping - deliberately does NOT touch the
+        // shared soundSource/soundSourceAmp globals, so it can never collide
+        // with an active mantra hum or confuse stopHum().
+        function playChime() {
+            initAudio();
+            if (!audioCtx || volume <= 0) return;
+            const volRatio = volume / 30;
+            const t = audioCtx.currentTime;
+            [880, 1320].forEach((freq, idx) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime((idx === 0 ? 0.12 : 0.05) * volRatio, t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t);
+                osc.stop(t + 0.95);
+            });
+        }
+
+        // --- Feet-touch "entering the temple" moment: bell + quick flash ---
+        let feetFlashEndTime = 0;
+        const FEET_FLASH_DURATION_MS = 400;
+        function triggerFeetFlash() {
+            feetFlashEndTime = Date.now() + FEET_FLASH_DURATION_MS;
+        }
+
         // LED Animations
         function drawLeds() {
-            if (state === "STANDBY" && !previewActive) {
+            if ((state === "STANDBY" || state === "TEMPLE_CLOSED") && !previewActive) {
                 ledDots.forEach(dot => {
                     dot.style.backgroundColor = '#111';
                     dot.style.boxShadow = 'none';
@@ -1067,8 +1231,27 @@
                 let activePattern = pattern;
                 let childRainbow = false;
                 const activeThemeColor = themes[selectedTheme];
-                const c1 = hexToRgb(activeThemeColor.primary);
-                const c2 = hexToRgb(activeThemeColor.secondary);
+                let c1 = hexToRgb(activeThemeColor.primary);
+                let c2 = hexToRgb(activeThemeColor.secondary);
+
+                // Blessing-mood tint: nudge the palette toward the current
+                // blessing's mood (prosperity/wisdom/peace/strength) wherever
+                // blessings are actually being displayed. Left out of
+                // MANTRA_ACTIVE on purpose - that state stays a "pure" flowing
+                // chant color, distinct in character from the blessing states.
+                if (currentMoodColor && (state === "AMBIENT" || state === "FEET_ACTIVE")) {
+                    c1 = blendColor(c1, currentMoodColor, 0.25);
+                    c2 = blendColor(c2, currentMoodColor, 0.25);
+                }
+
+                // Audio-reactive breathing: while a mantra is actually
+                // sounding, let real audio energy drive the Circuit Pulse
+                // breath instead of a fixed sine wave.
+                let breathOverride = null;
+                if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE" || (state === "AARTI_MODE" && !aartiBuildActive)) {
+                    const energy = getMantraEnergy();
+                    if (energy !== null) breathOverride = 0.25 + energy * 0.85;
+                }
 
                 if (state === "FEET_ACTIVE") {
                     const pitch = document.getElementById('voice-pitch-select').value;
@@ -1079,11 +1262,22 @@
                     }
                 } else if (state === "MANTRA_ACTIVE") {
                     activePattern = 1; // Circuit Pulse
+                } else if (state === "AARTI_MODE") {
+                    // Golden build-up while the bell rings out, then settles
+                    // into the same audio-reactive Circuit Pulse as the chant plays.
+                    activePattern = aartiBuildActive ? 2 : 1;
                 }
                 // AMBIENT no longer forces its own fixed gradient - it uses whichever
                 // "Default LED Pattern" the user picked, rendered in today's theme
                 // colors. That's the actual link between the two controls: pattern
                 // decides the motion/shape, theme decides the palette it's drawn in.
+
+                const sparkling = Date.now() < sparkleEndTime;
+                const sparkleProgress = sparkling ? (Date.now() - sparkleStartTime) / SPARKLE_DURATION_MS : 0;
+                const sparklePos = sparkleProgress * numLeds;
+
+                const flashing = Date.now() < feetFlashEndTime;
+                const flashAmount = flashing ? (feetFlashEndTime - Date.now()) / FEET_FLASH_DURATION_MS : 0;
 
                 ledDots.forEach((dot, i) => {
                     let color = {r: 0, g: 0, b: 0};
@@ -1095,13 +1289,34 @@
                         color = peacockWaveColor(i, hueOffset, c1, c2);
                     } 
                     else if (activePattern == 1) { // Circuit Pulse
-                        color = circuitPulseColor(i, hueOffset, c1, c2);
+                        color = circuitPulseColor(i, hueOffset, c1, c2, breathOverride);
                     } 
                     else if (activePattern == 2) { // Golden Aura
                         color = goldenAuraColor(hueOffset, c1, c2);
                     } 
                     else if (activePattern == 3) { // Rainbow Dream
                         color = rainbowDreamColor(i, hueOffset);
+                    }
+                    else if (activePattern == 4) { // Diya Flicker
+                        color = diyaFlickerColor(i, hueOffset);
+                    }
+
+                    // "New blessing" sparkle sweep - a bright pulse of the
+                    // theme's secondary color traveling once around the ring.
+                    if (sparkling) {
+                        const dist = Math.min(Math.abs(i - sparklePos), numLeds - Math.abs(i - sparklePos));
+                        if (dist < 2.2) {
+                            const sparkleAmt = (1 - dist / 2.2) * (1 - sparkleProgress);
+                            color = blendColor(color, { r: 255, g: 255, b: 255 }, sparkleAmt * 0.5);
+                            color = blendColor(color, c2, sparkleAmt * 0.3);
+                        }
+                    }
+
+                    // Feet-touch "entering the temple" flash - a brief bright
+                    // pulse across the whole ring, distinct from the slower
+                    // Mouse Back flow.
+                    if (flashing) {
+                        color = blendColor(color, { r: 255, g: 245, b: 220 }, flashAmount * 0.7);
                     }
 
                     // Apply brightness and display
@@ -1168,6 +1383,7 @@
                 const nextBlessing = combinedBlessings[currentBlessingIndex];
                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
                 setOledText(`   [BLESSING] ${nextBlessing}   `);
+                onNewBlessingShown(nextBlessing);
             }
         }
 
@@ -1177,11 +1393,19 @@
             
             if (autoReturnTimer) clearTimeout(autoReturnTimer);
             if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
+            if (aartiTimer) clearTimeout(aartiTimer);
  
             if (newState === "STANDBY") {
                 setOledText("");
                 stopHum();
                 // Reset so the welcome banner plays again next time the device wakes.
+                introPlayed = false;
+            } else if (newState === "TEMPLE_CLOSED") {
+                // Night mode: fully silent and dark. Nothing wakes this except
+                // an explicit touch on Mouse Back or Feet Touch (handled in
+                // onMousePadUp/onFeetPadUp) - not PIR, not the Aarti idle timer.
+                setOledText("");
+                stopHum();
                 introPlayed = false;
             } else if (newState === "AMBIENT") {
                 // In Ambient, roll the entire combined blessings loop
@@ -1190,6 +1414,49 @@
                 if (duration > 0) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
                 }
+                // If nobody touches anything for a while, offer a short Aarti.
+                if (aartiTimer) clearTimeout(aartiTimer);
+                aartiTimer = setTimeout(() => {
+                    if (state === "AMBIENT") triggerAartiMode();
+                }, AARTI_IDLE_MS);
+            } else if (newState === "AARTI_MODE") {
+                blessings++;
+                aartiBuildActive = true;
+                setOledText("   \u2728 A moment of Aarti \u2728   ");
+                initAudio();
+                ensureMantraAudioGraph();
+                playBellTone(250, 2.2);
+
+                const BUILD_MS = 2500; // bell rings out and LEDs build before the chant starts
+
+                autoReturnTimer = setTimeout(() => {
+                    if (state !== "AARTI_MODE") return;
+                    aartiBuildActive = false;
+
+                    const finishAarti = () => {
+                        if (state !== "AARTI_MODE") return;
+                        isRealMantraPlaying = false;
+                        playChime(); // closing chime
+                        changeState("AMBIENT", AMBIENT_IDLE_MS);
+                    };
+
+                    globalMantraPlayer.src = AARTI_TRACK_FILE;
+                    globalMantraPlayer.volume = volume / 30;
+                    isRealMantraPlaying = true;
+                    // We don't need to know GaneshAarti.mp3's length up front -
+                    // just wait for the browser to tell us it actually finished.
+                    globalMantraPlayer.onended = () => {
+                        globalMantraPlayer.onended = null;
+                        finishAarti();
+                    };
+                    globalMantraPlayer.play().catch((err) => {
+                        globalMantraPlayer.onended = null;
+                        isRealMantraPlaying = false;
+                        console.log(AARTI_TRACK_FILE + " failed to play, using synth:", err);
+                        synthesizeHum(220, AARTI_FALLBACK_DURATION_MS / 1000);
+                        autoReturnTimer = setTimeout(finishAarti, AARTI_FALLBACK_DURATION_MS);
+                    });
+                }, BUILD_MS);
             } else if (newState === "MANTRA_ACTIVE") {
                 blessings++;
                 // Keep blessings rolling during Mouse Back playback!
@@ -1247,6 +1514,7 @@
         function triggerMantra() {
             initAudio();
             stopHum(); // Stop any currently playing audio / synth hum
+            ensureMantraAudioGraph();
 
             const track = mantraTracks[mouseStep];
             isRealMantraPlaying = true;
@@ -1268,22 +1536,33 @@
         function triggerFeetMantra() {
             initAudio();
             stopHum(); // Stop any currently playing audio / synth hum
+            ensureMantraAudioGraph();
+
+            // "Entering the temple" moment: ring the bell first, just like a
+            // devotee would on stepping in - Ganapathibell.mp3 is missing from
+            // this simulation's assets, so playBellTone() automatically falls
+            // back to the synthesized temple bell (synthesizeBell) instead.
+            playBellTone(250, 1.8);
+            triggerFeetFlash();
 
             const track = mantraTracks[feetStep];
             isRealFeetMantraPlaying = true;
+            const BELL_LEAD_MS = 900; // let the bell ring out before the chant begins
 
-            // Load and play immediately inside the user touch event thread
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
-            globalMantraPlayer.play().then(() => {
-                console.log("Playing Feet Loop: " + track.file);
-            }).catch((err) => {
-                isRealFeetMantraPlaying = false;
-                console.log(track.file + " failed to play, using synth:", err);
-                synthesizeHum(220, track.duration / 1000);
-            });
+            setTimeout(() => {
+                // Load and play immediately inside the user touch event thread
+                globalMantraPlayer.src = track.file;
+                globalMantraPlayer.volume = volume / 30;
+                globalMantraPlayer.play().then(() => {
+                    console.log("Playing Feet Loop: " + track.file);
+                }).catch((err) => {
+                    isRealFeetMantraPlaying = false;
+                    console.log(track.file + " failed to play, using synth:", err);
+                    synthesizeHum(220, track.duration / 1000);
+                });
+            }, BELL_LEAD_MS);
             
-            changeState("FEET_ACTIVE", track.duration);
+            changeState("FEET_ACTIVE", track.duration + BELL_LEAD_MS);
         }
 
         // Squeaky Talk-Back Output
@@ -1321,6 +1600,108 @@
             if (pirEnabled && state === "STANDBY") {
                 changeState("AMBIENT", AMBIENT_IDLE_MS);
             }
+        }
+
+        function triggerAartiMode() {
+            if (state !== "AMBIENT") return;
+            changeState("AARTI_MODE");
+        }
+
+        // --- Temple Closed (Night Mode) --------------------------------
+        // Closing takes a deliberate action (15s simultaneous hold, or the
+        // dedicated button) so it can't happen by accident; opening just
+        // takes one touch, like walking up and finding the doors unlocked.
+        const CLOSE_HOLD_MS = 15000;
+        let mouseDownAt = 0;
+        let feetDownAt = 0;
+        let closeHoldTimer = null;
+        let closeHoldTriggered = false;
+        let closeHoldMessageShown = false;
+
+        function evaluateCloseHold() {
+            if (mouseDownAt && feetDownAt && !closeHoldTimer && !closeHoldTriggered && state !== "TEMPLE_CLOSED") {
+                closeHoldMessageShown = true;
+                setOledText("   Hold both to close the temple for the night...   ");
+                closeHoldTimer = setTimeout(() => {
+                    closeHoldTriggered = true;
+                    closeHoldTimer = null;
+                    closeTemple();
+                }, CLOSE_HOLD_MS);
+            }
+        }
+        function cancelCloseHold() {
+            if (closeHoldTimer) { clearTimeout(closeHoldTimer); closeHoldTimer = null; }
+        }
+        // Called whenever both pads have been released - if we'd shown the
+        // "hold to close" countdown message but didn't actually reach the
+        // close, put the display back to normal instead of leaving it stuck.
+        function finalizePadRelease() {
+            if (mouseDownAt || feetDownAt) return; // still holding the other pad
+            if (closeHoldMessageShown && !closeHoldTriggered) {
+                closeHoldMessageShown = false;
+                if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                    startAmbientRoll();
+                }
+            }
+            closeHoldTriggered = false;
+        }
+
+        function closeTemple() {
+            initAudio();
+            playBellTone(250, 2.5); // closing bell
+            changeState("TEMPLE_CLOSED");
+        }
+        function openTemple() {
+            if (state !== "TEMPLE_CLOSED") return;
+            // Opening ritual: the same Aarti sequence as the idle-triggered one
+            // (bell -> ~4min GaneshAarti.mp3 -> closing chime -> settle to Ambient).
+            changeState("AARTI_MODE");
+        }
+
+        function onMousePadDown() {
+            mouseDownAt = Date.now();
+            evaluateCloseHold();
+        }
+        function onMousePadUp() {
+            const held = mouseDownAt ? Date.now() - mouseDownAt : 0;
+            mouseDownAt = 0;
+            cancelCloseHold();
+            if (!closeHoldTriggered) {
+                if (state === "TEMPLE_CLOSED") {
+                    openTemple();
+                } else if (held > 0 && held < CLOSE_HOLD_MS) {
+                    triggerMantra();
+                }
+            }
+            finalizePadRelease();
+        }
+        function onMousePadCancel() {
+            mouseDownAt = 0;
+            cancelCloseHold();
+            finalizePadRelease();
+        }
+
+        function onFeetPadDown() {
+            feetDownAt = Date.now();
+            evaluateCloseHold();
+        }
+        function onFeetPadUp() {
+            const held = feetDownAt ? Date.now() - feetDownAt : 0;
+            feetDownAt = 0;
+            cancelCloseHold();
+            if (!closeHoldTriggered) {
+                if (state === "TEMPLE_CLOSED") {
+                    openTemple();
+                } else if (held > 0 && held < CLOSE_HOLD_MS) {
+                    triggerFeetMantra();
+                }
+            }
+            finalizePadRelease();
+        }
+        function onFeetPadCancel() {
+            feetDownAt = 0;
+            cancelCloseHold();
+            finalizePadRelease();
         }
 
         // Briefly lets the LED ring render live (even in STANDBY) so changing
