@@ -1389,9 +1389,16 @@
                     }
                 }, 12000);
                 
-                autoReturnTimer = setTimeout(() => {
-                    changeState("AMBIENT", 30000); // 30s idle time
-                }, duration);
+                if (duration > 0) {
+                    autoReturnTimer = setTimeout(() => {
+                        const prevState = window.ganeshaPrevState || "AMBIENT";
+                        window.ganeshaPrevState = null;
+                        
+                        // If returning to MANTRA_ACTIVE or AMBIENT, keep it alive for the default duration
+                        const returnDuration = (prevState === "STANDBY") ? 0 : 30000;
+                        changeState(prevState, returnDuration);
+                    }, duration);
+                }
             }
         }
  
@@ -1484,8 +1491,13 @@
             
             const displayMsg = formatPersonalizedBlessing(name, selectedOffering, text);
             
-            // Enter FEET_ACTIVE state to show gold text
-            changeState("FEET_ACTIVE", 30000);
+            // Save previous state before entering feet active devotee display (only if not already in feet display)
+            if (state !== "FEET_ACTIVE") {
+                window.ganeshaPrevState = state;
+            }
+            
+            // Enter FEET_ACTIVE state to show gold text (12 seconds)
+            changeState("FEET_ACTIVE", 12000);
             setOledText(displayMsg);
             
             // Clear input after submission
@@ -1709,8 +1721,13 @@
                         // Format OLED text message using personalized formatter
                         const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
                         
+                        // Save previous state before entering feet active devotee display (only if not already in feet display)
+                        if (state !== "FEET_ACTIVE") {
+                            window.ganeshaPrevState = state;
+                        }
+                        
                         // Set Ganesha state to FEET_ACTIVE (for gold centered text & 12s stop)
-                        changeState("FEET_ACTIVE", 30000);
+                        changeState("FEET_ACTIVE", 12000);
                         setOledText(displayMsg);
                         
                         localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
