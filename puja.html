@@ -345,26 +345,34 @@
             localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
 
-            // 2. Wireless Sync to Network Relay (api.keyvalue.xyz) for multi-device sync
-            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            // 2. Wireless Sync to Network Relay (api.restful-api.dev) for multi-device sync
+            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
             fetch(relayUrl)
                 .then(res => res.json())
-                .then(onlineQueue => {
+                .then(resObj => {
+                    let onlineQueue = resObj.data ? resObj.data.queue : [];
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     onlineQueue.push(newRequest);
+                    
                     return fetch(relayUrl, {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(onlineQueue)
+                        body: JSON.stringify({
+                            name: "Ganesha Queue",
+                            data: { queue: onlineQueue }
+                        })
                     });
                 })
                 .catch(err => {
-                    console.warn("Relay sync error, seeding key:", err);
+                    console.error("Relay sync error, attempting override:", err);
                     fetch(relayUrl, {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify([newRequest])
-                    }).catch(e => console.error("Relay initialization failed:", e));
+                        body: JSON.stringify({
+                            name: "Ganesha Queue",
+                            data: { queue: [newRequest] }
+                        })
+                    }).catch(e => console.error("Relay backup override failed:", e));
                 });
 
             // Transition to success screen

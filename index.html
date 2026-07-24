@@ -1514,6 +1514,8 @@
         }
 
         // Priest Queue Logic
+        let lastQueueCount = -1; // Track queue count for audio notifications
+
         function renderQueue() {
             const queueList = document.getElementById('queue-list');
             const queueStatus = document.getElementById('queue-status');
@@ -1522,12 +1524,12 @@
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             
             // Fetch from online relay to sync mobile phone submissions
-            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
             
             fetch(relayUrl)
                 .then(res => res.json())
-                .then(onlineQueue => {
-                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                .then(resObj => {
+                    const onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
                     
                     // Deduplicate items based on ID
                     const mergedQueue = [...onlineQueue];
@@ -1536,6 +1538,14 @@
                             mergedQueue.push(l);
                         }
                     });
+                    
+                    // 🔔 Audio Notification: Play Ganesha's bell tone if a new item arrives in queue
+                    if (mergedQueue.length > lastQueueCount) {
+                        if (lastQueueCount !== -1) { // Avoid ringing on initial page load
+                            playBellTone();
+                        }
+                    }
+                    lastQueueCount = mergedQueue.length;
                     
                     queueList.innerHTML = '';
                     
@@ -1609,11 +1619,11 @@
         }
 
         function approveQueueItem(id) {
-            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
             fetch(relayUrl)
                 .then(res => res.json())
-                .then(onlineQueue => {
-                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                .then(resObj => {
+                    let onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
                     
                     let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
                     const indexOnline = onlineQueue.findIndex(item => item.id === id);
@@ -1657,9 +1667,12 @@
                         
                         // Push updated queue back to relay
                         return fetch(relayUrl, {
-                            method: 'POST',
+                            method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(onlineQueue)
+                            body: JSON.stringify({
+                                name: "Ganesha Queue",
+                                data: { queue: onlineQueue }
+                            })
                         }).then(() => renderQueue());
                     }
                 })
@@ -1667,11 +1680,11 @@
         }
 
         function rejectQueueItem(id) {
-            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
             fetch(relayUrl)
                 .then(res => res.json())
-                .then(onlineQueue => {
-                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                .then(resObj => {
+                    let onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
                     
                     let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
                     const indexOnline = onlineQueue.findIndex(item => item.id === id);
@@ -1684,23 +1697,29 @@
                     localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
                     
                     return fetch(relayUrl, {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(onlineQueue)
+                        body: JSON.stringify({
+                            name: "Ganesha Queue",
+                            data: { queue: onlineQueue }
+                        })
                     }).then(() => renderQueue());
                 })
                 .catch(err => console.error("Error rejecting queue item:", err));
         }
 
         function clearAllQueue() {
-            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
             localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             
             fetch(relayUrl, {
-                method: 'POST',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify([])
+                body: JSON.stringify({
+                    name: "Ganesha Queue",
+                    data: { queue: [] }
+                })
             }).then(() => renderQueue()).catch(err => console.error("Error clearing online queue:", err));
         }
 
