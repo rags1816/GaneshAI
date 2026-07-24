@@ -1128,8 +1128,8 @@
                 scroller.style.transform = 'none';
                 scroller.style.position = 'relative';
                 scroller.style.width = '100%';
-                scroller.style.fontSize = '9px';
-                scroller.style.lineHeight = '1.2';
+                scroller.style.fontSize = '8px'; // Slightly smaller to fit personalized content
+                scroller.style.lineHeight = '1.1';
             } else {
                 // Normal rolling mode: cyan, scrolling, single line
                 scroller.style.whiteSpace = 'nowrap';
@@ -1288,6 +1288,49 @@
             } : { r: 0, g: 242, b: 254 };
         }
 
+        // Helpers for Base64URL encoding/decoding (bypasses IIS special character path restrictions)
+        function base64UrlEncode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        function base64UrlDecode(str) {
+            let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        }
+
+        // Personalized Blessing Formatter
+        function formatPersonalizedBlessing(name, offeringName, wishText) {
+            const offeringNames = {
+                hibiscus: "Hibiscus Flower",
+                garland: "Marigold Garland",
+                modak: "Sweet Modak",
+                coconut: "Fresh Coconut"
+            };
+            const offeringLabel = offeringNames[offeringName] || offeringName;
+            const devoteeName = name && name !== "Anonymous Devotee" ? name.trim() : "";
+
+            let blessingPart = "";
+            if (wishText && wishText.trim() !== "") {
+                blessingPart = `I bless you with ${wishText.trim()}.`;
+            } else {
+                // Select a random standard blessing
+                const pitch = document.getElementById('voice-pitch-select') ? document.getElementById('voice-pitch-select').value : 'adult';
+                const list = pitch === "child" ? childBlessings : adultBlessings;
+                const rawBlessing = list[Math.floor(Math.random() * list.length)];
+                
+                blessingPart = rawBlessing.trim();
+                if (!blessingPart.endsWith('.') && !blessingPart.endsWith('!')) {
+                    blessingPart += ".";
+                }
+            }
+            
+            if (devoteeName !== "") {
+                return `✨ ${devoteeName}: ${blessingPart} Thanks for the ${offeringLabel}. ✨`;
+            } else {
+                return `✨ Ganesha blesses you: ${blessingPart} Thanks for the ${offeringLabel}. ✨`;
+            }
+        }
+
         // State Machine Triggers
         let autoReturnTimer = null;
         let feetDisplayTimer = null;
@@ -1325,12 +1368,15 @@
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
                 
-                // Fetch a single blessing corresponding to the active loop track (child on even steps, adult on odd steps)
-                const isChildTrack = (feetStep % 2 === 0);
-                const list = isChildTrack ? childBlessings : adultBlessings;
-                const singleBlessing = list[Math.floor(Math.random() * list.length)];
-                const textMsg = `   [BLESSING] ${singleBlessing}   `;
+                const nameInput = document.getElementById('puja-name-input');
+                const devoteeName = nameInput.value.trim();
+                
+                // Format and display the personalized blessing
+                const textMsg = formatPersonalizedBlessing(devoteeName, selectedOffering, "");
                 setOledText(textMsg);
+                
+                // Clear inputs after manual trigger
+                nameInput.value = "";
                 
                 // Increment immediately at start of play (matches ESP32)
                 feetStep = (feetStep + 1) % mantraTracks.length;
@@ -1427,7 +1473,7 @@
             const nameInput = document.getElementById('puja-name-input');
             const textInput = document.getElementById('puja-input');
             
-            const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
+            const name = nameInput.value.trim();
             const text = textInput.value.trim();
             
             initAudio();
@@ -1436,14 +1482,7 @@
             // Ring the temple bell
             playBellTone();
             
-            const offeringNames = {
-                hibiscus: "Hibiscus Flower",
-                garland: "Marigold Garland",
-                modak: "Sweet Modak",
-                coconut: "Fresh Coconut"
-            };
-            const offeringName = offeringNames[selectedOffering];
-            const displayMsg = text !== "" ? `   [PRAYER] "${text}" - ${name}   ` : `   [PUJA] Ganesha accepts your ${offeringName}! - ${name}   `;
+            const displayMsg = formatPersonalizedBlessing(name, selectedOffering, text);
             
             // Enter FEET_ACTIVE state to show gold text
             changeState("FEET_ACTIVE", 30000);
@@ -1524,12 +1563,22 @@
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             
             // Fetch from online relay to sync mobile phone submissions
-            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
             
-            fetch(relayUrl)
+            fetch(readUrl)
                 .then(res => res.json())
-                .then(resObj => {
-                    const onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try {
+                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
+                        } catch (e) {
+                            console.warn("Error decoding online queue, resetting:", e);
+                        }
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     
                     // Deduplicate items based on ID
                     const mergedQueue = [...onlineQueue];
@@ -1619,11 +1668,22 @@
         }
 
         function approveQueueItem(id) {
-            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
-            fetch(relayUrl)
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            
+            fetch(readUrl)
                 .then(res => res.json())
-                .then(resObj => {
-                    let onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try {
+                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
+                        } catch (e) {
+                            console.warn("Error decoding online queue, resetting:", e);
+                        }
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     
                     let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
                     const indexOnline = onlineQueue.findIndex(item => item.id === id);
@@ -1646,17 +1706,8 @@
                         // Ring the temple bell tone
                         playBellTone();
                         
-                        const offeringNames = {
-                            hibiscus: "Hibiscus Flower",
-                            garland: "Marigold Garland",
-                            modak: "Sweet Modak",
-                            coconut: "Fresh Coconut"
-                        };
-                        const offeringName = offeringNames[item.offering] || item.offering;
-                        const devoteeName = item.name || "Anonymous Devotee";
-                        
-                        // Format OLED text message
-                        const displayMsg = item.prayer !== "" ? `   [PRAYER] "${item.prayer}" - ${devoteeName}   ` : `   [PUJA] Ganesha accepts your ${offeringName}! - ${devoteeName}   `;
+                        // Format OLED text message using personalized formatter
+                        const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
                         
                         // Set Ganesha state to FEET_ACTIVE (for gold centered text & 12s stop)
                         changeState("FEET_ACTIVE", 30000);
@@ -1666,25 +1717,31 @@
                         localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
                         
                         // Push updated queue back to relay
-                        return fetch(relayUrl, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                name: "Ganesha Queue",
-                                data: { queue: onlineQueue }
-                            })
-                        }).then(() => renderQueue());
+                        const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                        const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                        return fetch(writeUrl, { method: 'POST' }).then(() => renderQueue());
                     }
                 })
                 .catch(err => console.error("Error approving queue item:", err));
         }
 
         function rejectQueueItem(id) {
-            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
-            fetch(relayUrl)
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            
+            fetch(readUrl)
                 .then(res => res.json())
-                .then(resObj => {
-                    let onlineQueue = resObj.data && Array.isArray(resObj.data.queue) ? resObj.data.queue : [];
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try {
+                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
+                        } catch (e) {
+                            console.warn("Error decoding online queue, resetting:", e);
+                        }
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     
                     let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
                     const indexOnline = onlineQueue.findIndex(item => item.id === id);
@@ -1696,31 +1753,22 @@
                     localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
                     localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
                     
-                    return fetch(relayUrl, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: "Ganesha Queue",
-                            data: { queue: onlineQueue }
-                        })
-                    }).then(() => renderQueue());
+                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    return fetch(writeUrl, { method: 'POST' }).then(() => renderQueue());
                 })
                 .catch(err => console.error("Error rejecting queue item:", err));
         }
 
         function clearAllQueue() {
-            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
             localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             
-            fetch(relayUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: "Ganesha Queue",
-                    data: { queue: [] }
-                })
-            }).then(() => renderQueue()).catch(err => console.error("Error clearing online queue:", err));
+            const encodedVal = base64UrlEncode(JSON.stringify([]));
+            const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+            fetch(writeUrl, { method: 'POST' }).then(() => renderQueue()).catch(err => console.error("Error clearing online queue:", err));
         }
 
         // Listen to storage events to keep tabs synced in real-time

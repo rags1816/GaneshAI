@@ -282,6 +282,16 @@
     </div>
 
     <script>
+        // Helpers for Base64URL encoding/decoding (bypasses IIS special character path restrictions)
+        function base64UrlEncode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        function base64UrlDecode(str) {
+            let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        }
+
         function updateWordCount() {
             const text = document.getElementById('wish-input').value;
             // Trim whitespace and split into words
@@ -345,39 +355,61 @@
             localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
 
-            // 2. Wireless Sync to Network Relay (api.restful-api.dev) for multi-device sync
-            const relayUrl = "https://api.restful-api.dev/objects/ff8081819f7e10ae019f9415c669208a";
-            fetch(relayUrl)
+            // Disable button during network call
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+
+            // 2. Wireless Sync to Network Relay (keyvalue.immanuel.co) for multi-device sync
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            
+            fetch(readUrl)
                 .then(res => res.json())
-                .then(resObj => {
-                    let onlineQueue = resObj.data ? resObj.data.queue : [];
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try {
+                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
+                        } catch (e) {
+                            console.warn("Error decoding online queue, resetting:", e);
+                        }
+                    }
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
-                    onlineQueue.push(newRequest);
                     
-                    return fetch(relayUrl, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: "Ganesha Queue",
-                            data: { queue: onlineQueue }
-                        })
-                    });
+                    // Safety check: Cap queue size at 5 items to fit IIS 1024-character path limit
+                    if (onlineQueue.length >= 5) {
+                        alert("Bappa is currently receiving many offerings. Please wait a few moments for the Priest to present them, then try again!");
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                    
+                    onlineQueue.push(newRequest);
+                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    
+                    return fetch(writeUrl, { method: 'POST' })
+                        .then(() => {
+                            // Transition to success screen on success
+                            document.getElementById('puja-form').style.display = 'none';
+                            document.getElementById('success-card').style.display = 'block';
+                        });
                 })
                 .catch(err => {
-                    console.error("Relay sync error, attempting override:", err);
-                    fetch(relayUrl, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: "Ganesha Queue",
-                            data: { queue: [newRequest] }
+                    console.error("Relay sync error, seeding key:", err);
+                    const encodedVal = base64UrlEncode(JSON.stringify([newRequest]));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    fetch(writeUrl, { method: 'POST' })
+                        .then(() => {
+                            document.getElementById('puja-form').style.display = 'none';
+                            document.getElementById('success-card').style.display = 'block';
                         })
-                    }).catch(e => console.error("Relay backup override failed:", e));
+                        .catch(e => {
+                            console.error("Relay backup override failed:", e);
+                            submitBtn.disabled = false;
+                            alert("Network sync failed. Please check your internet connection and try again.");
+                        });
                 });
-
-            // Transition to success screen
-            document.getElementById('puja-form').style.display = 'none';
-            document.getElementById('success-card').style.display = 'block';
         }
 
         function resetForm() {
