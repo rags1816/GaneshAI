@@ -580,6 +580,21 @@
         // System variables
         let state = "STANDBY";
         let blessings = 0;
+        // How long AMBIENT stays awake before returning to STANDBY.
+        // Must be generous enough for the blessings loop to actually roll through
+        // multiple entries of the 48-blessing list (was 30000ms, too short even for
+        // the welcome banner alone to finish one scroll pass).
+        const AMBIENT_IDLE_MS = 120000;
+        // Tracks whether the welcome banner has already played for the current
+        // "wake" cycle. It should only show once per STANDBY->AMBIENT wake, not on
+        // every AMBIENT/MANTRA_ACTIVE/FEET_ACTIVE transition in between - otherwise
+        // the blessings rotation never gets a chance to run.
+        let introPlayed = false;
+        // When true, drawLeds() renders the live LED preview even while STANDBY,
+        // so brightness/theme/pattern changes are visible immediately instead of
+        // only showing up once the device is "awake".
+        let previewActive = false;
+        let previewTimer = null;
         let brightness = 150;
         let pattern = 0; // Default
         let volume = 15;
@@ -962,7 +977,7 @@
                 scroller.style.fontSize = '10px';
                 scroller.style.transform = `translateX(180px)`;
                 scrollX = 180;
-                textWidth = text.length * 6.5; 
+                textWidth = scroller.scrollWidth; // measured, not estimated
 
                 const isWelcome = (text === languages.en.welcome || text === languages.sa.welcome || text === languages.mr.welcome || text === languages.ta.welcome);
                 if (state !== "STANDBY" && !isWelcome && text !== "") {
@@ -976,7 +991,7 @@
                                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
                                 const nextText = `   [BLESSING] ${nextBlessing}   `;
                                 scroller.innerText = nextText;
-                                textWidth = nextText.length * 6.5;
+                                textWidth = scroller.scrollWidth;
                             }
                         }
                         scroller.style.transform = `translateX(${scrollX}px)`;
@@ -987,9 +1002,52 @@
             }
         }
 
+        // Pattern shape functions: each returns a base RGB color for LED index `i`.
+        // `c1`/`c2` are the Theme of the Day's primary/secondary colors (already
+        // hexToRgb'd) - this is what lets "Default LED Pattern" (motion/shape) and
+        // "Theme of the Day" (color palette) combine instead of one overriding the
+        // other.
+        function peacockWaveColor(i, hueOffset, c1, c2) {
+            const wave = (Math.sin((hueOffset * 0.04) + (i * (Math.PI * 2 / numLeds))) + 1) / 2; // 0..1 traveling wave
+            return {
+                r: Math.round(c1.r * (1 - wave) + c2.r * wave),
+                g: Math.round(c1.g * (1 - wave) + c2.g * wave),
+                b: Math.round(c1.b * (1 - wave) + c2.b * wave)
+            };
+        }
+
+        function circuitPulseColor(i, hueOffset, c1, c2) {
+            const breath = Math.sin(hueOffset * 0.05) * 0.5 + 0.5;
+            let color = {
+                r: Math.round(c1.r * breath),
+                g: Math.round(c1.g * breath),
+                b: Math.round(c1.b * breath)
+            };
+            // Occasional "circuit bit" spark in the theme's secondary color
+            if (Math.random() < 0.05 && i === Math.floor(Math.random() * numLeds)) {
+                color = { r: c2.r, g: c2.g, b: c2.b };
+            }
+            return color;
+        }
+
+        function goldenAuraColor(hueOffset, c1, c2) {
+            const breath = Math.sin(hueOffset * 0.03) * 0.4 + 0.6;
+            return {
+                r: Math.round((c1.r * 0.6 + c2.r * 0.4) * breath),
+                g: Math.round((c1.g * 0.6 + c2.g * 0.4) * breath),
+                b: Math.round((c1.b * 0.6 + c2.b * 0.4) * breath)
+            };
+        }
+
+        function rainbowDreamColor(i, hueOffset) {
+            // Intentionally ignores the theme palette - this pattern IS "every color".
+            const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
+            return hslToRgb(indexHue / 360, 1.0, 0.5);
+        }
+
         // LED Animations
         function drawLeds() {
-            if (state === "STANDBY") {
+            if (state === "STANDBY" && !previewActive) {
                 ledDots.forEach(dot => {
                     dot.style.backgroundColor = '#111';
                     dot.style.boxShadow = 'none';
@@ -1008,7 +1066,9 @@
                 // Color override based on pitch triggers, themes, or custom patterns
                 let activePattern = pattern;
                 let childRainbow = false;
-                let activeThemeColor = themes[selectedTheme];
+                const activeThemeColor = themes[selectedTheme];
+                const c1 = hexToRgb(activeThemeColor.primary);
+                const c2 = hexToRgb(activeThemeColor.secondary);
 
                 if (state === "FEET_ACTIVE") {
                     const pitch = document.getElementById('voice-pitch-select').value;
@@ -1020,49 +1080,28 @@
                 } else if (state === "MANTRA_ACTIVE") {
                     activePattern = 1; // Circuit Pulse
                 }
+                // AMBIENT no longer forces its own fixed gradient - it uses whichever
+                // "Default LED Pattern" the user picked, rendered in today's theme
+                // colors. That's the actual link between the two controls: pattern
+                // decides the motion/shape, theme decides the palette it's drawn in.
 
                 ledDots.forEach((dot, i) => {
                     let color = {r: 0, g: 0, b: 0};
                     
                     if (childRainbow) {
-                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
-                        color = hslToRgb(indexHue / 360, 1.0, 0.5);
+                        color = rainbowDreamColor(i, hueOffset);
                     } 
-                    else if (state === "AMBIENT") {
-                        // Ambient state matches the selected Weekly Theme colors!
-                        const breath = Math.sin(hueOffset * 0.04) * 0.4 + 0.6; // pulse
-                        const c1 = hexToRgb(activeThemeColor.primary);
-                        const c2 = hexToRgb(activeThemeColor.secondary);
-                        // Blend theme colors
-                        const ratio = (i / numLeds);
-                        color = {
-                            r: Math.round((c1.r * (1-ratio) + c2.r * ratio) * breath),
-                            g: Math.round((c1.g * (1-ratio) + c2.g * ratio) * breath),
-                            b: Math.round((c1.b * (1-ratio) + c2.b * ratio) * breath)
-                        };
-                    }
                     else if (activePattern == 0) { // Peacock Wave
-                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
-                        const h = 170 + (indexHue % 80); // Teal to Cobalt
-                        color = hslToRgb(h / 360, 1.0, 0.5);
+                        color = peacockWaveColor(i, hueOffset, c1, c2);
                     } 
-                    else if (activePattern == 1) { // Circuit Pulse (Cyan base + Gold bits)
-                        const breath = Math.sin(hueOffset * 0.05) * 0.5 + 0.5;
-                        const val = Math.round(50 + 150 * breath);
-                        color = {r: 0, g: val, b: val + 20};
-                        
-                        if (Math.random() < 0.05 && i === Math.floor(Math.random() * numLeds)) {
-                            color = {r: 255, g: 215, b: 0}; // gold
-                        }
+                    else if (activePattern == 1) { // Circuit Pulse
+                        color = circuitPulseColor(i, hueOffset, c1, c2);
                     } 
                     else if (activePattern == 2) { // Golden Aura
-                        const breath = Math.sin(hueOffset * 0.03) * 0.4 + 0.6;
-                        const val = Math.round(200 * breath);
-                        color = {r: val, g: Math.round(val * 0.7), b: 0};
+                        color = goldenAuraColor(hueOffset, c1, c2);
                     } 
                     else if (activePattern == 3) { // Rainbow Dream
-                        const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
-                        color = hslToRgb(indexHue / 360, 1.0, 0.5);
+                        color = rainbowDreamColor(i, hueOffset);
                     }
 
                     // Apply brightness and display
@@ -1114,6 +1153,24 @@
         let autoReturnTimer = null;
         let feetDisplayTimer = null;
 
+        const WELCOME_BANNER = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+
+        // Shows the welcome banner once per wake cycle, then on every later call
+        // (AMBIENT <-> MANTRA_ACTIVE <-> FEET_ACTIVE transitions while still "awake")
+        // resumes the 48-blessing loop from wherever currentBlessingIndex left off.
+        // This is what actually lets the blessings roll through instead of the
+        // banner re-triggering on every transition and never finishing.
+        function startAmbientRoll() {
+            if (!introPlayed) {
+                introPlayed = true;
+                setOledText(WELCOME_BANNER);
+            } else {
+                const nextBlessing = combinedBlessings[currentBlessingIndex];
+                currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
+                setOledText(`   [BLESSING] ${nextBlessing}   `);
+            }
+        }
+
         function changeState(newState, duration = 0) {
             state = newState;
             updateUI();
@@ -1124,10 +1181,11 @@
             if (newState === "STANDBY") {
                 setOledText("");
                 stopHum();
+                // Reset so the welcome banner plays again next time the device wakes.
+                introPlayed = false;
             } else if (newState === "AMBIENT") {
                 // In Ambient, roll the entire combined blessings loop
-                const textMsg = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
-                setOledText(textMsg);
+                startAmbientRoll();
                 stopHum();
                 if (duration > 0) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
@@ -1135,14 +1193,13 @@
             } else if (newState === "MANTRA_ACTIVE") {
                 blessings++;
                 // Keep blessings rolling during Mouse Back playback!
-                const textMsg = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
-                setOledText(textMsg);
+                startAmbientRoll();
                 
                 // Increment immediately at start of play (matches ESP32)
                 mouseStep = (mouseStep + 1) % mantraTracks.length;
                 
                 autoReturnTimer = setTimeout(() => {
-                    changeState("AMBIENT", 30000); // 30s idle time
+                    changeState("AMBIENT", AMBIENT_IDLE_MS);
                 }, duration);
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
@@ -1160,13 +1217,12 @@
                 // Lock screen on this blessing for 12 seconds, then resume rolling loop
                 feetDisplayTimer = setTimeout(() => {
                     if (state === "FEET_ACTIVE") {
-                        const rollingText = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
-                        setOledText(rollingText);
+                        startAmbientRoll();
                     }
                 }, 12000);
                 
                 autoReturnTimer = setTimeout(() => {
-                    changeState("AMBIENT", 30000); // 30s idle time
+                    changeState("AMBIENT", AMBIENT_IDLE_MS);
                 }, duration);
             }
         }
@@ -1184,6 +1240,7 @@
             if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
                 updateUI();
             }
+            previewLeds();
         }
  
         // Triggers
@@ -1262,22 +1319,43 @@
 
         function triggerPIR() {
             if (pirEnabled && state === "STANDBY") {
-                changeState("AMBIENT", 30000);
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
             }
+        }
+
+        // Briefly lets the LED ring render live (even in STANDBY) so changing
+        // brightness/pattern/theme gives instant feedback without needing to
+        // first wake the device via PIR/Mouse Back/Feet Touch.
+        function previewLeds(ms = 2500) {
+            previewActive = true;
+            if (previewTimer) clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => { previewActive = false; }, ms);
         }
 
         function updateBrightness() {
             brightness = document.getElementById('bright-slider').value;
             updateUI();
+            previewLeds();
         }
 
         function updatePattern() {
             pattern = document.getElementById('pattern-select').value;
+            previewLeds();
         }
 
+        let lastVolumeBlip = 0;
         function updateVolume() {
             volume = document.getElementById('vol-slider').value;
             updateUI();
+            // Audible preview blip so volume changes are noticeable even when
+            // nothing is currently playing. Debounced so dragging the slider
+            // doesn't stack up overlapping tones.
+            const now = Date.now();
+            if (now - lastVolumeBlip > 150) {
+                lastVolumeBlip = now;
+                initAudio();
+                synthesizeHum(440, 0.12);
+            }
         }
 
         // Toggle functions
