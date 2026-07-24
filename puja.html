@@ -228,6 +228,12 @@
 
         <!-- Main Form -->
         <div id="puja-form">
+            <!-- 0. Devotee Name -->
+            <div class="form-group">
+                <label for="name-input">Your Name (Optional)</label>
+                <input type="text" id="name-input" class="text-input" placeholder="Type your name..." maxlength="30">
+            </div>
+
             <!-- 1. Offerings Selection -->
             <div class="form-group">
                 <label for="offering-select">Choose your Offering</label>
@@ -298,10 +304,12 @@
         }
 
         function submitPuja() {
+            const nameInput = document.getElementById('name-input');
             const offeringSelect = document.getElementById('offering-select');
             const wishInput = document.getElementById('wish-input');
             const standardWishSelect = document.getElementById('standard-wish-select');
 
+            const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const offering = offeringSelect.value;
             const wishText = wishInput.value.trim();
             const standardWish = standardWishSelect.value;
@@ -326,17 +334,38 @@
             const newRequest = {
                 id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                name: name,
                 offering: offering,
                 prayer: prayerText
             };
 
-            // Read, append, and save back to shared localStorage namespace
+            // 1. Read, append, and save back to shared localStorage namespace (same-device tab test)
             let queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             queue.push(newRequest);
             localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
-
-            // Force a storage trigger event so other tabs listening on the same machine update immediately
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+
+            // 2. Wireless Sync to Network Relay (api.keyvalue.xyz) for multi-device sync
+            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            fetch(relayUrl)
+                .then(res => res.json())
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    onlineQueue.push(newRequest);
+                    return fetch(relayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(onlineQueue)
+                    });
+                })
+                .catch(err => {
+                    console.warn("Relay sync error, seeding key:", err);
+                    fetch(relayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify([newRequest])
+                    }).catch(e => console.error("Relay initialization failed:", e));
+                });
 
             // Transition to success screen
             document.getElementById('puja-form').style.display = 'none';
@@ -344,6 +373,7 @@
         }
 
         function resetForm() {
+            document.getElementById('name-input').value = "";
             document.getElementById('wish-input').value = "";
             document.getElementById('standard-wish-select').value = "";
             document.getElementById('word-count-lbl').innerText = "0 / 20 words";

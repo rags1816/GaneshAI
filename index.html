@@ -530,6 +530,47 @@
     </style>
 </head>
 <body>
+    <!-- Admin Passcode Modal Overlay -->
+    <div id="passcode-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #030812; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; box-sizing: border-box; padding: 20px;">
+        <div style="background: rgba(2, 10, 23, 0.9); border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 20px; padding: 30px; text-align: center; max-width: 320px; width: 100%; box-shadow: 0 10px 30px rgba(0, 242, 254, 0.1); box-sizing: border-box;">
+            <div style="font-size: 32px; margin-bottom: 12px;">🔐</div>
+            <h2 style="margin: 0 0 8px 0; font-size: 18px; color: #ffd700;">Admin Console</h2>
+            <p style="margin: 0 0 20px 0; font-size: 11px; color: #8892b0; line-height: 1.4;">This dashboard is password-protected. Please enter Ganesha's Admin Passcode.</p>
+            <input type="password" id="passcode-input" class="select-input" placeholder="Enter PIN..." style="text-align: center; font-size: 16px; letter-spacing: 4px; padding: 8px; margin-bottom: 15px; border-color: rgba(0,242,254,0.3); background: rgba(0,0,0,0.5); border-radius: 8px; color: #fff; width: 100%; box-sizing: border-box;" onkeydown="checkPasscodeEnter(event)">
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn-action" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #030812; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; height: auto; flex-direction: row; display: flex; align-items: center; justify-content: center;" onclick="validatePasscode()">Unlock</button>
+                <button class="btn-stop" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.05); color: #8892b0; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; cursor: pointer; height: auto; flex-direction: row; display: flex; align-items: center; justify-content: center;" onclick="cancelPasscode()">Cancel</button>
+            </div>
+            <div id="passcode-error" style="color: #ff4b4b; font-size: 10px; margin-top: 10px; display: none;">Invalid Passcode! Please try again.</div>
+        </div>
+    </div>
+
+    <script>
+        function checkPasscodeEnter(e) {
+            if (e.key === "Enter") validatePasscode();
+        }
+        function validatePasscode() {
+            const pin = document.getElementById('passcode-input').value;
+            if (pin === "1816") {
+                sessionStorage.setItem('ganesha_admin_auth', 'true');
+                document.getElementById('passcode-overlay').style.display = 'none';
+            } else {
+                document.getElementById('passcode-error').style.display = 'block';
+                document.getElementById('passcode-input').value = '';
+            }
+        }
+        function cancelPasscode() {
+            window.location.href = "puja.html";
+        }
+        // Run authentication check immediately
+        if (sessionStorage.getItem('ganesha_admin_auth') === 'true') {
+            document.write('<style>#passcode-overlay { display: none !important; }</style>');
+            window.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('passcode-overlay').style.display = 'none';
+            });
+        }
+    </script>
+
     <div class="phone-frame">
         <header>
             <div class="peacock-feather"></div>
@@ -613,6 +654,7 @@
 
         <div class="section-title">🌸 Virtual Puja & Prayers</div>
         <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
+            <input type="text" id="puja-name-input" class="select-input" placeholder="Devotee Name (Optional)..." style="font-size: 11px; padding: 6px; margin-bottom: 6px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
             <input type="text" id="puja-input" class="select-input" placeholder="Type a prayer or wish here..." style="font-size: 11px; padding: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
             
             <div style="font-size: 8px; text-transform: uppercase; color: #8892b0; margin-bottom: 4px;">Choose an offering:</div>
@@ -640,7 +682,7 @@
             </button>
         </div>
 
-        <div class="section-title">🕌 Priest Moderation Board</div>
+        <div class="section-title">🕌 Priest Queue</div>
         <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
             <div id="queue-status" style="font-size: 10px; color: var(--text-muted); margin-bottom: 8px; text-align: left;">No pending offerings.</div>
             <div id="queue-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 8px;">
@@ -1382,7 +1424,10 @@
         }
 
         function submitPuja() {
+            const nameInput = document.getElementById('puja-name-input');
             const textInput = document.getElementById('puja-input');
+            
+            const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const text = textInput.value.trim();
             
             initAudio();
@@ -1398,7 +1443,7 @@
                 coconut: "Fresh Coconut"
             };
             const offeringName = offeringNames[selectedOffering];
-            const displayMsg = text !== "" ? `   [PRAYER] "${text}"   ` : `   [PUJA] Ganesha accepts your ${offeringName}!   `;
+            const displayMsg = text !== "" ? `   [PRAYER] "${text}" - ${name}   ` : `   [PUJA] Ganesha accepts your ${offeringName}! - ${name}   `;
             
             // Enter FEET_ACTIVE state to show gold text
             changeState("FEET_ACTIVE", 30000);
@@ -1406,6 +1451,7 @@
             
             // Clear input after submission
             textInput.value = "";
+            nameInput.value = "";
             
             // Wireless broadcast to local physical ESP32 on same network
             fetch(`/api/puja?text=${encodeURIComponent(text)}&offering=${selectedOffering}`).catch(() => {});
@@ -1467,105 +1513,195 @@
             pirEnabled = document.getElementById('pir-toggle').checked;
         }
 
-        // Priest Moderation Queue Logic
+        // Priest Queue Logic
         function renderQueue() {
             const queueList = document.getElementById('queue-list');
             const queueStatus = document.getElementById('queue-status');
             
-            const queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            // Read from local storage (for single-tab offline/local testing)
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             
-            queueList.innerHTML = '';
+            // Fetch from online relay to sync mobile phone submissions
+            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
             
-            if (queue.length === 0) {
-                queueStatus.innerText = 'No pending offerings.';
-                return;
-            }
-            
-            queueStatus.innerText = `${queue.length} pending offering(s) in queue:`;
-            
-            queue.forEach(item => {
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'queue-item';
-                
-                const emojiMap = {
-                    hibiscus: '🌺 Flower',
-                    garland: '🌼 Garland',
-                    modak: '🥟 Modak',
-                    coconut: '🥥 Coconut'
-                };
-                const offeringLabel = emojiMap[item.offering] || item.offering;
-                
-                itemDiv.innerHTML = `
-                    <div class="queue-item-header">
-                        <span>${offeringLabel}</span>
-                        <span class="queue-item-time">${item.timestamp}</span>
-                    </div>
-                    <div class="queue-item-text">
-                        ${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}
-                    </div>
-                    <div class="queue-item-actions">
-                        <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
-                        <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
-                    </div>
-                `;
-                queueList.appendChild(itemDiv);
-            });
+            fetch(relayUrl)
+                .then(res => res.json())
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    
+                    // Deduplicate items based on ID
+                    const mergedQueue = [...onlineQueue];
+                    localQueue.forEach(l => {
+                        if (!mergedQueue.some(o => o.id === l.id)) {
+                            mergedQueue.push(l);
+                        }
+                    });
+                    
+                    queueList.innerHTML = '';
+                    
+                    if (mergedQueue.length === 0) {
+                        queueStatus.innerText = 'No pending offerings.';
+                        return;
+                    }
+                    
+                    queueStatus.innerText = `${mergedQueue.length} pending offering(s) in queue:`;
+                    
+                    mergedQueue.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'queue-item';
+                        
+                        const emojiMap = {
+                            hibiscus: '🌺 Flower',
+                            garland: '🌼 Garland',
+                            modak: '🥟 Modak',
+                            coconut: '🥥 Coconut'
+                        };
+                        const offeringLabel = emojiMap[item.offering] || item.offering;
+                        const devoteeName = item.name || "Anonymous Devotee";
+                        
+                        itemDiv.innerHTML = `
+                            <div class="queue-item-header">
+                                <span>${offeringLabel}</span>
+                                <span class="queue-item-time">${item.timestamp}</span>
+                            </div>
+                            <div style="font-size: 8px; color: var(--accent-teal); font-weight: bold; text-align: left; margin: 2px 0;">From: ${devoteeName}</div>
+                            <div class="queue-item-text">
+                                ${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}
+                            </div>
+                            <div class="queue-item-actions">
+                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
+                            </div>
+                        `;
+                        queueList.appendChild(itemDiv);
+                    });
+                })
+                .catch(err => {
+                    console.warn("Relay fetch failed, rendering local cache:", err);
+                    // Fallback to local storage rendering
+                    queueList.innerHTML = '';
+                    if (localQueue.length === 0) {
+                        queueStatus.innerText = 'No pending offerings.';
+                        return;
+                    }
+                    queueStatus.innerText = `${localQueue.length} pending (offline):`;
+                    localQueue.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'queue-item';
+                        const emojiMap = { hibiscus: '🌺 Flower', garland: '🌼 Garland', modak: '🥟 Modak', coconut: '🥥 Coconut' };
+                        const offeringLabel = emojiMap[item.offering] || item.offering;
+                        const devoteeName = item.name || "Anonymous Devotee";
+                        itemDiv.innerHTML = `
+                            <div class="queue-item-header">
+                                <span>${offeringLabel}</span>
+                                <span class="queue-item-time">${item.timestamp}</span>
+                            </div>
+                            <div style="font-size: 8px; color: var(--accent-teal); font-weight: bold; text-align: left; margin: 2px 0;">From: ${devoteeName}</div>
+                            <div class="queue-item-text">${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}</div>
+                            <div class="queue-item-actions">
+                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
+                            </div>
+                        `;
+                        queueList.appendChild(itemDiv);
+                    });
+                });
         }
 
         function approveQueueItem(id) {
-            let queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
-            const index = queue.findIndex(item => item.id === id);
-            
-            if (index !== -1) {
-                const item = queue[index];
-                
-                initAudio();
-                stopHum();
-                
-                // Ring the temple bell tone
-                playBellTone();
-                
-                const offeringNames = {
-                    hibiscus: "Hibiscus Flower",
-                    garland: "Marigold Garland",
-                    modak: "Sweet Modak",
-                    coconut: "Fresh Coconut"
-                };
-                const offeringName = offeringNames[item.offering] || item.offering;
-                
-                // Format OLED text message
-                const displayMsg = item.prayer !== "" ? `   [PRAYER] "${item.prayer}"   ` : `   [PUJA] Ganesha accepts your ${offeringName}!   `;
-                
-                // Set Ganesha state to FEET_ACTIVE (for gold centered text & 12s stop)
-                changeState("FEET_ACTIVE", 30000);
-                setOledText(displayMsg);
-                
-                // Remove item from queue and save
-                queue.splice(index, 1);
-                localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
-                localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
-                renderQueue();
-                
-                // Forward the request to the physical ESP32
-                fetch(`/api/puja?text=${encodeURIComponent(item.prayer)}&offering=${item.offering}`).catch(() => {});
-            }
+            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            fetch(relayUrl)
+                .then(res => res.json())
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    
+                    let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+                    const indexOnline = onlineQueue.findIndex(item => item.id === id);
+                    const indexLocal = localQueue.findIndex(item => item.id === id);
+                    
+                    let item = null;
+                    if (indexOnline !== -1) {
+                        item = onlineQueue[indexOnline];
+                        onlineQueue.splice(indexOnline, 1);
+                    }
+                    if (indexLocal !== -1) {
+                        if (!item) item = localQueue[indexLocal];
+                        localQueue.splice(indexLocal, 1);
+                    }
+                    
+                    if (item) {
+                        initAudio();
+                        stopHum();
+                        
+                        // Ring the temple bell tone
+                        playBellTone();
+                        
+                        const offeringNames = {
+                            hibiscus: "Hibiscus Flower",
+                            garland: "Marigold Garland",
+                            modak: "Sweet Modak",
+                            coconut: "Fresh Coconut"
+                        };
+                        const offeringName = offeringNames[item.offering] || item.offering;
+                        const devoteeName = item.name || "Anonymous Devotee";
+                        
+                        // Format OLED text message
+                        const displayMsg = item.prayer !== "" ? `   [PRAYER] "${item.prayer}" - ${devoteeName}   ` : `   [PUJA] Ganesha accepts your ${offeringName}! - ${devoteeName}   `;
+                        
+                        // Set Ganesha state to FEET_ACTIVE (for gold centered text & 12s stop)
+                        changeState("FEET_ACTIVE", 30000);
+                        setOledText(displayMsg);
+                        
+                        localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+                        localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+                        
+                        // Push updated queue back to relay
+                        return fetch(relayUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(onlineQueue)
+                        }).then(() => renderQueue());
+                    }
+                })
+                .catch(err => console.error("Error approving queue item:", err));
         }
 
         function rejectQueueItem(id) {
-            let queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
-            const index = queue.findIndex(item => item.id === id);
-            if (index !== -1) {
-                queue.splice(index, 1);
-                localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
-                localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
-                renderQueue();
-            }
+            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
+            fetch(relayUrl)
+                .then(res => res.json())
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    
+                    let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+                    const indexOnline = onlineQueue.findIndex(item => item.id === id);
+                    const indexLocal = localQueue.findIndex(item => item.id === id);
+                    
+                    if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
+                    if (indexLocal !== -1) localQueue.splice(indexLocal, 1);
+                    
+                    localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+                    localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+                    
+                    return fetch(relayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(onlineQueue)
+                    }).then(() => renderQueue());
+                })
+                .catch(err => console.error("Error rejecting queue item:", err));
         }
 
         function clearAllQueue() {
+            const relayUrl = "https://api.keyvalue.xyz/64e83fbb/ganesha_queue";
             localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
-            renderQueue();
+            
+            fetch(relayUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([])
+            }).then(() => renderQueue()).catch(err => console.error("Error clearing online queue:", err));
         }
 
         // Listen to storage events to keep tabs synced in real-time
@@ -1579,6 +1715,8 @@
         drawLeds();
         // Render initial queue list
         renderQueue();
+        // Poll online database queue every 4 seconds
+        setInterval(renderQueue, 4000);
         // Start in Standby
         changeState("STANDBY");
     </script>
