@@ -1709,9 +1709,22 @@
                         const prevState = window.ganeshaPrevState || "AMBIENT";
                         window.ganeshaPrevState = null;
                         
-                        // If returning to MANTRA_ACTIVE or AMBIENT, keep it alive for the default duration
-                        const returnDuration = (prevState === "STANDBY") ? 0 : AMBIENT_IDLE_MS;
-                        changeState(prevState, returnDuration);
+                        if (prevState === "MANTRA_ACTIVE") {
+                            // A mantra was actually playing before the offering
+                            // interrupted it. changeState("MANTRA_ACTIVE") alone
+                            // only updates the display/countdown - it never
+                            // starts audio. triggerMantra() properly restarts
+                            // both the audio and the display together.
+                            triggerMantra();
+                        } else if (prevState === "STANDBY") {
+                            changeState("STANDBY");
+                        } else {
+                            // AMBIENT, or any state with no meaningful "resume"
+                            // path (FEET_ACTIVE/AARTI_MODE/TEMPLE_CLOSED) -
+                            // settle into a normal Ambient idle instead of
+                            // faking a state with nothing actually playing.
+                            changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        }
                     }, duration);
                 }
             }
