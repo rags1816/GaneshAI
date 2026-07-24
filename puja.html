@@ -362,7 +362,7 @@
             // 2. Wireless Sync to Network Relay (keyvalue.immanuel.co) for multi-device sync
             const appKey = "sxnoamwe";
             const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
             
             fetch(readUrl)
                 .then(res => res.json())

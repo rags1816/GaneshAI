@@ -1565,7 +1565,7 @@
             // Fetch from online relay to sync mobile phone submissions
             const appKey = "sxnoamwe";
             const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
             
             fetch(readUrl)
                 .then(res => res.json())
@@ -1670,7 +1670,7 @@
         function approveQueueItem(id) {
             const appKey = "sxnoamwe";
             const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
             
             fetch(readUrl)
                 .then(res => res.json())
@@ -1728,7 +1728,7 @@
         function rejectQueueItem(id) {
             const appKey = "sxnoamwe";
             const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}`;
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
             
             fetch(readUrl)
                 .then(res => res.json())
