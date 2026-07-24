@@ -635,6 +635,16 @@
                     </select>
                 </div>
             </div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">One-Directional Mic</span><br>
+                    <span id="mic-status" style="font-size: 9px; color: var(--accent-teal);">Off</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="mic-toggle" onchange="toggleMic()">
+                    <span class="slider round"></span>
+                </label>
+            </div>
         </div>
 
         <div class="section-title">Manual Triggers</div>
@@ -794,6 +804,11 @@
         const AARTI_IDLE_MS = 60000;
         let aartiTimer = null;
         let aartiBuildActive = false;
+        // Once the idle-triggered Aarti has played during a wake cycle, don't
+        // re-arm it - the device should settle to sleep afterward (roughly
+        // 60s idle + ~4min Aarti + 2min sleep countdown), not loop Aarti after
+        // Aarti indefinitely while nobody is around. Reset on every fresh wake.
+        let aartiDoneThisWake = false;
         const AARTI_TRACK_FILE = "GaneshAarti.mp3";
         const AARTI_FALLBACK_DURATION_MS = 240000; // GaneshAarti.mp3 is ~4 minutes
 
@@ -1106,6 +1121,88 @@
             return avg;
         }
 
+        // --- One-Directional Mic: Wake-on-voice/clap + Crowd-reactive Aarti ---
+        // Deliberately never connected to audioCtx.destination - this is for
+        // listening only, never routed to the speaker (no feedback risk).
+        let micStream = null;
+        let micAnalyser = null;
+        let micTimeData = null;
+        let micMonitorInterval = null;
+        let micRecentLevels = [];
+        let lastMicWakeTime = 0;
+        const MIC_WAKE_COOLDOWN_MS = 4000;
+
+        async function toggleMic() {
+            const enabled = document.getElementById('mic-toggle').checked;
+            const statusEl = document.getElementById('mic-status');
+            if (enabled) {
+                try {
+                    initAudio();
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const micSource = audioCtx.createMediaStreamSource(micStream);
+                    micAnalyser = audioCtx.createAnalyser();
+                    micAnalyser.fftSize = 512;
+                    micTimeData = new Uint8Array(micAnalyser.fftSize);
+                    micSource.connect(micAnalyser);
+
+                    statusEl.innerText = "Listening (wake + crowd-reactive)";
+                    statusEl.style.color = "#4ade80";
+
+                    micRecentLevels = [];
+                    if (micMonitorInterval) clearInterval(micMonitorInterval);
+                    micMonitorInterval = setInterval(monitorMic, 120);
+                } catch (err) {
+                    console.log("Mic access denied or unavailable:", err);
+                    statusEl.innerText = "Mic access denied";
+                    statusEl.style.color = "#f87171";
+                    document.getElementById('mic-toggle').checked = false;
+                }
+            } else {
+                if (micMonitorInterval) { clearInterval(micMonitorInterval); micMonitorInterval = null; }
+                if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+                micAnalyser = null;
+                statusEl.innerText = "Off";
+                statusEl.style.color = "var(--accent-teal)";
+            }
+        }
+
+        // Root-mean-square level from the raw waveform, roughly 0..1. Used for
+        // loudness/spike detection - not pitch, just "how loud right now".
+        function getMicLevel() {
+            if (!micAnalyser) return null;
+            micAnalyser.getByteTimeDomainData(micTimeData);
+            let sumSquares = 0;
+            for (let i = 0; i < micTimeData.length; i++) {
+                const v = (micTimeData[i] - 128) / 128;
+                sumSquares += v * v;
+            }
+            return Math.sqrt(sumSquares / micTimeData.length);
+        }
+
+        // Wake-on-voice/clap: watches for a sudden spike above the recent
+        // ambient level while asleep - a clap or a loud greeting wakes the
+        // device just like PIR would.
+        function monitorMic() {
+            const level = getMicLevel();
+            if (level === null) return;
+
+            const avg = micRecentLevels.length > 0
+                ? micRecentLevels.reduce((a, b) => a + b, 0) / micRecentLevels.length
+                : level;
+
+            if (state === "STANDBY") {
+                const now = Date.now();
+                const isSpike = level > 0.15 && level > avg * 2.5;
+                if (isSpike && now - lastMicWakeTime > MIC_WAKE_COOLDOWN_MS) {
+                    lastMicWakeTime = now;
+                    changeState("AMBIENT", AMBIENT_IDLE_MS);
+                }
+            }
+
+            micRecentLevels.push(level);
+            if (micRecentLevels.length > 20) micRecentLevels.shift(); // ~2.4s window
+        }
+
         function stopHum() {
             if (globalMantraPlayer) {
                 try {
@@ -1404,7 +1501,18 @@
                 });
             } else {
                 hueOffset += 1.5;
-                const brightRatio = brightness / 255;
+                let brightRatio = brightness / 255;
+
+                // Crowd-reactive Aarti: while the chant is playing, a louder
+                // room (singing, clapping) brightens the ring - a call and
+                // response with the actual crowd, not just the recorded track.
+                if (state === "AARTI_MODE" && !aartiBuildActive && micAnalyser) {
+                    const crowdLevel = getMicLevel();
+                    if (crowdLevel !== null) {
+                        const crowdBoost = Math.min(0.4, crowdLevel * 1.5);
+                        brightRatio = Math.min(1, brightRatio + crowdBoost);
+                    }
+                }
                 
                 let activePattern = pattern;
                 let childRainbow = false;
@@ -1612,6 +1720,7 @@
                 stopHum();
                 // Reset so the welcome banner plays again next time the device wakes.
                 introPlayed = false;
+                aartiDoneThisWake = false;
             } else if (newState === "TEMPLE_CLOSED") {
                 // Night mode: fully silent and dark. Nothing wakes this except
                 // an explicit touch on Mouse Back or Feet Touch - not PIR, not
@@ -1619,6 +1728,7 @@
                 setOledText("");
                 stopHum();
                 introPlayed = false;
+                aartiDoneThisWake = false;
             } else if (newState === "AMBIENT") {
                 // In Ambient, roll the entire combined blessings loop
                 startAmbientRoll();
@@ -1626,20 +1736,26 @@
                 if (duration > 0) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
                 }
-                // If nobody touches anything for a while, offer a short Aarti.
+                // If nobody touches anything for a while, offer a short Aarti -
+                // but only once per wake cycle, so the device actually settles
+                // to sleep afterward instead of looping Aarti indefinitely.
                 if (aartiTimer) clearTimeout(aartiTimer);
-                aartiTimer = setTimeout(() => {
-                    if (state === "AMBIENT") triggerAartiMode();
-                }, AARTI_IDLE_MS);
+                if (!aartiDoneThisWake) {
+                    aartiTimer = setTimeout(() => {
+                        if (state === "AMBIENT") triggerAartiMode();
+                    }, AARTI_IDLE_MS);
+                }
             } else if (newState === "AARTI_MODE") {
                 blessings++;
                 aartiBuildActive = true;
+                aartiDoneThisWake = true;
                 setOledText("   \u2728 A moment of Aarti \u2728   ");
                 initAudio();
                 ensureMantraAudioGraph();
-                playBellTone(250, 2.2);
+                // No bell here - the 3-bell prelude (ringWakeBells) already
+                // rang immediately before this state was entered.
 
-                const BUILD_MS = 2500; // bell rings out and LEDs build before the chant starts
+                const BUILD_MS = 2500; // brief pause for LEDs to build before the chant starts
 
                 autoReturnTimer = setTimeout(() => {
                     if (state !== "AARTI_MODE") return;
@@ -1649,7 +1765,13 @@
                         if (state !== "AARTI_MODE") return;
                         isRealMantraPlaying = false;
                         playBellTone(250, 2.0); // same temple bell, signalling the ritual has closed
-                        changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        const onComplete = aartiOnComplete;
+                        aartiOnComplete = null;
+                        if (onComplete) {
+                            onComplete();
+                        } else {
+                            changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        }
                     };
 
                     globalMantraPlayer.src = AARTI_TRACK_FILE;
@@ -1882,9 +2004,28 @@
             }
         }
 
+        // What runs once the Aarti chant finishes - set by whichever path
+        // started the ritual (idle timeout vs. manual wake), defaults to
+        // settling into a normal ready Ambient state if nothing set it.
+        let aartiOnComplete = null;
+
+        // Shared "temple wakes up" ritual: 3 quick bells, then the full Aarti.
+        function ringWakeBells(remaining) {
+            if (remaining <= 0) {
+                changeState("AARTI_MODE");
+                return;
+            }
+            playBellTone(250, 1.0);
+            setTimeout(() => ringWakeBells(remaining - 1), 900);
+        }
+
+        // Idle timeout (nobody around for a while while Ambient): 3 bells,
+        // Aarti, then close the temple down for the night - the Aarti mode
+        // itself is what triggers closing afterward.
         function triggerAartiMode() {
             if (state !== "AMBIENT") return;
-            changeState("AARTI_MODE");
+            aartiOnComplete = () => changeState("TEMPLE_CLOSED");
+            ringWakeBells(3);
         }
 
         // --- Temple Closed (Night Mode) --------------------------------
@@ -1918,11 +2059,14 @@
             playBellTone(250, 2.5); // closing bell
             changeState("TEMPLE_CLOSED");
         }
+        // Manual wake (temple was closed, someone touched a pad): same 3
+        // bells + Aarti ritual as the idle trigger, but settles into a
+        // normal ready Ambient state afterward instead of closing again.
         function openTemple() {
             if (state !== "TEMPLE_CLOSED") return;
-            // Opening ritual: the same Aarti sequence as the idle-triggered one
-            // (bell -> ~4min GaneshAarti.mp3 -> closing bell -> settle to Ambient).
-            changeState("AARTI_MODE");
+            initAudio();
+            aartiOnComplete = null; // default behavior: settle to Ambient/ready
+            ringWakeBells(3);
         }
 
         function onMousePadDown() {
