@@ -1347,14 +1347,44 @@
         function updateVolume() {
             volume = document.getElementById('vol-slider').value;
             updateUI();
+
+            const volRatio = volume / 30;
+
+            // Apply live to whatever's actually playing right now - previously
+            // volume was only read once at the moment a mantra started, so
+            // dragging the slider mid-playback had no audible effect.
+            if (isRealMantraPlaying || isRealFeetMantraPlaying) {
+                globalMantraPlayer.volume = volRatio;
+            }
+            if (soundSourceAmp && audioCtx) {
+                // Rescale the synthesized hum's current level rather than
+                // resetting it, so we don't fight its decay envelope.
+                soundSourceAmp.gain.cancelScheduledValues(audioCtx.currentTime);
+                soundSourceAmp.gain.setValueAtTime(0.12 * volRatio, audioCtx.currentTime);
+            }
+
             // Audible preview blip so volume changes are noticeable even when
-            // nothing is currently playing. Debounced so dragging the slider
-            // doesn't stack up overlapping tones.
+            // nothing is currently playing. Uses its own oscillator/gain (not
+            // the shared soundSource/soundSourceAmp) so it can never collide
+            // with an active mantra hum or interfere with stopHum(). Debounced
+            // so dragging the slider doesn't stack up overlapping tones.
             const now = Date.now();
             if (now - lastVolumeBlip > 150) {
                 lastVolumeBlip = now;
                 initAudio();
-                synthesizeHum(440, 0.12);
+                if (audioCtx && volume > 0) {
+                    const t = audioCtx.currentTime;
+                    const blipOsc = audioCtx.createOscillator();
+                    const blipGain = audioCtx.createGain();
+                    blipOsc.type = "sine";
+                    blipOsc.frequency.setValueAtTime(440, t);
+                    blipGain.gain.setValueAtTime(0.15 * volRatio, t);
+                    blipGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+                    blipOsc.connect(blipGain);
+                    blipGain.connect(audioCtx.destination);
+                    blipOsc.start(t);
+                    blipOsc.stop(t + 0.13);
+                }
             }
         }
 
