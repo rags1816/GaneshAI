@@ -668,6 +668,7 @@
         </div>
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
             <button class="btn-stop" style="flex: 1;" onclick="closeTemple()">🔔 Close Temple (Night Mode)</button>
+            <button class="btn-action" style="flex: 1;" onclick="openTemple()">🌅 Open Temple</button>
         </div>
 
         <div class="section-title">🌸 Virtual Puja & Prayers</div>
@@ -1462,12 +1463,14 @@
             currentMoodColor = classifyBlessingMood(blessingText);
             sparkleStartTime = Date.now();
             sparkleEndTime = sparkleStartTime + SPARKLE_DURATION_MS;
-            playChime();
+            // No chime here: visual sparkle only. The chime was audible right
+            // before bell rituals and during offerings, which wasn't wanted.
         }
         // Short, isolated bell-like ping - deliberately does NOT touch the
         // shared soundSource/soundSourceAmp globals, so it never collides with
         // an active mantra hum.
         function playChime() {
+            return; // DISABLED per request: no chimes anywhere - bells only.
             initAudio();
             if (!audioCtx || volume <= 0) return;
             const volRatio = volume / 30;
@@ -1848,21 +1851,17 @@
                     autoReturnTimer = setTimeout(() => {
                         const prevState = window.ganeshaPrevState || "AMBIENT";
                         window.ganeshaPrevState = null;
-                        
-                        if (prevState === "MANTRA_ACTIVE") {
-                            // A mantra was actually playing before the offering
-                            // interrupted it. changeState("MANTRA_ACTIVE") alone
-                            // only updates the display/countdown - it never
-                            // starts audio. triggerMantra() properly restarts
-                            // both the audio and the display together.
-                            triggerMantra();
-                        } else if (prevState === "STANDBY") {
+
+                        // If a mantra was interrupted mid-play by the offering,
+                        // resume the SAME track from the SAME position - not a
+                        // fresh track from the beginning.
+                        if (resumePausedTrack()) return;
+
+                        if (prevState === "STANDBY") {
                             changeState("STANDBY");
                         } else {
-                            // AMBIENT, or any state with no meaningful "resume"
-                            // path (FEET_ACTIVE/AARTI_MODE/TEMPLE_CLOSED) -
-                            // settle into a normal Ambient idle instead of
-                            // faking a state with nothing actually playing.
+                            // AMBIENT, or anything with nothing to resume -
+                            // settle into a normal Ambient idle.
                             changeState("AMBIENT", AMBIENT_IDLE_MS);
                         }
                     }, duration);
@@ -1954,6 +1953,53 @@
             });
         }
 
+        // --- Resume-after-offering support (issue: same song must continue) --
+        // Captures what was playing the moment an offering interrupts, BEFORE
+        // stopHum() wipes it (stopHum resets currentTime to 0), so the exact
+        // track can resume from the exact position after the 12s display.
+        let pausedTrackInfo = null;
+        function capturePausedTrack() {
+            if ((state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") &&
+                globalMantraPlayer.src && !globalMantraPlayer.paused) {
+                pausedTrackInfo = {
+                    src: globalMantraPlayer.src,
+                    time: globalMantraPlayer.currentTime,
+                    state: state
+                };
+            } else {
+                pausedTrackInfo = null;
+            }
+        }
+        function resumePausedTrack() {
+            const info = pausedTrackInfo;
+            pausedTrackInfo = null;
+            if (!info) return false;
+            if (autoReturnTimer) clearTimeout(autoReturnTimer);
+            if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
+            state = info.state;
+            updateUI();
+            startAmbientRoll(); // blessing display resumes rolling
+            if (globalMantraPlayer.src !== info.src) globalMantraPlayer.src = info.src;
+            globalMantraPlayer.volume = volume / 30;
+            if (info.state === "MANTRA_ACTIVE") isRealMantraPlaying = true;
+            else isRealFeetMantraPlaying = true;
+            globalMantraPlayer.onended = () => {
+                globalMantraPlayer.onended = null;
+                isRealMantraPlaying = false;
+                isRealFeetMantraPlaying = false;
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
+            };
+            globalMantraPlayer.play().then(() => {
+                // Seek AFTER playback starts - seeking a paused element before
+                // play() can silently reset to 0, which made the track restart
+                // from the beginning instead of continuing where it left off.
+                try { globalMantraPlayer.currentTime = info.time; } catch (e) {}
+            }).catch(() => {
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
+            });
+            return true;
+        }
+
         function submitPuja() {
             const nameInput = document.getElementById('puja-name-input');
             const textInput = document.getElementById('puja-input');
@@ -1962,6 +2008,7 @@
             const text = textInput.value.trim();
             
             initAudio();
+            capturePausedTrack();
             stopHum();
             
             // Ring the temple bell
@@ -2013,6 +2060,13 @@
 
         function triggerStop() {
             window.speechSynthesis.cancel();
+            pausedTrackInfo = null; // a manual stop discards any pending resume
+            if (state === "STANDBY") {
+                // Second press while already stopped: close the temple down
+                // completely (night mode) - the "exit" gesture.
+                closeTemple();
+                return;
+            }
             changeState("STANDBY");
         }
 
@@ -2320,6 +2374,7 @@
 
             if (item) {
                 initAudio();
+                capturePausedTrack();
                 stopHum();
                 playBellTone(); // Ring the temple bell tone
                 const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
