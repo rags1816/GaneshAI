@@ -917,6 +917,12 @@
             
             // Set volume based on dashboard slider
             bellAudio.volume = volume / 30;
+
+            // Rewind before playing: calling play() on an element that's
+            // already playing is a silent no-op, which made multi-ring
+            // sequences (like the 3-bell wake ritual) sound as a single bell
+            // when the real mp3 is present. Rewinding restarts the ring.
+            try { bellAudio.currentTime = 0; } catch (e) {}
             
             isRealBellPlaying = true;
             bellAudio.play().then(() => {
@@ -1102,6 +1108,18 @@
                 mantraBusGain.connect(mantraAnalyser);
                 mantraAnalyser.connect(audioCtx.destination);
             }
+            // CRITICAL: when the page is opened directly from disk (file://),
+            // Chrome treats every local file as a separate opaque origin, so
+            // MediaElementAudioSource "outputs zeroes due to CORS access
+            // restrictions" - connecting the mp3 element to the audio graph
+            // silently MUTES every mantra while the element still reports
+            // "playing". So on file:// we leave the element's audio going
+            // straight to the speakers and simply skip the analyser hookup
+            // (LED breathing falls back to its sine wave; the synthesized
+            // fallback hum still routes through the analyser fine).
+            // Over http/https (e.g. GitHub Pages) the hookup is same-origin
+            // and safe, so full audio-reactivity works there.
+            if (window.location.protocol === 'file:') return;
             if (!mantraSourceNode) {
                 try {
                     mantraSourceNode = audioCtx.createMediaElementSource(globalMantraPlayer);
