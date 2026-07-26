@@ -14,7 +14,6 @@
 #define FASTLED_ESP32_HAS_UART 0
 #include <FastLED.h>
 #include <DFRobotDFPlayerMini.h>
-#include <driver/i2s.h>  
 #include "config.h"
 #include "web_dashboard.h"
 
@@ -116,11 +115,6 @@ bool feetDisplayLocked = false;
 // LED Animation Helpers
 uint8_t hueOffset = 0;
 
-// I2S Microphone Recording Buffer (Maintained for hardware integrity)
-#define I2S_PORT            I2S_NUM_0
-#define BUFFER_SIZE         512
-int16_t audioBuffer[BUFFER_SIZE];
-
 // ==========================================
 // Text Database
 // ==========================================
@@ -209,7 +203,6 @@ void triggerMantra();
 void triggerFeetMantra();
 void triggerAarti();
 void stopAudioAndStandby();
-void initI2SMic();
 
 // ==========================================
 // Setup Function
@@ -300,8 +293,9 @@ void setup() {
   FastLED.show();
   Serial.println("DEBUG: FastLED initialized successfully.");
 
-  // 4. Initialize I2S Microphone
-  // initI2SMic(); // Temporarily disabled for ESP32 Core compatibility
+  // 4. Microphone (I2S driver removed - see git history; was an unused,
+  // never-called legacy driver/i2s.h include suspected of conflicting with
+  // WiFi's ADC-based RF calibration and causing an early abort() crash)
   u8g2.drawStr(5, 48, "Microphone: OK");
   u8g2.sendBuffer();
 
@@ -427,33 +421,6 @@ void loop() {
   lastStage = 5;
   drawOLED();
   delay(10);
-}
-
-// ==========================================
-// Initialize I2S Audio driver for Microphone
-// ==========================================
-void initI2SMic() {
-  i2s_config_t i2s_config = {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = 16000, 
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
-    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-    .dma_buf_count = 4,
-    .dma_buf_len = BUFFER_SIZE,
-    .use_apll = false
-  };
-
-  i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_MIC_SCK,
-    .ws_io_num = I2S_MIC_WS,
-    .data_out_num = I2S_PIN_NO_CHANGE,
-    .data_in_num = I2S_MIC_SD
-  };
-
-  i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
-  i2s_set_pin(I2S_PORT, &pin_config);
 }
 
 // ==========================================
