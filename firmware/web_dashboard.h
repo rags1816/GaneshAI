@@ -791,6 +791,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         let selectedLang = "en";
         let selectedTheme = "tue";
 
+        // True only when this page is being served BY the physical ESP32
+        // itself (as opposed to running standalone, e.g. on GitHub Pages, as
+        // a hardware-free simulator). Gates every call that talks to the
+        // real device so the standalone simulator never tries to reach a
+        // nonexistent local device.
+        const isPhysicalESP = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'rags1816.github.io' && window.location.hostname !== '');
+        const sendESPControl = (action) => {
+            fetch(`/api/control?action=${action}`).catch(() => {});
+        };
+        const espGet = (path) => {
+            fetch(path).catch(() => {});
+        };
+        // /api/settings and /api/state use numeric codes for language/theme;
+        // the dashboard UI uses string codes. Keep the two mappings in one
+        // place. Sanskrit and Marathi share firmware code 1 (Marathi/Sanskrit
+        // combined) - polling back from the device can't distinguish them,
+        // so it defaults to "sa".
+        const LANG_TO_CODE = { en: 0, sa: 1, mr: 1, ta: 2 };
+        const CODE_TO_LANG = { 0: "en", 1: "sa", 2: "ta" };
+        const THEME_ORDER = ["tue", "mon", "wed", "thu", "fri", "sat", "sun"];
+
         // How long AMBIENT stays awake before returning to STANDBY. Must be
         // generous enough for the blessings loop to actually roll through
         // multiple entries of the 48-blessing list.
@@ -1788,11 +1809,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     if (state !== "AARTI_MODE") return;
                     aartiBuildActive = false;
 
-                    const isPhysicalESP = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'rags1816.github.io' && window.location.hostname !== '');
-                    const sendESPControl = (action) => {
-                        fetch(`/api/control?action=${action}`).catch(() => {});
-                    };
-
                     const finishAarti = () => {
                         if (state !== "AARTI_MODE") return;
                         isRealMantraPlaying = false;
@@ -1889,13 +1905,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // Dropdown Events
         function updateLanguage() {
             selectedLang = document.getElementById('lang-select').value;
+            if (isPhysicalESP) espGet(`/api/settings?lang=${LANG_TO_CODE[selectedLang]}`);
             if (state === "AMBIENT") {
                 setOledText(languages[selectedLang].welcome);
             }
         }
- 
+
         function updateTheme() {
             selectedTheme = document.getElementById('theme-select').value;
+            if (isPhysicalESP) espGet(`/api/settings?theme=${THEME_ORDER.indexOf(selectedTheme)}`);
             if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
                 updateUI();
             }
@@ -1904,6 +1922,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
  
         // Triggers
         function triggerMantra() {
+            if (isPhysicalESP) sendESPControl('mantra');
+
             initAudio();
             stopHum(); // Stop any currently playing audio / synth hum
             ensureMantraAudioGraph();
@@ -1926,6 +1946,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
  
         function triggerFeetMantra() {
+            if (isPhysicalESP) sendESPControl('feet');
+
             initAudio();
             stopHum(); // Stop any currently playing audio / synth hum
             ensureMantraAudioGraph();
@@ -2208,18 +2230,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         function updateBrightness() {
             brightness = document.getElementById('bright-slider').value;
+            if (isPhysicalESP) espGet(`/api/leds?brightness=${brightness}`);
             updateUI();
             previewLeds();
         }
 
         function updatePattern() {
             pattern = document.getElementById('pattern-select').value;
+            if (isPhysicalESP) espGet(`/api/leds?pattern=${pattern}`);
             previewLeds();
         }
 
         let lastVolumeBlip = 0;
         function updateVolume() {
             volume = document.getElementById('vol-slider').value;
+            if (isPhysicalESP) espGet(`/api/audio?volume=${volume}`);
             updateUI();
 
             const volRatio = volume / 30;
@@ -2261,6 +2286,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // Toggle functions
         function togglePIR() {
             pirEnabled = document.getElementById('pir-toggle').checked;
+            if (isPhysicalESP) espGet(`/api/settings?pir=${pirEnabled ? 1 : 0}`);
         }
 
         // Priest Queue Logic
@@ -2483,6 +2509,44 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         setInterval(renderQueue, 4000);
         // Start in Standby
         changeState("STANDBY");
+
+        // When running on the physical idol, mirror its live status here so
+        // the dashboard reflects real touch/PIR-triggered activity too, not
+        // just what this browser session has done. Deliberately only syncs
+        // status display (updateUI + control values) - it does not replay
+        // audio/LED side effects locally, since /api/state doesn't say which
+        // track is playing.
+        function pollDeviceState() {
+            fetch('/api/state').then(r => r.json()).then(data => {
+                state = data.state;
+                blessings = data.blessings;
+                brightness = data.brightness;
+                pattern = data.pattern;
+                volume = data.volume;
+                pirEnabled = data.pirEnabled;
+                selectedLang = CODE_TO_LANG[data.lang] || selectedLang;
+                selectedTheme = THEME_ORDER[data.theme] || selectedTheme;
+
+                const brightSlider = document.getElementById('bright-slider');
+                const patternSelect = document.getElementById('pattern-select');
+                const volSlider = document.getElementById('vol-slider');
+                const pirToggle = document.getElementById('pir-toggle');
+                const langSelect = document.getElementById('lang-select');
+                const themeSelect = document.getElementById('theme-select');
+                if (brightSlider) brightSlider.value = brightness;
+                if (patternSelect) patternSelect.value = pattern;
+                if (volSlider) volSlider.value = volume;
+                if (pirToggle) pirToggle.checked = pirEnabled;
+                if (langSelect) langSelect.value = selectedLang;
+                if (themeSelect) themeSelect.value = selectedTheme;
+
+                updateUI();
+            }).catch(() => {});
+        }
+        if (isPhysicalESP) {
+            pollDeviceState();
+            setInterval(pollDeviceState, 2000);
+        }
     </script>
 </body>
 </html>

@@ -112,9 +112,6 @@ unsigned long lastScrollUpdate = 0;
 unsigned long feetDisplayTimer = 0;
 bool feetDisplayLocked = false;
 
-// LED Animation Helpers
-uint8_t hueOffset = 0;
-
 // ==========================================
 // Text Database
 // ==========================================
@@ -754,6 +751,10 @@ void stopAudioAndStandby() {
 // ==========================================
 // LED Light Patterns (FastLED)
 // ==========================================
+// Pattern IDs match the web dashboard's pattern-select exactly (see
+// web_dashboard.h drawLeds()/peacockWaveColor()/etc.) so /api/leds?pattern=N
+// looks the same on the physical ring as it does in the browser simulation:
+//   0 Peacock Wave, 1 Circuit Pulse, 2 Golden Aura, 3 Rainbow Dream, 4 Diya Flicker
 void animateLeds() {
   if (currentState == STATE_STANDBY) {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
@@ -761,27 +762,74 @@ void animateLeds() {
     return;
   }
 
-  EVERY_N_MILLISECONDS(20) {
-    hueOffset += 1;
-  }
+  // Continuously-growing float, not the wrapping uint8_t hueOffset used
+  // elsewhere - these patterns feed it straight into sin(), and a uint8_t
+  // wrap would show up as a visible glitch once per cycle.
+  static float animHue = 0;
+  animHue += 1.5f;
 
   if (currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI) {
     CRGB c1, c2;
     switch(selectedTheme) {
-      case 0: c1 = CRGB(128, 0, 32);   c2 = CRGB(255, 215, 0); break; 
-      case 1: c1 = CRGB(0, 242, 254);  c2 = CRGB(79, 172, 254); break; 
-      case 2: c1 = CRGB(0, 180, 219);  c2 = CRGB(0, 255, 135); break; 
-      case 3: c1 = CRGB(255, 215, 0);  c2 = CRGB(255, 100, 0);   break; 
-      case 4: c1 = CRGB(236, 0, 140);  c2 = CRGB(185, 43, 39);   break; 
-      case 5: c1 = CRGB(75, 0, 130);   c2 = CRGB(79, 172, 254); break; 
-      case 6: c1 = CRGB(255, 75, 75);  c2 = CRGB(255, 215, 0); break; 
+      case 0: c1 = CRGB(128, 0, 32);   c2 = CRGB(255, 215, 0); break;
+      case 1: c1 = CRGB(0, 242, 254);  c2 = CRGB(79, 172, 254); break;
+      case 2: c1 = CRGB(0, 180, 219);  c2 = CRGB(0, 255, 135); break;
+      case 3: c1 = CRGB(255, 215, 0);  c2 = CRGB(255, 100, 0);   break;
+      case 4: c1 = CRGB(236, 0, 140);  c2 = CRGB(185, 43, 39);   break;
+      case 5: c1 = CRGB(75, 0, 130);   c2 = CRGB(79, 172, 254); break;
+      case 6: c1 = CRGB(255, 75, 75);  c2 = CRGB(255, 215, 0); break;
     }
-    
-    uint8_t breathVal = beatsin8(10, 80, 230);
+
+    // Same state->pattern overrides as the dashboard: Feet touch always
+    // shows Peacock Wave, Mantra/Aarti chanting always shows Circuit Pulse.
+    // Only AMBIENT actually reflects the user's chosen currentPattern.
+    int activePattern = currentPattern;
+    if (currentState == STATE_FEET_ACTIVE) {
+      activePattern = 0;
+    } else if (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_AARTI) {
+      activePattern = 1;
+    }
+
     for (int i = 0; i < NUM_LEDS; i++) {
-      leds[i] = blend(c1, c2, (i * 255 / NUM_LEDS));
-      leds[i].nscale8_video(breathVal);
+      switch (activePattern) {
+        case 0: { // Peacock Wave - traveling sine blend between c1/c2
+          float wave = (sinf(animHue * 0.04f + i * (2.0f * PI / NUM_LEDS)) + 1.0f) / 2.0f;
+          leds[i] = blend(c1, c2, (uint8_t)(wave * 255));
+          break;
+        }
+        case 2: { // Golden Aura - uniform 60/40 c1/c2 blend, slow breathing
+          float breath = sinf(animHue * 0.03f) * 0.4f + 0.6f;
+          leds[i] = blend(c1, c2, 102); // 0.4 * 255
+          leds[i].nscale8_video((uint8_t)(breath * 255));
+          break;
+        }
+        case 3: { // Rainbow Dream - full-saturation rotating rainbow
+          uint8_t hue8 = (uint8_t)((long)animHue + (i * 256 / NUM_LEDS));
+          leds[i] = CHSV(hue8, 255, 255);
+          break;
+        }
+        case 4: { // Diya Flicker - warm oil-lamp flicker, ignores theme on purpose
+          float base = 0.55f + sinf(animHue * 0.07f + i * 1.3f) * 0.15f;
+          float flicker = (random(0, 100) / 100.0f) * 0.25f;
+          float intensity = constrain(base + flicker, 0.15f, 1.0f);
+          leds[i] = CRGB((uint8_t)(255 * intensity), (uint8_t)(140 * intensity * 0.75f), (uint8_t)(20 * intensity * 0.3f));
+          break;
+        }
+        case 1: // Circuit Pulse
+        default: {
+          float breath = sinf(animHue * 0.05f) * 0.5f + 0.5f;
+          leds[i] = c1;
+          leds[i].nscale8_video((uint8_t)(breath * 255));
+          break;
+        }
+      }
     }
+
+    // Circuit Pulse's occasional single-LED spark to c2
+    if (activePattern == 1 && random(0, 100) < 5) {
+      leds[random(0, NUM_LEDS)] = c2;
+    }
+
     FastLED.show();
     return;
   }
