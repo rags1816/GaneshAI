@@ -497,6 +497,31 @@ void handleWebRoutes() {
     server.send(200, "text/plain", "OK");
   });
 
+  // One-off diagnostic route for finding the real playMp3Folder() track
+  // numbers on this SD card without re-flashing between guesses. Not part
+  // of normal operation - safe to leave in, it does nothing unless called.
+  //   /api/test?track=N     -> stop current playback, play mp3-folder track N
+  //   /api/test?filecount=1 -> total file count DFPlayer sees on the SD card
+  server.on("/api/test", HTTP_GET, []() {
+    char msg[64];
+    if (server.hasArg("track")) {
+      int n = server.arg("track").toInt();
+      myDFPlayer.stop();
+      delay(50);
+      myDFPlayer.playMp3Folder(n);
+      snprintf(msg, sizeof(msg), "Playing mp3 folder track %d", n);
+      Serial.println(msg);
+      server.send(200, "text/plain", msg);
+    } else if (server.hasArg("filecount")) {
+      int count = myDFPlayer.readFileCounts();
+      snprintf(msg, sizeof(msg), "Total files on SD card: %d", count);
+      Serial.println(msg);
+      server.send(200, "text/plain", msg);
+    } else {
+      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1");
+    }
+  });
+
   server.on("/api/leds", HTTP_GET, []() {
     if (server.hasArg("brightness")) {
       currentBrightness = server.arg("brightness").toInt();
