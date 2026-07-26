@@ -61,7 +61,13 @@ enum SystemState {
   STATE_STANDBY,        // Everything idle (OLED & LEDs off)
   STATE_AMBIENT,        // Woken up by PIR motion (peacock breathe, "Welcome")
   STATE_MANTRA_ACTIVE,  // Mouse Back touched: Plays 30-sec mantra
-  STATE_FEET_ACTIVE     // Feet touched: Plays alternating Ganeshmantra1 / Ganeshmantra2 (30s)
+  STATE_FEET_ACTIVE,    // Feet touched: Plays alternating Ganeshmantra1 / Ganeshmantra2 (30s)
+  STATE_AARTI           // Idle-triggered Aarti chant (web dashboard's AARTI_MODE)
 };
+
+// DFPlayer Mini SD card layout: all tracks live in a folder literally named
+// "mp3" (0001.mp3, 0002.mp3, ...) - played via playMp3Folder(), NOT play().
+#define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
+#define AARTI_DURATION   240000 // ~4 min, matches web dashboard's AARTI_FALLBACK_DURATION_MS
 
 #endif // CONFIG_H

@@ -102,7 +102,10 @@ int selectedLang = 1;
 int selectedTheme = 0;
 
 // OLED Text Buffer
-String scrollText = "";
+// Fixed-size buffer, not String: drawOLED() runs ~30x/sec and continuous
+// String reallocation there was the cause of a heap-fragmentation abort()
+// crash after ~7 minutes of uptime.
+char scrollText[300] = "";
 int scrollX = 128;
 unsigned long lastScrollUpdate = 0;
 
@@ -204,6 +207,7 @@ void drawOLED();
 void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
+void triggerAarti();
 void stopAudioAndStandby();
 void initI2SMic();
 
@@ -396,7 +400,7 @@ void setup() {
   // 8. Play Startup Sound
   Serial.println("STEP 8: Playing startup sound...");
   if (dfReady) {
-    myDFPlayer.play(3);
+    myDFPlayer.playMp3Folder(3);
     Serial.println("STEP 8: Startup sound played!");
   } else {
     Serial.println("STEP 8: Startup sound SKIPPED (DFPlayer not ready)");
@@ -461,33 +465,32 @@ void handleWebRoutes() {
   });
 
   server.on("/api/state", HTTP_GET, []() {
-    String stateStr;
+    const char* stateStr;
     switch(currentState) {
       case STATE_STANDBY: stateStr = "STANDBY"; break;
       case STATE_AMBIENT: stateStr = "AMBIENT"; break;
       case STATE_MANTRA_ACTIVE: stateStr = "MANTRA_ACTIVE"; break;
       case STATE_FEET_ACTIVE: stateStr = "FEET_ACTIVE"; break;
+      case STATE_AARTI: stateStr = "AARTI_MODE"; break;
+      default: stateStr = "STANDBY"; break;
     }
-    
-    String json = "{";
-    json += "\"state\":\"" + stateStr + "\",";
-    json += "\"blessings\":" + String(blessingCounter) + ",";
-    json += "\"brightness\":" + String(currentBrightness) + ",";
-    json += "\"pattern\":" + String(currentPattern) + ",";
-    json += "\"volume\":" + String(currentVolume) + ",";
-    json += "\"pirEnabled\":" + String(pirEnabled ? "true" : "false") + ",";
-    json += "\"lang\":" + String(selectedLang) + ",";
-    json += "\"theme\":" + String(selectedTheme);
-    json += "}";
+
+    char json[220];
+    snprintf(json, sizeof(json),
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d}",
+      stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
+      pirEnabled ? "true" : "false", selectedLang, selectedTheme);
     server.send(200, "application/json", json);
   });
 
   server.on("/api/control", HTTP_GET, []() {
     String action = server.arg("action");
     if (action == "mantra") {
-      triggerMantra(); 
+      triggerMantra();
     } else if (action == "feet") {
-      triggerFeetMantra(); 
+      triggerFeetMantra();
+    } else if (action == "aarti") {
+      triggerAarti();
     } else if (action == "stop") {
       stopAudioAndStandby();
     }
@@ -566,7 +569,7 @@ void updateStateMachine() {
   // If 12 seconds have passed since Feet touch, unlock and resume rolling loop
   if (feetDisplayLocked && (now - feetDisplayTimer > 12000)) {
     feetDisplayLocked = false;
-    scrollText = oledAmbientLoopText; // Resume the combined rolling blessings
+    strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText)); // Resume the combined rolling blessings
     Serial.println("OLED: 12 seconds elapsed, resumed blessings roll.");
   }
 
@@ -629,10 +632,27 @@ void updateStateMachine() {
         triggerFeetMantra();
         return;
       }
-      
+
       if (now - stateTimer > stateDuration) {
         myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, 30000); 
+        setSystemState(STATE_AMBIENT, 30000);
+      }
+      break;
+
+    case STATE_AARTI:
+      if (backTouched) {
+        backTouched = false;
+        triggerMantra();
+        return;
+      } else if (feetTouched) {
+        feetTouched = false;
+        triggerFeetMantra();
+        return;
+      }
+
+      if (now - stateTimer > stateDuration) {
+        myDFPlayer.stop();
+        setSystemState(STATE_AMBIENT, 30000);
       }
       break;
   }
@@ -659,7 +679,7 @@ void setSystemState(SystemState newState, unsigned long duration) {
     if (newState == STATE_AMBIENT) {
       feetDisplayLocked = false;
       // In Ambient, roll the entire combined blessings loop
-      scrollText = oledAmbientLoopText;
+      strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
     }
   }
 }
@@ -679,10 +699,10 @@ void triggerMantra() {
   unsigned long duration = mantraTracks[trackIndex].duration;
   
   setSystemState(STATE_MANTRA_ACTIVE, duration);
-  myDFPlayer.play(dfTrack);
+  myDFPlayer.playMp3Folder(dfTrack);
   
   // Display continues rolling blessings loop during Mouse play
-  scrollText = oledAmbientLoopText;
+  strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
   
   mouseStep = (mouseStep + 1) % NUM_TRACKS;
 }
@@ -707,16 +727,31 @@ void triggerFeetMantra() {
   int r;
   if (trackIndex % 2 == 0) {
     r = random(0, 26);
-    scrollText = "   [BLESSING] " + String(oledChildBlessingsList[r]) + "   ";
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
   } else {
     r = random(0, 22);
-    scrollText = "   [BLESSING] " + String(oledAdultBlessingsList[r]) + "   ";
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledAdultBlessingsList[r]);
   }
   
   setSystemState(STATE_FEET_ACTIVE, duration);
-  myDFPlayer.play(dfTrack);
+  myDFPlayer.playMp3Folder(dfTrack);
   
   feetStep = (feetStep + 1) % NUM_TRACKS;
+}
+
+void triggerAarti() {
+  // Fired by the web dashboard's idle-triggered Aarti ritual
+  // (see /api/control?action=aarti in web_dashboard.h). The dashboard runs
+  // its own ~4-minute timer independently, so this only needs to actually
+  // start the physical chant and reflect AARTI_MODE back via /api/state.
+  myDFPlayer.stop();
+  delay(50);
+
+  feetDisplayLocked = false;
+  strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
+
+  setSystemState(STATE_AARTI, AARTI_DURATION);
+  myDFPlayer.playMp3Folder(AARTI_TRACK);
 }
 
 void stopAudioAndStandby() {
@@ -738,7 +773,7 @@ void animateLeds() {
     hueOffset += 1;
   }
 
-  if (currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE) {
+  if (currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI) {
     CRGB c1, c2;
     switch(selectedTheme) {
       case 0: c1 = CRGB(128, 0, 32);   c2 = CRGB(255, 215, 0); break; 
@@ -786,15 +821,18 @@ void drawOLED() {
     u8g2.drawStr(90, 10, "[MANTRA]");
   } else if (currentState == STATE_FEET_ACTIVE) {
     u8g2.drawStr(90, 10, "[MANTRA]");
+  } else if (currentState == STATE_AARTI) {
+    u8g2.drawStr(90, 10, "[AARTI]");
   }
 
-  String countStr = "Devotional Hits: " + String(blessingCounter);
-  u8g2.drawStr(6, 57, countStr.c_str());
+  char countStr[40];
+  snprintf(countStr, sizeof(countStr), "Devotional Hits: %d", blessingCounter);
+  u8g2.drawStr(6, 57, countStr);
 
-  u8g2.setFont(u8g2_font_6x12_tf); 
-  
-  int textWidth = u8g2.getUTF8Width(scrollText.c_str());
-  u8g2.drawUTF8(scrollX, 34, scrollText.c_str());
+  u8g2.setFont(u8g2_font_6x12_tf);
+
+  int textWidth = u8g2.getUTF8Width(scrollText);
+  u8g2.drawUTF8(scrollX, 34, scrollText);
   
   if (now - lastScrollUpdate > TEXT_SCROLL_SPD) {
     lastScrollUpdate = now;
