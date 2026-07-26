@@ -1,0 +1,2492 @@
+#ifndef WEB_DASHBOARD_H
+#define WEB_DASHBOARD_H
+
+#include <Arduino.h>
+
+const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ganapati AI - Live App Simulation (Advanced Voice & Themes)</title>
+    <!-- iOS Web App Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ganapati AI">
+    <!-- App Icons & Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="512x512" href="ganesha.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="ganesha.png">
+    <style>
+        :root {
+            --bg-color: #030812;
+            --card-bg: rgba(10, 25, 47, 0.65);
+            --border-color: rgba(0, 242, 254, 0.25);
+            --text-color: #e2f1ff;
+            --accent-teal: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-gold: #ffd700;
+            --accent-green: #00ff87;
+            --accent-purple: #ec008c;
+            --accent-red: #ff4b4b;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background: radial-gradient(circle at center, #0a1931 0%, var(--bg-color) 100%);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Phone mockup wrapper */
+        .phone-frame {
+            width: 100%;
+            max-width: 410px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 40px;
+            padding: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6), 0 0 30px rgba(0, 242, 254, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            position: relative;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .peacock-feather {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 6px;
+            background: linear-gradient(135deg, var(--accent-teal), var(--accent-blue));
+            clip-path: polygon(50% 0%, 100% 38%, 82% 80%, 50% 100%, 18% 80%, 0% 38%);
+            position: relative;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .peacock-feather::after {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 25%;
+            width: 50%;
+            height: 50%;
+            background: radial-gradient(var(--accent-gold), var(--accent-green), transparent);
+            border-radius: 50%;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0;
+            background: linear-gradient(to right, var(--accent-teal), var(--accent-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        h2 {
+            font-size: 10px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 1px 0 0 0;
+        }
+
+        /* Simulated Hardware Area */
+        .hardware-preview {
+            background: rgba(2, 10, 23, 0.85);
+            border: 1px solid rgba(0, 242, 254, 0.2);
+            border-radius: 20px;
+            padding: 12px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hardware-title {
+            font-size: 9px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            align-self: flex-start;
+        }
+
+        /* simulated OLED */
+        .oled-screen {
+            width: 180px;
+            height: 80px;
+            background-color: #000000;
+            border: 2px solid #333333;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 4px;
+            box-shadow: inset 0 0 10px rgba(0,242,254,0.3);
+        }
+
+        .oled-border {
+            border: 1px solid #00f2fe;
+            width: calc(100% - 10px);
+            height: calc(100% - 10px);
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+
+        .oled-line-top {
+            border-bottom: 1px solid #00f2fe;
+            width: 100%;
+            height: 14px;
+            position: absolute;
+            top: 0; left: 0;
+            font-size: 7px;
+            color: #00f2fe;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .oled-line-bottom {
+            border-top: 1px solid #00f2fe;
+            width: 100%;
+            height: 14px;
+            position: absolute;
+            bottom: 0; left: 0;
+            font-size: 7px;
+            color: #00f2fe;
+            display: flex;
+            align-items: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .oled-main-area {
+            position: absolute;
+            top: 16px;
+            bottom: 16px;
+            left: 4px;
+            right: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .oled-text {
+            color: #00f2fe;
+            font-size: 10px;
+            white-space: nowrap;
+            position: absolute;
+            transform: translateX(180px);
+        }
+
+        /* simulated LED Ring (Hollow Core - No Om Logo) */
+        .led-ring-container {
+            width: 90px;
+            height: 90px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle, transparent 35%, rgba(0, 242, 254, 0.05) 70%);
+            border-radius: 50%;
+        }
+
+        .led-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #111;
+            position: absolute;
+            transition: background-color 0.1s, box-shadow 0.1s;
+        }
+
+        /* Controls Section */
+        .status-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .status-card {
+            background: rgba(2, 12, 27, 0.5);
+            border: 1px solid rgba(0, 242, 254, 0.1);
+            border-radius: 12px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 9px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+
+        .status-val {
+            font-size: 13px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .status-active {
+            color: var(--accent-green);
+            text-shadow: 0 0 8px rgba(0, 255, 135, 0.3);
+        }
+
+        .section-title {
+            font-size: 11px;
+            color: var(--accent-teal);
+            margin: 12px 0 6px 0;
+            border-bottom: 1px solid rgba(0, 242, 254, 0.15);
+            padding-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .btn-triple {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        button {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.1));
+            border: 1px solid var(--border-color);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.25), rgba(0, 242, 254, 0.25));
+            border-color: var(--accent-teal);
+            transform: translateY(-1px);
+        }
+
+        .btn-action {
+            background: linear-gradient(135deg, var(--accent-teal), var(--accent-blue));
+            color: #030812;
+            border: none;
+        }
+
+        .btn-action:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 4px 10px rgba(0, 242, 254, 0.3);
+        }
+
+        .btn-stroke {
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-purple));
+            color: #030812;
+            border: none;
+        }
+        .btn-stroke:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 4px 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .offering-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            padding: 4px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .offering-btn:hover {
+            border-color: rgba(255, 215, 0, 0.4);
+            background: rgba(255, 215, 0, 0.05);
+        }
+        .active-offering {
+            border-color: #ffd700 !important;
+            background: rgba(255, 215, 0, 0.12) !important;
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.2);
+        }
+
+        /* Priest Moderation Queue CSS */
+        .queue-item {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(0, 242, 254, 0.1);
+            border-radius: 8px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 11px;
+        }
+        .queue-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--accent-gold);
+            font-weight: 600;
+        }
+        .queue-item-time {
+            font-size: 8px;
+            color: var(--text-muted);
+        }
+        .queue-item-text {
+            color: #ffffff;
+            font-style: italic;
+            word-wrap: break-word;
+            margin: 2px 0;
+            text-align: left;
+        }
+        .queue-item-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .btn-approve {
+            background: linear-gradient(135deg, #4caf50, #2e7d32) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 4px 8px !important;
+            font-size: 9px !important;
+            font-weight: bold !important;
+            cursor: pointer !important;
+            flex: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 2px !important;
+            height: auto !important;
+            flex-direction: row !important;
+        }
+        .btn-approve:hover {
+            filter: brightness(1.15) !important;
+            transform: translateY(-0.5px) !important;
+        }
+        .btn-reject {
+            background: linear-gradient(135deg, #f44336, #c62828) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 4px 8px !important;
+            font-size: 9px !important;
+            font-weight: bold !important;
+            cursor: pointer !important;
+            width: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: auto !important;
+            flex-direction: row !important;
+        }
+        .btn-reject:hover {
+            filter: brightness(1.15) !important;
+            transform: translateY(-0.5px) !important;
+        }
+
+        .btn-stop {
+            background: rgba(255, 75, 75, 0.1);
+            border: 1px solid rgba(255, 75, 75, 0.3);
+            color: #ff4b4b;
+        }
+
+        .btn-stop:hover {
+            background: rgba(255, 75, 75, 0.25);
+            border-color: #ff4b4b;
+        }
+
+        .slider-container {
+            margin-bottom: 10px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #a8b2d1;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-teal);
+            cursor: pointer;
+            box-shadow: 0 0 6px var(--accent-teal);
+        }
+
+        .select-input {
+            width: 100%;
+            background: rgba(2, 12, 27, 0.8);
+            border: 1px solid var(--border-color);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .toggle-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 18px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-toggle {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: .4s;
+            border-radius: 18px;
+        }
+
+        .slider-toggle:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider-toggle {
+            background-color: var(--accent-teal);
+        }
+
+        input:checked + .slider-toggle:before {
+            transform: translateX(18px);
+        }
+
+        footer {
+            text-align: center;
+            font-size: 9px;
+            color: #8892b0;
+            margin-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Admin Passcode Modal Overlay -->
+    <div id="passcode-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #030812; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; box-sizing: border-box; padding: 20px;">
+        <div style="background: rgba(2, 10, 23, 0.9); border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 20px; padding: 30px; text-align: center; max-width: 320px; width: 100%; box-shadow: 0 10px 30px rgba(0, 242, 254, 0.1); box-sizing: border-box;">
+            <div style="font-size: 32px; margin-bottom: 12px;">🔐</div>
+            <h2 style="margin: 0 0 8px 0; font-size: 18px; color: #ffd700;">Admin Console</h2>
+            <p style="margin: 0 0 20px 0; font-size: 11px; color: #8892b0; line-height: 1.4;">This dashboard is password-protected. Please enter Ganesha's Admin Passcode.</p>
+            <input type="password" id="passcode-input" class="select-input" placeholder="Enter PIN..." style="text-align: center; font-size: 16px; letter-spacing: 4px; padding: 8px; margin-bottom: 15px; border-color: rgba(0,242,254,0.3); background: rgba(0,0,0,0.5); border-radius: 8px; color: #fff; width: 100%; box-sizing: border-box;" onkeydown="checkPasscodeEnter(event)">
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn-action" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #030812; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; height: auto; flex-direction: row; display: flex; align-items: center; justify-content: center;" onclick="validatePasscode()">Unlock</button>
+                <button class="btn-stop" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.05); color: #8892b0; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; cursor: pointer; height: auto; flex-direction: row; display: flex; align-items: center; justify-content: center;" onclick="cancelPasscode()">Cancel</button>
+            </div>
+            <div id="passcode-error" style="color: #ff4b4b; font-size: 10px; margin-top: 10px; display: none;">Invalid Passcode! Please try again.</div>
+        </div>
+    </div>
+
+    <script>
+        function checkPasscodeEnter(e) {
+            if (e.key === "Enter") validatePasscode();
+        }
+        function validatePasscode() {
+            const pin = document.getElementById('passcode-input').value;
+            if (pin === "1816") {
+                sessionStorage.setItem('ganesha_admin_auth', 'true');
+                document.getElementById('passcode-overlay').style.display = 'none';
+            } else {
+                document.getElementById('passcode-error').style.display = 'block';
+                document.getElementById('passcode-input').value = '';
+            }
+        }
+        function cancelPasscode() {
+            window.location.href = "puja.html";
+        }
+        // Run authentication check immediately
+        if (sessionStorage.getItem('ganesha_admin_auth') === 'true') {
+            document.write('<style>#passcode-overlay { display: none !important; }</style>');
+            window.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('passcode-overlay').style.display = 'none';
+            });
+        }
+    </script>
+
+    <div class="phone-frame">
+        <header>
+            <div class="peacock-feather"></div>
+            <h1>Ganapati AI</h1>
+            <h2>Control Hub 2026</h2>
+        </header>
+
+        <!-- Live Physical Setup Mockup -->
+        <div class="hardware-preview">
+            <div class="hardware-title">Live Hardware Simulation</div>
+            
+            <div class="led-ring-container" id="led-ring">
+                <!-- 24 LEDs generated by JS -->
+            </div>
+
+            <div class="oled-screen">
+                <div class="oled-border">
+                    <div class="oled-line-top">
+                        <span>GANAPATI AI</span>
+                        <span id="oled-state-lbl">[STANDBY]</span>
+                    </div>
+                    <div class="oled-main-area">
+                        <div class="oled-text" id="oled-scroller">Welcome!</div>
+                    </div>
+                    <div class="oled-line-bottom">
+                        <span id="oled-hits-lbl">Devotional Hits: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- UI App Controls -->
+        <div class="status-container">
+            <div class="status-card">
+                <div class="status-label">System State</div>
+                <div id="state-val" class="status-val">STANDBY</div>
+            </div>
+            <div class="status-card">
+                <div class="status-label">Blessings Today</div>
+                <div id="count-val" class="status-val">0</div>
+            </div>
+        </div>
+
+        <!-- Advanced Pitch Simulator Config -->
+        <div style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 8px; margin-bottom: 12px; border: 1px dashed var(--border-color);">
+            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">AI MIC SETTINGS (SIMULATION)</div>
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <div style="flex: 1;">
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Devotee Pitch</span>
+                    <select id="voice-pitch-select" class="select-input" style="padding: 4px; font-size: 10px;">
+                        <option value="child">Child (High Pitch, >240Hz)</option>
+                        <option value="adult" selected>Adult (Low Pitch, <240Hz)</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Active Language</span>
+                    <select id="lang-select" class="select-input" style="padding: 4px; font-size: 10px;" onchange="updateLanguage()">
+                        <option value="en">English</option>
+                        <option value="sa">Sanskrit / Hindi</option>
+                        <option value="mr">Marathi</option>
+                        <option value="ta">Tamil</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">One-Directional Mic</span><br>
+                    <span id="mic-status" style="font-size: 9px; color: var(--accent-teal);">Off</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="mic-toggle" onchange="toggleMic()">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="section-title">Manual Triggers</div>
+        <div class="btn-group">
+            <button class="btn-action" id="mouse-pad-btn"
+                onmousedown="onMousePadDown()" onmouseup="onMousePadUp()" onmouseleave="onMousePadCancel()"
+                ontouchstart="onMousePadDown()" ontouchend="onMousePadUp()" ontouchcancel="onMousePadCancel()">
+                <span>🐭 Mouse Back</span>
+                <span style="font-size: 8px; font-weight: normal;">(Mantra: 30s)</span>
+            </button>
+            <button class="btn-action" id="feet-pad-btn"
+                onmousedown="onFeetPadDown()" onmouseup="onFeetPadUp()" onmouseleave="onFeetPadCancel()"
+                ontouchstart="onFeetPadDown()" ontouchend="onFeetPadUp()" ontouchcancel="onFeetPadCancel()">
+                <span>👣 Feet Touch</span>
+                <span style="font-size: 8px; font-weight: normal;">(Ganesha Mantras: 30s)</span>
+            </button>
+        </div>
+        <div style="font-size: 10px; opacity: 0.6; margin: -6px 0 10px 2px;">Hold both pads together for 15s to close the temple for the night</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn-stop" style="flex: 1;" onclick="triggerStop()">⏹️ Stop Sound / Reset State</button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="btn-stop" style="flex: 1;" onclick="closeTemple()">🔔 Close Temple (Night Mode)</button>
+            <button class="btn-action" style="flex: 1;" onclick="openTemple()">🌅 Open Temple</button>
+        </div>
+
+        <div class="section-title">🌸 Virtual Puja & Prayers</div>
+        <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
+            <input type="text" id="puja-name-input" class="select-input" placeholder="Devotee Name (Optional)..." style="font-size: 11px; padding: 6px; margin-bottom: 6px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
+            <input type="text" id="puja-input" class="select-input" placeholder="Type a prayer or wish here..." style="font-size: 11px; padding: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
+            
+            <div style="font-size: 8px; text-transform: uppercase; color: #8892b0; margin-bottom: 4px;">Choose an offering:</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;">
+                <button id="opt-hibiscus" class="offering-btn active-offering" onclick="selectOffering('hibiscus')">
+                    <span style="font-size: 16px;">🌺</span>
+                    <span style="font-size: 7px; font-weight: normal; color: #a8b2d1;">Flower</span>
+                </button>
+                <button id="opt-garland" class="offering-btn" onclick="selectOffering('garland')">
+                    <span style="font-size: 16px;">🌼</span>
+                    <span style="font-size: 7px; font-weight: normal; color: #a8b2d1;">Garland</span>
+                </button>
+                <button id="opt-modak" class="offering-btn" onclick="selectOffering('modak')">
+                    <span style="font-size: 16px;">🥟</span>
+                    <span style="font-size: 7px; font-weight: normal; color: #a8b2d1;">Modak</span>
+                </button>
+                <button id="opt-coconut" class="offering-btn" onclick="selectOffering('coconut')">
+                    <span style="font-size: 16px;">🥥</span>
+                    <span style="font-size: 7px; font-weight: normal; color: #a8b2d1;">Coconut</span>
+                </button>
+            </div>
+            
+            <button class="btn-action" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #ffd700, #ffa500); color: #050d1a; font-weight: bold; border-color: #ffd700; border-radius: 8px; display: flex; flex-direction: row; gap: 4px; align-items: center; justify-content: center; height: auto;" onclick="submitPuja()">
+                <span>✨ Offer Prasad & Send Prayer ✨</span>
+            </button>
+        </div>
+
+        <div class="section-title">🕌 Priest Queue</div>
+        <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
+            <div id="queue-status" style="font-size: 10px; color: var(--text-muted); margin-bottom: 8px; text-align: left;">No pending offerings.</div>
+            <div id="queue-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 8px;">
+                <!-- Queue items will be generated here dynamically -->
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-stop" style="flex: 1; padding: 6px; font-size: 10px; border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); border-radius: 6px; flex-direction: row; gap: 4px; align-items: center; justify-content: center; height: auto;" onclick="clearAllQueue()">
+                    <span>🧹</span> <span>Clear Queue</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="section-title">Theme of the Day</div>
+        <div style="margin-bottom: 12px;">
+            <select id="theme-select" class="select-input" onchange="updateTheme()">
+                <option value="tue">Tuesday: Ganesha Theme (Maroon & Gold)</option>
+                <option value="mon">Monday: Shiva Theme (Ice Blue & Cyan)</option>
+                <option value="wed">Wednesday: Wisdom Theme (Peacock Teal)</option>
+                <option value="thu">Thursday: Guru Theme (Bright Gold/Yellow)</option>
+                <option value="fri">Friday: Shakti Theme (Lotus Pink & Violet)</option>
+                <option value="sat">Saturday: Discipline Theme (Indigo & Purple)</option>
+                <option value="sun">Sunday: Sun Theme (Ruby Red & Gold)</option>
+            </select>
+        </div>
+
+        <div class="section-title">LED Customization</div>
+        <div class="slider-container">
+            <div class="slider-label">
+                <span>Brightness</span>
+                <span id="bright-lbl">60%</span>
+            </div>
+            <input type="range" id="bright-slider" class="slider" min="0" max="255" value="150" oninput="updateBrightness()">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <div class="slider-label">Default LED Pattern</div>
+            <select id="pattern-select" class="select-input" onchange="updatePattern()">
+                <option value="0">Peacock Wave</option>
+                <option value="1">Circuit Pulse</option>
+                <option value="2">Golden Aura</option>
+                <option value="3">Rainbow Dream</option>
+                <option value="4">Diya Flicker (Warm)</option>
+            </select>
+        </div>
+
+        <div class="section-title">Audio Settings</div>
+        <div class="slider-container" style="margin-bottom: 12px;">
+            <div class="slider-label">
+                <span>Volume</span>
+                <span id="vol-lbl">15</span>
+            </div>
+            <input type="range" id="vol-slider" class="slider" min="0" max="30" value="15" oninput="updateVolume()">
+        </div>
+
+        <div class="section-title">System Settings</div>
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">PIR Motion Detector</span>
+            <label class="switch">
+                <input type="checkbox" id="pir-toggle" checked onchange="togglePIR()">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+        
+        <div class="toggle-container" style="margin-bottom: 5px;">
+            <span style="font-size: 12px; color: #a8b2d1;">Simulate PIR Detection</span>
+            <button style="padding: 2px 6px; font-size: 9px;" onclick="triggerPIR()">Trigger PIR</button>
+        </div>
+
+        <footer>
+            Lord of Wisdom &bull; 2026 Theme
+        </footer>
+    </div>
+
+    <script>
+        // System variables
+        let state = "STANDBY";
+        let blessings = 0;
+        let brightness = 150;
+        let pattern = 0; // Default
+        let volume = 15;
+        let pirEnabled = true;
+        let selectedLang = "en";
+        let selectedTheme = "tue";
+
+        // How long AMBIENT stays awake before returning to STANDBY. Must be
+        // generous enough for the blessings loop to actually roll through
+        // multiple entries of the 48-blessing list.
+        const AMBIENT_IDLE_MS = 120000;
+        // Tracks whether the welcome banner has already played for the
+        // current "wake" cycle - it should only show once per STANDBY->AMBIENT
+        // wake, not on every AMBIENT/MANTRA_ACTIVE/FEET_ACTIVE transition in
+        // between, otherwise the blessings rotation never gets a chance to run.
+        let introPlayed = false;
+        // When true, drawLeds() renders the live LED preview even while
+        // STANDBY, so brightness/theme/pattern changes are visible immediately.
+        let previewActive = false;
+        let previewTimer = null;
+
+        // Aarti Mode: if a devotee hasn't touched anything for this long while
+        // idle in AMBIENT, it runs a short scripted ritual (bell -> LED build
+        // -> chant -> closing bell), then settles back to AMBIENT.
+        const AARTI_IDLE_MS = 60000;
+        let aartiTimer = null;
+        let aartiBuildActive = false;
+        // Once the idle-triggered Aarti has played during a wake cycle, don't
+        // re-arm it - the device should settle to sleep afterward (roughly
+        // 60s idle + ~4min Aarti + 2min sleep countdown), not loop Aarti after
+        // Aarti indefinitely while nobody is around. Reset on every fresh wake.
+        let aartiDoneThisWake = false;
+        const AARTI_TRACK_FILE = "GaneshAarti.mp3";
+        const AARTI_FALLBACK_DURATION_MS = 240000; // GaneshAarti.mp3 is ~4 minutes
+
+        // Temple Closed (Night Mode)
+        const CLOSE_HOLD_MS = 15000;
+        let mouseDownAt = 0;
+        let feetDownAt = 0;
+        let closeHoldTimer = null;
+        let closeHoldTriggered = false;
+        let closeHoldMessageShown = false;
+
+        // Multilingual Database
+        const languages = {
+            en: {
+                welcome: "Welcome!",
+                mantra: "   Om Gan Ganapataye Namaha! May the Lord of Wisdom optimize your life's neural networks.   ",
+                adultBlessing: "   Blessings: Wishing you deep intellect, peace, and spiritual growth.   ",
+                childBlessing: "   Blessings: Happy coding! Study hard and keep smiling.   ",
+                standby: "Ready for blessings"
+            },
+            sa: {
+                welcome: "स्वागतम्!",
+                mantra: "   ॐ गं गणपतये नमः। वक्रतुण्ड महाकाय सूर्यकोटि समप्रभ।   ",
+                adultBlessing: "   आशीर्वाद: बुद्धिं यशो वीर्यं बलमस्तु सदा। सुख शान्ति समृद्धि च।   ",
+                childBlessing: "   आशीर्वाद: विद्यां ददाति विनयम्। नित्यं प्रसन्नो भव।   ",
+                standby: "आशीर्वादाय सिद्धः"
+            },
+            mr: {
+                welcome: "सुस्वागतम!",
+                mantra: "   ॐ गं गणपतये नमः। मंगलमूर्ती मोरया! गणपती बाप्पा मोरया!   ",
+                adultBlessing: "   आशीर्वाद: तुमच्या आयुष्यातील सर्व अडथळे दूर होवोत. सुख-समृद्धी लाभो!   ",
+                childBlessing: "   आशीर्वाद: खूप अभ्यास कर, मोठा हो आणि नेहमी हसत राहा!   ",
+                standby: "बाप्पा मोरया"
+            },
+            ta: {
+                welcome: "வரவேற்பு!",
+                mantra: "   ஓம் கம் கணபதயே நமஹ! மங்கள மூர்த்தி மோரையா!   ",
+                adultBlessing: "   ஆசீர்வாதம்: உங்கள் வாழ்வில் உள்ள அனைத்து தடைகளும் நீங்கி வெற்றி பெறட்டும்.   ",
+                childBlessing: "   ஆசீர்வாதம்: நன்முறையில் கல்வி கற்று, வாழ்வில் சிறந்து விளங்குவாயாக!   ",
+                standby: "ஆசீர்வாதம் தயார்"
+            }
+        };
+
+        // Theme colors configurations
+        const themes = {
+            tue: { primary: "#800020", secondary: "#ffd700", name: "Tuesday Ganesha" }, // Maroon & Gold
+            mon: { primary: "#00f2fe", secondary: "#4facfe", name: "Monday Shiva" }, // Cyan & Blue
+            wed: { primary: "#00b4db", secondary: "#00ff87", name: "Wednesday Wisdom" }, // Teal & Green
+            thu: { primary: "#ffd700", secondary: "#ffa500", name: "Thursday Guru" }, // Gold & Orange
+            fri: { primary: "#ec008c", secondary: "#b92b27", name: "Friday Shakti" }, // Pink & Magenta
+            sat: { primary: "#4b0082", secondary: "#4facfe", name: "Saturday Discipline" }, // Indigo & Blue
+            sun: { primary: "#ff4b4b", secondary: "#ffd700", name: "Sunday Sun" } // Red & Gold
+        };
+
+        // OLED animation variables
+        let scrollTimer = null;
+        let scrollX = 180;
+        let textWidth = 0;
+        let currentText = "Welcome!";
+
+        // LED Animation variables
+        const numLeds = 24;
+        const ledDots = [];
+        let animationFrameId = null;
+        let hueOffset = 0;
+        
+        const bellAudio = new Audio('Ganapathibell.mp3');
+        
+        let isRealBellPlaying = false;
+        let isRealMantraPlaying = false;
+        let isRealFeetMantraPlaying = false;
+        let alternateMantra = false; // false = Ganeshmantra1, true = Ganeshmantra2
+
+        // Sound Synthesis (Web Audio API)
+        let audioCtx = null;
+
+        // Generate simulated LED Dots
+        const ledRing = document.getElementById('led-ring');
+        for (let i = 0; i < numLeds; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'led-dot';
+            const angle = (i * 360 / numLeds) * (Math.PI / 180);
+            const radius = 38; // px
+            const x = Math.round(45 + radius * Math.cos(angle) - 3);
+            const y = Math.round(45 + radius * Math.sin(angle) - 3);
+            dot.style.left = `${x}px`;
+            dot.style.top = `${y}px`;
+            ledRing.appendChild(dot);
+            ledDots.push(dot);
+        }
+
+        // Initialize Audio context on first click and resume if suspended
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // True Temple Bell Sound Synthesis with 5-Second Beating Oscillation
+        function playBellTone(freq = 250, duration = 5.0) {
+            initAudio();
+            if (volume === 0) return;
+            
+            // Set volume based on dashboard slider
+            bellAudio.volume = volume / 30;
+
+            // Rewind before playing: calling play() on an element that's
+            // already playing is a silent no-op, which made multi-ring
+            // sequences (like the 3-bell wake ritual) sound as a single bell
+            // when the real mp3 is present. Rewinding restarts the ring.
+            try { bellAudio.currentTime = 0; } catch (e) {}
+            
+            isRealBellPlaying = true;
+            bellAudio.play().then(() => {
+                console.log("Playing custom Ganapathibell.mp3");
+            }).catch((err) => {
+                isRealBellPlaying = false;
+                console.log("Ganapathibell.mp3 not found or blocked, falling back to synthesizer:", err);
+                synthesizeBell(freq, duration);
+            });
+        }
+
+        function synthesizeBell(freq, duration) {
+            if (!audioCtx) return;
+            const volRatio = volume / 30;
+            const now = audioCtx.currentTime;
+            const baseFreq = freq > 400 ? freq / 3.2 : freq;
+
+            const osc1 = audioCtx.createOscillator();
+            const gain1 = audioCtx.createGain();
+            osc1.type = "sine";
+            osc1.frequency.setValueAtTime(baseFreq, now);
+            gain1.gain.setValueAtTime(0.25 * volRatio, now);
+            gain1.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = "sine";
+            osc2.frequency.setValueAtTime(baseFreq + 2.5, now);
+            gain2.gain.setValueAtTime(0.25 * volRatio, now);
+            gain2.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            const harmonics = [
+                { ratio: 1.2, gain: 0.15, decay: 3.5 }, // Minor third
+                { ratio: 1.5, gain: 0.12, decay: 3.0 }, // Perfect fifth
+                { ratio: 2.0, gain: 0.10, decay: 2.5 }, // Octave
+                { ratio: 2.6, gain: 0.08, decay: 2.0 }, // Upper minor third
+                { ratio: 3.0, gain: 0.05, decay: 1.5 }  // Upper fifth
+            ];
+
+            harmonics.forEach(h => {
+                const oscH = audioCtx.createOscillator();
+                const gainH = audioCtx.createGain();
+                oscH.type = "sine";
+                oscH.frequency.setValueAtTime(baseFreq * h.ratio, now);
+                gainH.gain.setValueAtTime(h.gain * volRatio, now);
+                gainH.gain.exponentialRampToValueAtTime(0.001, now + h.decay);
+
+                oscH.connect(gainH);
+                gainH.connect(audioCtx.destination);
+                oscH.start(now);
+                oscH.stop(now + h.decay);
+            });
+
+            osc1.connect(gain1);
+            osc2.connect(gain2);
+            gain1.connect(audioCtx.destination);
+            gain2.connect(audioCtx.destination);
+
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + duration);
+            osc2.stop(now + duration);
+        }
+
+        // Shloka Synth Hum
+        let soundSource = null;
+        let soundSourceAmp = null;
+        
+        function playHum(freq = 220, duration = 15) {
+            initAudio();
+            if (volume === 0) return;
+            stopHum();
+
+            mantraAudio.volume = volume / 30;
+
+            isRealMantraPlaying = true;
+            mantraAudio.play().then(() => {
+                console.log("Playing custom Ganapathimantrai.mp3");
+            }).catch((err) => {
+                isRealMantraPlaying = false;
+                console.log("Ganapathimantrai.mp3 not found or blocked, falling back to synthesizer:", err);
+                synthesizeHum(freq, duration);
+            });
+        }
+
+        // Blessings database from Blessings1.docx
+        const adultBlessings = [
+            "I bless you with the removal of professional and personal roadblocks to ensure success.",
+            "I grant you the grace of financial stability, wealth, and career growth.",
+            "I bless you with the emotional capacity to handle high-stress situations with calm.",
+            "I bless you with the wisdom to weigh choices objectively and make sound judgments.",
+            "I bless you with a peaceful, loving, and supportive family environment.",
+            "I grant you the ability to be thankful for life's blessings and maintain self-improvement.",
+            "I bless you with the discipline to avoid greed, anger, or unhealthy attachments.",
+            "I bless you to forgive easily and help those in need.",
+            "I grant you the wisdom to release things that are beyond your control.",
+            "I wish you a deeper connection to your inner self and finding peace amidst a busy life.",
+            "I bless you with profound clarity of mind, patient wisdom, and inner strength.",
+            "May all professional obstacles dissolve, opening wide doors to prosperity and success.",
+            "I grant you emotional resilience and a peaceful heart, shielding you from anxiety.",
+            "May My divine energy rejuvenate your physical body, infusing you with robust health.",
+            "I bless your home with harmony, lasting unity, and a deep sense of security.",
+            "When the weights of responsibility feel too heavy, surrender your burdens into My hands.",
+            "May you always possess the integrity, humility, and patience to handle hard situations.",
+            "I bless your hard work so that it bears rich fruit, ensuring you never lack resources.",
+            "May My presence be a constant anchor in your life, grounding you in spiritual peace.",
+            "I bless your journey with continuous growth, purposeful action, and vibrant well-being.",
+            "May your heart beat with steady strength and your body remain flexible and resilient.",
+            "I bless you with the wisdom to balance hard work with mindful rest, protecting your vitality."
+        ];
+
+        const childBlessings = [
+            "I bless you to explore, learn, and absorb new knowledge eagerly.",
+            "I bless you with the boon of concentration to stay grounded during studies.",
+            "I grant you the courage to bounce back quickly when faced with difficult subjects.",
+            "I bless you with the grace to remain polite and grounded, much like Ganesha's nature.",
+            "I grant you the inspiration to think outside the box and express yourself freely.",
+            "I grant you the wisdom to make healthy, positive lifestyle choices from a young age.",
+            "I bless you with inner strength to overcome fears in making friends or public speaking.",
+            "I grant you the ability to find simple, childlike happiness in everyday moments.",
+            "I grant you the blessing of attracting honest, supportive, and kind friends.",
+            "I bless you with the shield of grace to keep you safe and guide your journey.",
+            "I bless you to be guided safely past financial, mental, and physical hurdles.",
+            "I bless you with clarity, sharp focus, and success in studies or new ventures.",
+            "I bless you with attracting material success, abundance, and good fortune.",
+            "I grant your wish of creating a balanced, calm, and positive environment.",
+            "I bless your young mind with sharp focus, memory, and joyful curiosity to learn.",
+            "May your heart always be fearless and filled with kind thoughts for everyone.",
+            "Whenever a school lesson feels too difficult, remember that I am right beside you.",
+            "I grant you the wisdom of My large ears to listen carefully and grow wise.",
+            "May My blessings protect you from harm and guide your steps safely.",
+            "I fill your spirit with boundless energy to play and explore the world with joy.",
+            "May you always speak words as sweet as the modaks I love, spreading happiness.",
+            "I bless your body with robust health, deep immunity, and strong glowing energy.",
+            "When you feel sad or alone, close your eyes and call My name for instant comfort.",
+            "I bless your entire childhood with endless wonder, creative ideas, and a bright smile.",
+            "I grant you deep, peaceful sleep at night so your body can rest and wake up full of energy.",
+            "I bless every meal you eat to nourish your bones, sharpen your mind, and make you strong."
+        ];
+        const combinedBlessings = [
+            ...adultBlessings,
+            ...childBlessings
+        ];
+        let currentBlessingIndex = 0;
+
+        const mantraTracks = [
+            { file: "Ganapathimantrai.mp3", duration: 24000, dfTrack: 1 },
+            { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
+            { file: "Ganapathimantra2.mp3", duration: 27360, dfTrack: 4 },
+            { file: "Ganeshmantra3.mp3", duration: 55350, dfTrack: 5 },
+            { file: "Ganeshmantra4.mp3", duration: 155530, dfTrack: 6 },
+            { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
+            { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
+            { file: "Ganeshmantra7.mp3", duration: 136700, dfTrack: 9 },
+            { file: "Ganeshmantra8.mp3", duration: 125520, dfTrack: 10 },
+            { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
+            { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
+            { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
+            { file: "Ganeshmantra12.mp3", duration: 175730, dfTrack: 14 },
+            { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
+        ];
+
+        let mouseStep = 0; 
+        let feetStep = 0;  
+        const globalMantraPlayer = new Audio();
+
+        // Audio-reactive breathing setup: both the real mp3 (globalMantraPlayer)
+        // and the synthesized fallback hum route through this shared bus, so
+        // whichever one is actually producing sound drives the same analyser -
+        // LED "breathing" then follows real audio energy instead of a fixed
+        // sine wave that merely happens to run at the same time.
+        let mantraAnalyser = null;
+        let mantraFreqData = null;
+        let mantraBusGain = null;
+        let mantraSourceNode = null;
+        function ensureMantraAudioGraph() {
+            if (!audioCtx) return;
+            if (!mantraBusGain) {
+                mantraBusGain = audioCtx.createGain();
+                mantraAnalyser = audioCtx.createAnalyser();
+                mantraAnalyser.fftSize = 256;
+                mantraFreqData = new Uint8Array(mantraAnalyser.frequencyBinCount);
+                mantraBusGain.connect(mantraAnalyser);
+                mantraAnalyser.connect(audioCtx.destination);
+            }
+            // CRITICAL: when the page is opened directly from disk (file://),
+            // Chrome treats every local file as a separate opaque origin, so
+            // MediaElementAudioSource "outputs zeroes due to CORS access
+            // restrictions" - connecting the mp3 element to the audio graph
+            // silently MUTES every mantra while the element still reports
+            // "playing". So on file:// we leave the element's audio going
+            // straight to the speakers and simply skip the analyser hookup
+            // (LED breathing falls back to its sine wave; the synthesized
+            // fallback hum still routes through the analyser fine).
+            // Over http/https (e.g. GitHub Pages) the hookup is same-origin
+            // and safe, so full audio-reactivity works there.
+            if (window.location.protocol === 'file:') return;
+            if (!mantraSourceNode) {
+                try {
+                    mantraSourceNode = audioCtx.createMediaElementSource(globalMantraPlayer);
+                    mantraSourceNode.connect(mantraBusGain);
+                } catch (e) {
+                    console.log("Mantra analyser hookup skipped:", e);
+                }
+            }
+        }
+        function getMantraEnergy() {
+            if (!mantraAnalyser || !(isRealMantraPlaying || isRealFeetMantraPlaying || soundSource)) return null;
+            mantraAnalyser.getByteFrequencyData(mantraFreqData);
+            let sum = 0;
+            for (let k = 0; k < mantraFreqData.length; k++) sum += mantraFreqData[k];
+            const avg = sum / mantraFreqData.length / 255;
+            if (avg <= 0.001) return null;
+            return avg;
+        }
+
+        // --- One-Directional Mic: Wake-on-voice/clap + Crowd-reactive Aarti ---
+        // Deliberately never connected to audioCtx.destination - this is for
+        // listening only, never routed to the speaker (no feedback risk).
+        let micStream = null;
+        let micAnalyser = null;
+        let micTimeData = null;
+        let micMonitorInterval = null;
+        let micRecentLevels = [];
+        let lastMicWakeTime = 0;
+        const MIC_WAKE_COOLDOWN_MS = 4000;
+
+        async function toggleMic() {
+            const enabled = document.getElementById('mic-toggle').checked;
+            const statusEl = document.getElementById('mic-status');
+            if (enabled) {
+                try {
+                    initAudio();
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const micSource = audioCtx.createMediaStreamSource(micStream);
+                    micAnalyser = audioCtx.createAnalyser();
+                    micAnalyser.fftSize = 512;
+                    micTimeData = new Uint8Array(micAnalyser.fftSize);
+                    micSource.connect(micAnalyser);
+
+                    statusEl.innerText = "Listening (wake + crowd-reactive)";
+                    statusEl.style.color = "#4ade80";
+
+                    micRecentLevels = [];
+                    if (micMonitorInterval) clearInterval(micMonitorInterval);
+                    micMonitorInterval = setInterval(monitorMic, 120);
+                } catch (err) {
+                    console.log("Mic access denied or unavailable:", err);
+                    statusEl.innerText = "Mic access denied";
+                    statusEl.style.color = "#f87171";
+                    document.getElementById('mic-toggle').checked = false;
+                }
+            } else {
+                if (micMonitorInterval) { clearInterval(micMonitorInterval); micMonitorInterval = null; }
+                if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+                micAnalyser = null;
+                statusEl.innerText = "Off";
+                statusEl.style.color = "var(--accent-teal)";
+            }
+        }
+
+        // Root-mean-square level from the raw waveform, roughly 0..1. Used for
+        // loudness/spike detection - not pitch, just "how loud right now".
+        function getMicLevel() {
+            if (!micAnalyser) return null;
+            micAnalyser.getByteTimeDomainData(micTimeData);
+            let sumSquares = 0;
+            for (let i = 0; i < micTimeData.length; i++) {
+                const v = (micTimeData[i] - 128) / 128;
+                sumSquares += v * v;
+            }
+            return Math.sqrt(sumSquares / micTimeData.length);
+        }
+
+        // Wake-on-voice/clap: watches for a sudden spike above the recent
+        // ambient level while asleep - a clap or a loud greeting wakes the
+        // device just like PIR would.
+        function monitorMic() {
+            const level = getMicLevel();
+            if (level === null) return;
+
+            const avg = micRecentLevels.length > 0
+                ? micRecentLevels.reduce((a, b) => a + b, 0) / micRecentLevels.length
+                : level;
+
+            if (state === "STANDBY") {
+                const now = Date.now();
+                const isSpike = level > 0.15 && level > avg * 2.5;
+                if (isSpike && now - lastMicWakeTime > MIC_WAKE_COOLDOWN_MS) {
+                    lastMicWakeTime = now;
+                    changeState("AMBIENT", AMBIENT_IDLE_MS);
+                }
+            }
+
+            micRecentLevels.push(level);
+            if (micRecentLevels.length > 20) micRecentLevels.shift(); // ~2.4s window
+        }
+
+        function stopHum() {
+            if (globalMantraPlayer) {
+                try {
+                    globalMantraPlayer.onended = null; // don't let an interrupted Aarti chant finish late
+                    globalMantraPlayer.pause();
+                    globalMantraPlayer.currentTime = 0;
+                } catch(e){}
+            }
+
+            if (isRealBellPlaying) {
+                bellAudio.pause();
+                bellAudio.currentTime = 0;
+                isRealBellPlaying = false;
+            }
+            
+            isRealMantraPlaying = false;
+            isRealFeetMantraPlaying = false;
+
+            if (soundSource) {
+                try {
+                    soundSourceAmp.gain.setValueAtTime(0, audioCtx.currentTime);
+                    soundSource.stop();
+                } catch(e) {}
+                soundSource = null;
+            }
+        }
+
+
+
+        function synthesizeHum(freq, duration) {
+            if (!audioCtx) return;
+            ensureMantraAudioGraph();
+            const volRatio = volume / 30;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            soundSourceAmp = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(freq, now);
+            
+            const vibrato = audioCtx.createOscillator();
+            const vibratoGain = audioCtx.createGain();
+            vibrato.frequency.setValueAtTime(5.5, now);
+            vibratoGain.gain.setValueAtTime(2.5, now);
+            vibrato.connect(vibratoGain);
+            vibratoGain.connect(osc.frequency);
+            
+            soundSourceAmp.gain.setValueAtTime(0.12 * volRatio, now);
+            soundSourceAmp.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(soundSourceAmp);
+            // Route through the shared analyser bus (falls back to direct
+            // destination if unavailable) so the LED ring can breathe in time
+            // with the actual sound.
+            soundSourceAmp.connect(mantraBusGain || audioCtx.destination);
+
+            vibrato.start();
+            osc.start(now);
+            soundSource = osc;
+            
+            setTimeout(() => {
+                vibrato.stop();
+                try { osc.stop(); } catch(e) {}
+            }, duration * 1000);
+        }
+
+        // Update UI Text & Labels
+        function updateUI() {
+            document.getElementById('state-val').innerText = state;
+            const stateLbl = document.getElementById('oled-state-lbl');
+            const stateVal = document.getElementById('state-val');
+            
+            if (state === "STANDBY") {
+                stateLbl.innerText = "[STANDBY]";
+                stateVal.className = "status-val";
+                document.getElementById('oled-scroller').style.display = 'none';
+            } else if (state === "TEMPLE_CLOSED") {
+                stateLbl.innerText = "[CLOSED \ud83c\udf19]";
+                stateVal.className = "status-val";
+                document.getElementById('oled-scroller').style.display = 'none';
+            } else {
+                stateLbl.innerText = `[${state}]`;
+                stateVal.className = "status-val status-active";
+                document.getElementById('oled-scroller').style.display = 'block';
+            }
+
+            document.getElementById('count-val').innerText = blessings;
+            document.getElementById('oled-hits-lbl').innerText = `Devotional Hits: ${blessings}`;
+            document.getElementById('bright-lbl').innerText = Math.round((brightness/255)*100) + "%";
+            document.getElementById('vol-lbl').innerText = volume;
+        }
+
+        // Text Scroll Simulator
+        function setOledText(text) {
+            currentText = text;
+            const scroller = document.getElementById('oled-scroller');
+            scroller.innerText = text;
+            
+            if (scrollTimer) clearInterval(scrollTimer);
+
+            if (state === "FEET_ACTIVE") {
+                // Blessing mode: static, wrapped, centered, and GOLD!
+                scroller.style.whiteSpace = 'normal';
+                scroller.style.textAlign = 'center';
+                scroller.style.color = '#ffd700'; // Gold
+                scroller.style.textShadow = '0 0 6px rgba(255, 215, 0, 0.4)';
+                scroller.style.transform = 'none';
+                scroller.style.position = 'relative';
+                scroller.style.width = '100%';
+                scroller.style.fontSize = '8px'; // Slightly smaller to fit personalized content
+                scroller.style.lineHeight = '1.1';
+            } else {
+                // Normal rolling mode: cyan, scrolling, single line
+                scroller.style.whiteSpace = 'nowrap';
+                scroller.style.color = '#00f2fe'; // Cyan
+                scroller.style.textShadow = 'none';
+                scroller.style.position = 'absolute';
+                scroller.style.width = 'auto';
+                scroller.style.fontSize = '10px';
+                scroller.style.transform = `translateX(180px)`;
+                scrollX = 180;
+                textWidth = scroller.scrollWidth; // measured, not estimated
+
+                const isWelcome = (text === languages.en.welcome || text === languages.sa.welcome || text === languages.mr.welcome || text === languages.ta.welcome);
+                if (state !== "STANDBY" && state !== "TEMPLE_CLOSED" && !isWelcome && text !== "") {
+                    scrollTimer = setInterval(() => {
+                        scrollX -= 2;
+                        if (scrollX < -textWidth) {
+                            scrollX = 180;
+                            // When a message finishes scrolling, load the next blessing from the 48-blessings loop!
+                            if (state === "AMBIENT" || state === "MANTRA_ACTIVE") {
+                                const nextBlessing = combinedBlessings[currentBlessingIndex];
+                                currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
+                                const nextText = `   [BLESSING] ${nextBlessing}   `;
+                                scroller.innerText = nextText;
+                                textWidth = scroller.scrollWidth;
+                                onNewBlessingShown(nextBlessing);
+                            }
+                        }
+                        scroller.style.transform = `translateX(${scrollX}px)`;
+                    }, 80);
+                } else {
+                    scroller.style.transform = `translateX(35px)`; // center
+                }
+            }
+        }
+
+        // LED Animations
+        // Blends color `b` into color `a` by amount `t` (0 = all a, 1 = all b).
+        function blendColor(a, b, t) {
+            return {
+                r: Math.round(a.r * (1 - t) + b.r * t),
+                g: Math.round(a.g * (1 - t) + b.g * t),
+                b: Math.round(a.b * (1 - t) + b.b * t)
+            };
+        }
+
+        function peacockWaveColor(i, hueOffset, c1, c2) {
+            const wave = (Math.sin((hueOffset * 0.04) + (i * (Math.PI * 2 / numLeds))) + 1) / 2;
+            return {
+                r: Math.round(c1.r * (1 - wave) + c2.r * wave),
+                g: Math.round(c1.g * (1 - wave) + c2.g * wave),
+                b: Math.round(c1.b * (1 - wave) + c2.b * wave)
+            };
+        }
+
+        function circuitPulseColor(i, hueOffset, c1, c2, breathOverride) {
+            // breathOverride, when provided (0..1), comes from live mantra audio
+            // energy instead of a fixed sine wave - the ring visibly "breathes"
+            // with the chant rather than on its own separate clock.
+            const breath = (breathOverride != null) ? breathOverride : (Math.sin(hueOffset * 0.05) * 0.5 + 0.5);
+            let color = {
+                r: Math.round(c1.r * breath),
+                g: Math.round(c1.g * breath),
+                b: Math.round(c1.b * breath)
+            };
+            if (Math.random() < 0.05 && i === Math.floor(Math.random() * numLeds)) {
+                color = { r: c2.r, g: c2.g, b: c2.b };
+            }
+            return color;
+        }
+
+        function goldenAuraColor(hueOffset, c1, c2) {
+            const breath = Math.sin(hueOffset * 0.03) * 0.4 + 0.6;
+            return {
+                r: Math.round((c1.r * 0.6 + c2.r * 0.4) * breath),
+                g: Math.round((c1.g * 0.6 + c2.g * 0.4) * breath),
+                b: Math.round((c1.b * 0.6 + c2.b * 0.4) * breath)
+            };
+        }
+
+        function rainbowDreamColor(i, hueOffset) {
+            const indexHue = (hueOffset + (i * 360 / numLeds)) % 360;
+            return hslToRgb(indexHue / 360, 1.0, 0.5);
+        }
+
+        function diyaFlickerColor(i, hueOffset) {
+            // Warm oil-lamp flicker - intentionally ignores the theme palette.
+            const base = 0.55 + Math.sin(hueOffset * 0.07 + i * 1.3) * 0.15;
+            const flicker = Math.random() * 0.25;
+            const intensity = Math.max(0.15, Math.min(1, base + flicker));
+            return {
+                r: Math.round(255 * intensity),
+                g: Math.round(140 * intensity * 0.75),
+                b: Math.round(20 * intensity * 0.3)
+            };
+        }
+
+        // Blessing mood tagging - lightweight keyword classification so all 48
+        // blessings get a fitting color nudge without hand-tagging each one.
+        const BLESSING_MOODS = {
+            prosperity: { r: 255, g: 200, b: 40 },
+            wisdom:     { r: 80, g: 170, b: 255 },
+            peace:      { r: 140, g: 220, b: 170 },
+            strength:   { r: 255, g: 90, b: 60 }
+        };
+        const BLESSING_MOOD_KEYWORDS = {
+            prosperity: ['wealth', 'financial', 'success', 'prosper', 'career', 'abundan', 'growth', 'opportunit', 'resources'],
+            wisdom:     ['wisdom', 'wise', 'clarity', 'mind', 'judgment', 'judgeme', 'knowledge', 'intellect', 'learn'],
+            peace:      ['peace', 'calm', 'patien', 'forgive', 'harmony', 'loving', 'family', 'gentle', 'kind'],
+            strength:   ['strength', 'discipline', 'courage', 'resilien', 'protect', 'obstacle', 'roadblock', 'hurdle', 'stress']
+        };
+        function classifyBlessingMood(text) {
+            const lower = text.toLowerCase();
+            for (const mood in BLESSING_MOOD_KEYWORDS) {
+                if (BLESSING_MOOD_KEYWORDS[mood].some(kw => lower.includes(kw))) {
+                    return BLESSING_MOODS[mood];
+                }
+            }
+            return null;
+        }
+        let currentMoodColor = null;
+
+        // --- New-blessing moment: sparkle sweep + soft chime ---------------
+        let sparkleStartTime = 0;
+        let sparkleEndTime = 0;
+        const SPARKLE_DURATION_MS = 700;
+        function onNewBlessingShown(blessingText) {
+            currentMoodColor = classifyBlessingMood(blessingText);
+            sparkleStartTime = Date.now();
+            sparkleEndTime = sparkleStartTime + SPARKLE_DURATION_MS;
+            // No chime here: visual sparkle only. The chime was audible right
+            // before bell rituals and during offerings, which wasn't wanted.
+        }
+        // Short, isolated bell-like ping - deliberately does NOT touch the
+        // shared soundSource/soundSourceAmp globals, so it never collides with
+        // an active mantra hum.
+        function playChime() {
+            return; // DISABLED per request: no chimes anywhere - bells only.
+            initAudio();
+            if (!audioCtx || volume <= 0) return;
+            const volRatio = volume / 30;
+            const t = audioCtx.currentTime;
+            [880, 1320].forEach((freq, idx) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime((idx === 0 ? 0.12 : 0.05) * volRatio, t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t);
+                osc.stop(t + 0.95);
+            });
+        }
+
+        // --- Feet-touch "entering the temple" moment: quick flash -----------
+        let feetFlashEndTime = 0;
+        const FEET_FLASH_DURATION_MS = 400;
+        function triggerFeetFlash() {
+            feetFlashEndTime = Date.now() + FEET_FLASH_DURATION_MS;
+        }
+
+        // Briefly lets the LED ring render live (even in STANDBY) so changing
+        // brightness/pattern/theme gives instant feedback without needing to
+        // first wake the device.
+        function previewLeds(ms = 2500) {
+            previewActive = true;
+            if (previewTimer) clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => { previewActive = false; }, ms);
+        }
+
+        // LED Animations
+        function drawLeds() {
+            if ((state === "STANDBY" || state === "TEMPLE_CLOSED") && !previewActive) {
+                ledDots.forEach(dot => {
+                    dot.style.backgroundColor = '#111';
+                    dot.style.boxShadow = 'none';
+                });
+                hueOffset = 0;
+            } else if (state === "RECORDING") {
+                // Flash yellow to indicate active voice capturing
+                ledDots.forEach(dot => {
+                    dot.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
+                    dot.style.boxShadow = '0 0 10px rgba(255, 215, 0, 0.8)';
+                });
+            } else {
+                hueOffset += 1.5;
+                let brightRatio = brightness / 255;
+
+                // Crowd-reactive Aarti: while the chant is playing, a louder
+                // room (singing, clapping) brightens the ring - a call and
+                // response with the actual crowd, not just the recorded track.
+                if (state === "AARTI_MODE" && !aartiBuildActive && micAnalyser) {
+                    const crowdLevel = getMicLevel();
+                    if (crowdLevel !== null) {
+                        const crowdBoost = Math.min(0.4, crowdLevel * 1.5);
+                        brightRatio = Math.min(1, brightRatio + crowdBoost);
+                    }
+                }
+                
+                let activePattern = pattern;
+                let childRainbow = false;
+                const activeThemeColor = themes[selectedTheme];
+                let c1 = hexToRgb(activeThemeColor.primary);
+                let c2 = hexToRgb(activeThemeColor.secondary);
+
+                // Blessing-mood tint: nudge the palette toward the current
+                // blessing's mood wherever blessings are actually displayed.
+                // Left out of MANTRA_ACTIVE on purpose - that state stays a
+                // "pure" flowing chant color.
+                if (currentMoodColor && (state === "AMBIENT" || state === "FEET_ACTIVE")) {
+                    c1 = blendColor(c1, currentMoodColor, 0.25);
+                    c2 = blendColor(c2, currentMoodColor, 0.25);
+                }
+
+                // Audio-reactive breathing while a mantra is actually sounding.
+                let breathOverride = null;
+                if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE" || (state === "AARTI_MODE" && !aartiBuildActive)) {
+                    const energy = getMantraEnergy();
+                    if (energy !== null) breathOverride = 0.25 + energy * 0.85;
+                }
+
+                if (state === "FEET_ACTIVE") {
+                    const pitch = document.getElementById('voice-pitch-select').value;
+                    if (pitch === "child") {
+                        childRainbow = true; // Child trigger: Rainbow!
+                    } else {
+                        activePattern = 0; // Adult trigger: Peacock wave!
+                    }
+                } else if (state === "MANTRA_ACTIVE") {
+                    activePattern = 1; // Circuit Pulse
+                } else if (state === "AARTI_MODE") {
+                    activePattern = aartiBuildActive ? 2 : 1; // Golden build -> Circuit Pulse chant
+                }
+                // AMBIENT uses whichever "Default LED Pattern" the user picked,
+                // rendered in today's theme colors - that's the actual link
+                // between the two controls: pattern decides motion, theme
+                // decides the palette it's drawn in.
+
+                const sparkling = Date.now() < sparkleEndTime;
+                const sparkleProgress = sparkling ? (Date.now() - sparkleStartTime) / SPARKLE_DURATION_MS : 0;
+                const sparklePos = sparkleProgress * numLeds;
+
+                const flashing = Date.now() < feetFlashEndTime;
+                const flashAmount = flashing ? (feetFlashEndTime - Date.now()) / FEET_FLASH_DURATION_MS : 0;
+
+                ledDots.forEach((dot, i) => {
+                    let color = {r: 0, g: 0, b: 0};
+                    
+                    if (childRainbow) {
+                        color = rainbowDreamColor(i, hueOffset);
+                    } 
+                    else if (activePattern == 0) { // Peacock Wave
+                        color = peacockWaveColor(i, hueOffset, c1, c2);
+                    } 
+                    else if (activePattern == 1) { // Circuit Pulse
+                        color = circuitPulseColor(i, hueOffset, c1, c2, breathOverride);
+                    } 
+                    else if (activePattern == 2) { // Golden Aura
+                        color = goldenAuraColor(hueOffset, c1, c2);
+                    } 
+                    else if (activePattern == 3) { // Rainbow Dream
+                        color = rainbowDreamColor(i, hueOffset);
+                    }
+                    else if (activePattern == 4) { // Diya Flicker
+                        color = diyaFlickerColor(i, hueOffset);
+                    }
+
+                    // "New blessing" sparkle sweep
+                    if (sparkling) {
+                        const dist = Math.min(Math.abs(i - sparklePos), numLeds - Math.abs(i - sparklePos));
+                        if (dist < 2.2) {
+                            const sparkleAmt = (1 - dist / 2.2) * (1 - sparkleProgress);
+                            color = blendColor(color, { r: 255, g: 255, b: 255 }, sparkleAmt * 0.5);
+                            color = blendColor(color, c2, sparkleAmt * 0.3);
+                        }
+                    }
+
+                    // Feet-touch "entering the temple" flash
+                    if (flashing) {
+                        color = blendColor(color, { r: 255, g: 245, b: 220 }, flashAmount * 0.7);
+                    }
+
+                    // Apply brightness and display
+                    const r = Math.round(color.r * brightRatio);
+                    const g = Math.round(color.g * brightRatio);
+                    const b = Math.round(color.b * brightRatio);
+                    const rgbStr = `rgb(${r},${g},${b})`;
+                    dot.style.backgroundColor = rgbStr;
+                    dot.style.boxShadow = brightRatio > 0.1 ? `0 0 10px ${rgbStr}` : 'none';
+                });
+            }
+            animationFrameId = requestAnimationFrame(drawLeds);
+        }
+
+        // HSL Helper
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s == 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        // Hex to RGB
+        function hexToRgb(hex) {
+            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 242, b: 254 };
+        }
+
+        // Helpers for Base64URL encoding/decoding (bypasses IIS special character path restrictions)
+        function base64UrlEncode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        function base64UrlDecode(str) {
+            let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        }
+
+        // Personalized Blessing Formatter
+        function formatPersonalizedBlessing(name, offeringName, wishText) {
+            const offeringNames = {
+                hibiscus: "Hibiscus Flower",
+                garland: "Marigold Garland",
+                modak: "Sweet Modak",
+                coconut: "Fresh Coconut"
+            };
+            const offeringLabel = offeringNames[offeringName] || offeringName;
+            const devoteeName = name && name !== "Anonymous Devotee" ? name.trim() : "";
+
+            let blessingPart = "";
+            if (wishText && wishText.trim() !== "") {
+                blessingPart = `I bless you with ${wishText.trim()}.`;
+            } else {
+                // Select a random standard blessing
+                const pitch = document.getElementById('voice-pitch-select') ? document.getElementById('voice-pitch-select').value : 'adult';
+                const list = pitch === "child" ? childBlessings : adultBlessings;
+                const rawBlessing = list[Math.floor(Math.random() * list.length)];
+                
+                blessingPart = rawBlessing.trim();
+                if (!blessingPart.endsWith('.') && !blessingPart.endsWith('!')) {
+                    blessingPart += ".";
+                }
+            }
+            
+            if (devoteeName !== "") {
+                return `✨ ${devoteeName}: ${blessingPart} Thanks for the ${offeringLabel}. ✨`;
+            } else {
+                return `✨ Ganesha blesses you: ${blessingPart} Thanks for the ${offeringLabel}. ✨`;
+            }
+        }
+
+        // State Machine Triggers
+        let autoReturnTimer = null;
+        let feetDisplayTimer = null;
+
+        const WELCOME_BANNER = "   [WELCOME] sukh-samriddhi labho! Wishing you deep intellect, peace, and spiritual growth. khoop abhyas kar, motha ho ani nehami hasat raha! Happy coding! vidyam dadati vinayam. ungal vazhvil anaithu thadaigalum neengi vetri perattum.   ";
+
+        // Shows the welcome banner once per wake cycle, then on every later
+        // call resumes the 48-blessing loop from wherever it left off. Used by
+        // AMBIENT/MANTRA_ACTIVE entry and to resume rolling after a FEET_ACTIVE
+        // lock ends.
+        function startAmbientRoll() {
+            if (!introPlayed) {
+                introPlayed = true;
+                setOledText(WELCOME_BANNER);
+            } else {
+                const nextBlessing = combinedBlessings[currentBlessingIndex];
+                currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
+                setOledText(`   [BLESSING] ${nextBlessing}   `);
+                onNewBlessingShown(nextBlessing);
+            }
+        }
+
+        function changeState(newState, duration = 0, personalizedText = null) {
+            state = newState;
+            updateUI();
+            
+            if (autoReturnTimer) clearTimeout(autoReturnTimer);
+            if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
+            if (aartiTimer) clearTimeout(aartiTimer);
+ 
+            if (newState === "STANDBY") {
+                setOledText("");
+                stopHum();
+                // Reset so the welcome banner plays again next time the device wakes.
+                introPlayed = false;
+                aartiDoneThisWake = false;
+            } else if (newState === "TEMPLE_CLOSED") {
+                // Night mode: fully silent and dark. Nothing wakes this except
+                // an explicit touch on Mouse Back or Feet Touch - not PIR, not
+                // the Aarti idle timer.
+                setOledText("");
+                stopHum();
+                introPlayed = false;
+                aartiDoneThisWake = false;
+            } else if (newState === "AMBIENT") {
+                // In Ambient, roll the entire combined blessings loop
+                startAmbientRoll();
+                stopHum();
+                if (duration > 0) {
+                    autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
+                }
+                // If nobody touches anything for a while, offer a short Aarti -
+                // but only once per wake cycle, so the device actually settles
+                // to sleep afterward instead of looping Aarti indefinitely.
+                if (aartiTimer) clearTimeout(aartiTimer);
+                if (!aartiDoneThisWake) {
+                    aartiTimer = setTimeout(() => {
+                        if (state === "AMBIENT") triggerAartiMode();
+                    }, AARTI_IDLE_MS);
+                }
+            } else if (newState === "AARTI_MODE") {
+                blessings++;
+                aartiBuildActive = true;
+                aartiDoneThisWake = true;
+                setOledText("   \u2728 A moment of Aarti \u2728   ");
+                initAudio();
+                ensureMantraAudioGraph();
+                // No bell here - the 3-bell prelude (ringWakeBells) already
+                // rang immediately before this state was entered.
+
+                const BUILD_MS = 2500; // brief pause for LEDs to build before the chant starts
+
+                autoReturnTimer = setTimeout(() => {
+                    if (state !== "AARTI_MODE") return;
+                    aartiBuildActive = false;
+
+                    const isPhysicalESP = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'rags1816.github.io' && window.location.hostname !== '');
+                    const sendESPControl = (action) => {
+                        fetch(`/api/control?action=${action}`).catch(() => {});
+                    };
+
+                    const finishAarti = () => {
+                        if (state !== "AARTI_MODE") return;
+                        isRealMantraPlaying = false;
+                        playBellTone(250, 2.0); // same temple bell, signalling the ritual has closed
+                        if (isPhysicalESP) sendESPControl('stop');
+                        const onComplete = aartiOnComplete;
+                        aartiOnComplete = null;
+                        if (onComplete) {
+                            onComplete();
+                        } else {
+                            changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        }
+                    };
+
+                    if (isPhysicalESP) {
+                        sendESPControl('aarti');
+                        autoReturnTimer = setTimeout(finishAarti, 239000); // 3.59 mins (239s)
+                    } else {
+                        globalMantraPlayer.src = AARTI_TRACK_FILE;
+                        globalMantraPlayer.volume = volume / 30;
+                        isRealMantraPlaying = true;
+                        // We don't need to know GaneshAarti.mp3's length up front -
+                        // just wait for the browser to tell us it actually finished.
+                        globalMantraPlayer.onended = () => {
+                            globalMantraPlayer.onended = null;
+                            finishAarti();
+                        };
+                        globalMantraPlayer.play().catch((err) => {
+                            globalMantraPlayer.onended = null;
+                            isRealMantraPlaying = false;
+                            console.log(AARTI_TRACK_FILE + " failed to play, using synth:", err);
+                            synthesizeHum(220, AARTI_FALLBACK_DURATION_MS / 1000);
+                            autoReturnTimer = setTimeout(finishAarti, AARTI_FALLBACK_DURATION_MS);
+                        });
+                    }
+                }, BUILD_MS);
+            } else if (newState === "MANTRA_ACTIVE") {
+                blessings++;
+                // Keep blessings rolling during Mouse Back playback!
+                startAmbientRoll();
+                
+                // Increment immediately at start of play (matches ESP32)
+                mouseStep = (mouseStep + 1) % mantraTracks.length;
+                
+                autoReturnTimer = setTimeout(() => {
+                    changeState("AMBIENT", AMBIENT_IDLE_MS);
+                }, duration);
+            } else if (newState === "FEET_ACTIVE") {
+                blessings++;
+                feetStep = (feetStep + 1) % mantraTracks.length;
+
+                if (personalizedText) {
+                    // An offering was approved / admin-simulated - show the
+                    // personalized thank-you built from that specific submission.
+                    setOledText(personalizedText);
+                } else {
+                    // A real physical touch - show the next blessing in the
+                    // 48-message rotation, same mood-tint/sparkle/chime as Ambient.
+                    const nextBlessing = combinedBlessings[currentBlessingIndex];
+                    currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
+                    setOledText(`   [BLESSING] ${nextBlessing}   `);
+                    onNewBlessingShown(nextBlessing);
+                }
+                
+                // Lock screen on this blessing for 12 seconds, then resume rolling loop
+                feetDisplayTimer = setTimeout(() => {
+                    if (state === "FEET_ACTIVE") {
+                        startAmbientRoll();
+                    }
+                }, 12000);
+                
+                if (duration > 0) {
+                    autoReturnTimer = setTimeout(() => {
+                        const prevState = window.ganeshaPrevState || "AMBIENT";
+                        window.ganeshaPrevState = null;
+
+                        // If a mantra was interrupted mid-play by the offering,
+                        // resume the SAME track from the SAME position - not a
+                        // fresh track from the beginning.
+                        if (resumePausedTrack()) return;
+
+                        if (prevState === "STANDBY") {
+                            changeState("STANDBY");
+                        } else {
+                            // AMBIENT, or anything with nothing to resume -
+                            // settle into a normal Ambient idle.
+                            changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        }
+                    }, duration);
+                }
+            }
+        }
+ 
+        // Dropdown Events
+        function updateLanguage() {
+            selectedLang = document.getElementById('lang-select').value;
+            if (state === "AMBIENT") {
+                setOledText(languages[selectedLang].welcome);
+            }
+        }
+ 
+        function updateTheme() {
+            selectedTheme = document.getElementById('theme-select').value;
+            if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                updateUI();
+            }
+            previewLeds();
+        }
+ 
+        // Triggers
+        function triggerMantra() {
+            initAudio();
+            stopHum(); // Stop any currently playing audio / synth hum
+            ensureMantraAudioGraph();
+
+            const track = mantraTracks[mouseStep];
+            isRealMantraPlaying = true;
+
+            // Load and play immediately inside the user touch event thread
+            globalMantraPlayer.src = track.file;
+            globalMantraPlayer.volume = volume / 30;
+            globalMantraPlayer.play().then(() => {
+                console.log("Playing Mouse Loop: " + track.file);
+            }).catch((err) => {
+                isRealMantraPlaying = false;
+                console.log(track.file + " failed to play, using synth:", err);
+                synthesizeHum(220, track.duration / 1000);
+            });
+            
+            changeState("MANTRA_ACTIVE", track.duration);
+        }
+ 
+        function triggerFeetMantra() {
+            initAudio();
+            stopHum(); // Stop any currently playing audio / synth hum
+            ensureMantraAudioGraph();
+
+            // "Entering the temple" moment: ring the bell first, just like a
+            // devotee would on stepping in.
+            playBellTone(250, 1.8);
+            triggerFeetFlash();
+
+            const track = mantraTracks[feetStep];
+            isRealFeetMantraPlaying = true;
+            const BELL_LEAD_MS = 900; // let the bell ring out before the chant begins
+
+            setTimeout(() => {
+                globalMantraPlayer.src = track.file;
+                globalMantraPlayer.volume = volume / 30;
+                globalMantraPlayer.play().then(() => {
+                    console.log("Playing Feet Loop: " + track.file);
+                }).catch((err) => {
+                    isRealFeetMantraPlaying = false;
+                    console.log(track.file + " failed to play, using synth:", err);
+                    synthesizeHum(220, track.duration / 1000);
+                });
+            }, BELL_LEAD_MS);
+            
+            changeState("FEET_ACTIVE", track.duration + BELL_LEAD_MS);
+        }
+
+        // Virtual Puja & Prayer Triggers
+        let selectedOffering = "hibiscus";
+
+        function selectOffering(type) {
+            selectedOffering = type;
+            const options = ['hibiscus', 'garland', 'modak', 'coconut'];
+            options.forEach(opt => {
+                const btn = document.getElementById(`opt-${opt}`);
+                if (opt === type) {
+                    btn.classList.add('active-offering');
+                } else {
+                    btn.classList.remove('active-offering');
+                }
+            });
+        }
+
+        // --- Resume-after-offering support (issue: same song must continue) --
+        // Captures what was playing the moment an offering interrupts, BEFORE
+        // stopHum() wipes it (stopHum resets currentTime to 0), so the exact
+        // track can resume from the exact position after the 12s display.
+        let pausedTrackInfo = null;
+        function capturePausedTrack() {
+            if ((state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") &&
+                globalMantraPlayer.src && !globalMantraPlayer.paused) {
+                pausedTrackInfo = {
+                    src: globalMantraPlayer.src,
+                    time: globalMantraPlayer.currentTime,
+                    state: state
+                };
+            } else {
+                pausedTrackInfo = null;
+            }
+        }
+        function resumePausedTrack() {
+            const info = pausedTrackInfo;
+            pausedTrackInfo = null;
+            if (!info) return false;
+            if (autoReturnTimer) clearTimeout(autoReturnTimer);
+            if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
+            state = info.state;
+            updateUI();
+            startAmbientRoll(); // blessing display resumes rolling
+            if (globalMantraPlayer.src !== info.src) globalMantraPlayer.src = info.src;
+            globalMantraPlayer.volume = volume / 30;
+            if (info.state === "MANTRA_ACTIVE") isRealMantraPlaying = true;
+            else isRealFeetMantraPlaying = true;
+            globalMantraPlayer.onended = () => {
+                globalMantraPlayer.onended = null;
+                isRealMantraPlaying = false;
+                isRealFeetMantraPlaying = false;
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
+            };
+            globalMantraPlayer.play().then(() => {
+                // Seek AFTER playback starts - seeking a paused element before
+                // play() can silently reset to 0, which made the track restart
+                // from the beginning instead of continuing where it left off.
+                try { globalMantraPlayer.currentTime = info.time; } catch (e) {}
+            }).catch(() => {
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
+            });
+            return true;
+        }
+
+        function submitPuja() {
+            const nameInput = document.getElementById('puja-name-input');
+            const textInput = document.getElementById('puja-input');
+            
+            const name = nameInput.value.trim();
+            const text = textInput.value.trim();
+            
+            initAudio();
+            capturePausedTrack();
+            stopHum();
+            
+            // Ring the temple bell
+            playBellTone();
+            
+            const displayMsg = formatPersonalizedBlessing(name, selectedOffering, text);
+            
+            // Save previous state before entering feet active devotee display (only if not already in feet display)
+            if (state !== "FEET_ACTIVE") {
+                window.ganeshaPrevState = state;
+            }
+            
+            // Enter FEET_ACTIVE state to show the personalized gold text (12 seconds)
+            changeState("FEET_ACTIVE", 12000, displayMsg);
+            
+            // Clear input after submission
+            textInput.value = "";
+            nameInput.value = "";
+            
+            // Wireless broadcast to local physical ESP32 on same network
+            fetch(`/api/puja?text=${encodeURIComponent(text)}&offering=${selectedOffering}`).catch(() => {});
+        }
+
+        // Squeaky Talk-Back Output
+        function speakMouseRepeat(text) {
+            if (!text || text.trim() === "") {
+                if (pirEnabled) changeState("AMBIENT", 20000);
+                else changeState("STANDBY");
+                return;
+            }
+
+            changeState("AMBIENT", 15000);
+            setOledText(`   Mouse says: "${text}"   `);
+
+            // Use browser speech synthesis to repeat back with high pitch & rate
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Language selection for voice output
+            if (selectedLang === "ta") utterance.lang = 'ta-IN';
+            else if (selectedLang === "sa" || selectedLang === "mr") utterance.lang = 'hi-IN';
+            else utterance.lang = 'en-US';
+
+            utterance.pitch = 2.0; // SQUEAKY!
+            utterance.rate = 1.35;  // FASTER!
+            utterance.volume = volume / 30;
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function triggerStop() {
+            window.speechSynthesis.cancel();
+            pausedTrackInfo = null; // a manual stop discards any pending resume
+            if (state === "STANDBY") {
+                // Second press while already stopped: close the temple down
+                // completely (night mode) - the "exit" gesture.
+                closeTemple();
+                return;
+            }
+            changeState("STANDBY");
+        }
+
+        function triggerPIR() {
+            if (pirEnabled && state === "STANDBY") {
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
+            }
+        }
+
+        // What runs once the Aarti chant finishes - set by whichever path
+        // started the ritual (idle timeout vs. manual wake), defaults to
+        // settling into a normal ready Ambient state if nothing set it.
+        let aartiOnComplete = null;
+
+        // Shared "temple wakes up" ritual: 3 quick bells, then the full Aarti.
+        function ringWakeBells(remaining) {
+            if (remaining <= 0) {
+                changeState("AARTI_MODE");
+                return;
+            }
+            playBellTone(250, 1.0);
+            setTimeout(() => ringWakeBells(remaining - 1), 900);
+        }
+
+        // Idle timeout (nobody around for a while while Ambient): 3 bells,
+        // Aarti, then close the temple down for the night - the Aarti mode
+        // itself is what triggers closing afterward.
+        function triggerAartiMode() {
+            if (state !== "AMBIENT") return;
+            aartiOnComplete = () => changeState("TEMPLE_CLOSED");
+            ringWakeBells(3);
+        }
+
+        // --- Temple Closed (Night Mode) --------------------------------
+        function evaluateCloseHold() {
+            if (mouseDownAt && feetDownAt && !closeHoldTimer && !closeHoldTriggered && state !== "TEMPLE_CLOSED") {
+                closeHoldMessageShown = true;
+                setOledText("   Hold both to close the temple for the night...   ");
+                closeHoldTimer = setTimeout(() => {
+                    closeHoldTriggered = true;
+                    closeHoldTimer = null;
+                    closeTemple();
+                }, CLOSE_HOLD_MS);
+            }
+        }
+        function cancelCloseHold() {
+            if (closeHoldTimer) { clearTimeout(closeHoldTimer); closeHoldTimer = null; }
+        }
+        function finalizePadRelease() {
+            if (mouseDownAt || feetDownAt) return;
+            if (closeHoldMessageShown && !closeHoldTriggered) {
+                closeHoldMessageShown = false;
+                if (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE") {
+                    startAmbientRoll();
+                }
+            }
+            closeHoldTriggered = false;
+        }
+
+        function closeTemple() {
+            initAudio();
+            playBellTone(250, 2.5); // closing bell
+            changeState("TEMPLE_CLOSED");
+        }
+        // Manual wake (temple was closed, someone touched a pad): same 3
+        // bells + Aarti ritual as the idle trigger, but settles into a
+        // normal ready Ambient state afterward instead of closing again.
+        function openTemple() {
+            if (state !== "TEMPLE_CLOSED") return;
+            initAudio();
+            aartiOnComplete = null; // default behavior: settle to Ambient/ready
+            ringWakeBells(3);
+        }
+
+        function onMousePadDown() {
+            mouseDownAt = Date.now();
+            evaluateCloseHold();
+        }
+        function onMousePadUp() {
+            const wasDown = mouseDownAt !== 0;
+            const held = mouseDownAt ? Date.now() - mouseDownAt : 0;
+            mouseDownAt = 0;
+            cancelCloseHold();
+            if (!closeHoldTriggered) {
+                if (state === "TEMPLE_CLOSED") {
+                    openTemple();
+                } else if (wasDown && held < CLOSE_HOLD_MS) {
+                    triggerMantra();
+                }
+            }
+            finalizePadRelease();
+        }
+        function onMousePadCancel() {
+            mouseDownAt = 0;
+            cancelCloseHold();
+            finalizePadRelease();
+        }
+
+        function onFeetPadDown() {
+            feetDownAt = Date.now();
+            evaluateCloseHold();
+        }
+        function onFeetPadUp() {
+            const wasDown = feetDownAt !== 0;
+            const held = feetDownAt ? Date.now() - feetDownAt : 0;
+            feetDownAt = 0;
+            cancelCloseHold();
+            if (!closeHoldTriggered) {
+                if (state === "TEMPLE_CLOSED") {
+                    openTemple();
+                } else if (wasDown && held < CLOSE_HOLD_MS) {
+                    triggerFeetMantra();
+                }
+            }
+            finalizePadRelease();
+        }
+        function onFeetPadCancel() {
+            feetDownAt = 0;
+            cancelCloseHold();
+            finalizePadRelease();
+        }
+
+        function updateBrightness() {
+            brightness = document.getElementById('bright-slider').value;
+            updateUI();
+            previewLeds();
+        }
+
+        function updatePattern() {
+            pattern = document.getElementById('pattern-select').value;
+            previewLeds();
+        }
+
+        let lastVolumeBlip = 0;
+        function updateVolume() {
+            volume = document.getElementById('vol-slider').value;
+            updateUI();
+
+            const volRatio = volume / 30;
+
+            // Apply live to whatever's actually playing right now - previously
+            // volume was only read once at the moment a mantra started.
+            if (isRealMantraPlaying || isRealFeetMantraPlaying) {
+                globalMantraPlayer.volume = volRatio;
+            }
+            if (soundSourceAmp && audioCtx) {
+                soundSourceAmp.gain.cancelScheduledValues(audioCtx.currentTime);
+                soundSourceAmp.gain.setValueAtTime(0.12 * volRatio, audioCtx.currentTime);
+            }
+
+            // Audible preview blip so volume changes are noticeable even when
+            // nothing is currently playing. Isolated oscillator/gain so it can
+            // never collide with an active mantra hum. Debounced so dragging
+            // doesn't stack up overlapping tones.
+            const now = Date.now();
+            if (now - lastVolumeBlip > 150) {
+                lastVolumeBlip = now;
+                initAudio();
+                if (audioCtx && volume > 0) {
+                    const t = audioCtx.currentTime;
+                    const blipOsc = audioCtx.createOscillator();
+                    const blipGain = audioCtx.createGain();
+                    blipOsc.type = "sine";
+                    blipOsc.frequency.setValueAtTime(440, t);
+                    blipGain.gain.setValueAtTime(0.15 * volRatio, t);
+                    blipGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+                    blipOsc.connect(blipGain);
+                    blipGain.connect(audioCtx.destination);
+                    blipOsc.start(t);
+                    blipOsc.stop(t + 0.13);
+                }
+            }
+        }
+
+        // Toggle functions
+        function togglePIR() {
+            pirEnabled = document.getElementById('pir-toggle').checked;
+        }
+
+        // Priest Queue Logic
+        let lastQueueCount = -1; // Track queue count for audio notifications
+
+        function renderQueue() {
+            const queueList = document.getElementById('queue-list');
+            const queueStatus = document.getElementById('queue-status');
+            
+            // Read from local storage (for single-tab offline/local testing)
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            
+            // Fetch from online relay to sync mobile phone submissions
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
+            
+            fetch(readUrl)
+                .then(res => res.json())
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try {
+                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
+                        } catch (e) {
+                            console.warn("Error decoding online queue, resetting:", e);
+                        }
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    
+                    // Deduplicate items based on ID
+                    const mergedQueue = [...onlineQueue];
+                    localQueue.forEach(l => {
+                        if (!mergedQueue.some(o => o.id === l.id)) {
+                            mergedQueue.push(l);
+                        }
+                    });
+                    
+                    // 🔔 Audio Notification: Play Ganesha's bell tone if a new item arrives in queue
+                    if (mergedQueue.length > lastQueueCount) {
+                        if (lastQueueCount !== -1) { // Avoid ringing on initial page load
+                            playBellTone();
+                        }
+                    }
+                    lastQueueCount = mergedQueue.length;
+                    
+                    queueList.innerHTML = '';
+                    
+                    if (mergedQueue.length === 0) {
+                        queueStatus.innerText = 'No pending offerings.';
+                        return;
+                    }
+                    
+                    queueStatus.innerText = `${mergedQueue.length} pending offering(s) in queue:`;
+                    
+                    mergedQueue.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'queue-item';
+                        
+                        const emojiMap = {
+                            hibiscus: '🌺 Flower',
+                            garland: '🌼 Garland',
+                            modak: '🥟 Modak',
+                            coconut: '🥥 Coconut'
+                        };
+                        const offeringLabel = emojiMap[item.offering] || item.offering;
+                        const devoteeName = item.name || "Anonymous Devotee";
+                        
+                        itemDiv.innerHTML = `
+                            <div class="queue-item-header">
+                                <span>${offeringLabel}</span>
+                                <span class="queue-item-time">${item.timestamp}</span>
+                            </div>
+                            <div style="font-size: 8px; color: var(--accent-teal); font-weight: bold; text-align: left; margin: 2px 0;">From: ${devoteeName}</div>
+                            <div class="queue-item-text">
+                                ${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}
+                            </div>
+                            <div class="queue-item-actions">
+                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
+                            </div>
+                        `;
+                        queueList.appendChild(itemDiv);
+                    });
+                })
+                .catch(err => {
+                    console.warn("Relay fetch failed, rendering local cache:", err);
+                    // Fallback to local storage rendering
+                    queueList.innerHTML = '';
+                    if (localQueue.length === 0) {
+                        queueStatus.innerText = 'No pending offerings.';
+                        return;
+                    }
+                    queueStatus.innerText = `${localQueue.length} pending (offline):`;
+                    localQueue.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'queue-item';
+                        const emojiMap = { hibiscus: '🌺 Flower', garland: '🌼 Garland', modak: '🥟 Modak', coconut: '🥥 Coconut' };
+                        const offeringLabel = emojiMap[item.offering] || item.offering;
+                        const devoteeName = item.name || "Anonymous Devotee";
+                        itemDiv.innerHTML = `
+                            <div class="queue-item-header">
+                                <span>${offeringLabel}</span>
+                                <span class="queue-item-time">${item.timestamp}</span>
+                            </div>
+                            <div style="font-size: 8px; color: var(--accent-teal); font-weight: bold; text-align: left; margin: 2px 0;">From: ${devoteeName}</div>
+                            <div class="queue-item-text">${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}</div>
+                            <div class="queue-item-actions">
+                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
+                            </div>
+                        `;
+                        queueList.appendChild(itemDiv);
+                    });
+                });
+        }
+
+        function approveQueueItem(id) {
+            // Act locally FIRST and immediately - a priest tapping Approve
+            // should always work even if the network relay is slow,
+            // unreachable, or down. Network sync happens afterward, best-effort.
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            const indexLocal = localQueue.findIndex(item => item.id === id);
+            const item = indexLocal !== -1 ? localQueue[indexLocal] : null;
+            if (indexLocal !== -1) localQueue.splice(indexLocal, 1);
+            localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+            localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+
+            if (item) {
+                initAudio();
+                capturePausedTrack();
+                stopHum();
+                playBellTone(); // Ring the temple bell tone
+                const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
+                if (state !== "FEET_ACTIVE") {
+                    window.ganeshaPrevState = state;
+                }
+                changeState("FEET_ACTIVE", 12000, displayMsg);
+            }
+            renderQueue();
+
+            // Best-effort background sync so other devices see the removal too.
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
+            fetch(readUrl)
+                .then(res => res.json())
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
+                    if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
+                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    return fetch(writeUrl, { method: 'POST' });
+                })
+                .then(() => renderQueue())
+                .catch(err => console.warn("Background relay sync failed for approve (item still removed locally):", err));
+        }
+
+        function rejectQueueItem(id) {
+            // Same local-first pattern as approve.
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            const indexLocal = localQueue.findIndex(item => item.id === id);
+            if (indexLocal !== -1) localQueue.splice(indexLocal, 1);
+            localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+            localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+            renderQueue();
+
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
+            fetch(readUrl)
+                .then(res => res.json())
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
+                    if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
+                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    return fetch(writeUrl, { method: 'POST' });
+                })
+                .then(() => renderQueue())
+                .catch(err => console.warn("Background relay sync failed for reject (item still removed locally):", err));
+        }
+
+        function clearAllQueue() {
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
+            localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+            renderQueue();
+
+            const encodedVal = base64UrlEncode(JSON.stringify([]));
+            const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+            fetch(writeUrl, { method: 'POST' })
+                .then(() => renderQueue())
+                .catch(err => console.warn("Background relay sync failed for clear (queue still cleared locally):", err));
+        }
+
+        // Listen to storage events to keep tabs synced in real-time
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'ganesha_puja_queue' || e.key === 'ganesha_puja_queue_trigger') {
+                renderQueue();
+            }
+        });
+
+        // Start animation loop
+        drawLeds();
+        // Render initial queue list
+        renderQueue();
+        // Poll online database queue every 4 seconds
+        setInterval(renderQueue, 4000);
+        // Start in Standby
+        changeState("STANDBY");
+    </script>
+</body>
+</html>
+
+)rawliteral";
+
+#endif
