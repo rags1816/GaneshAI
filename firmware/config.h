@@ -43,7 +43,7 @@
 #define WIFI_PASSWORD    "c7kQrnnrdqnf" 
 
 // Timing (in milliseconds)
-#define AMBIENT_TIMEOUT  60000  // Return to standby after 60s of no motion
+#define AMBIENT_TIMEOUT  60000  // AMBIENT idle time before auto-triggering the closing Aarti (matches web dashboard's AARTI_IDLE_MS)
 #define MOTION_DEBOUNCE  3000   // Prevent rapid PIR re-triggers
 #define TOUCH_DEBOUNCE   2000   // Prevent double-clicks on touch pads
 #define TEXT_SCROLL_SPD  80     // OLED text horizontal scrolling speed (ms)
@@ -58,11 +58,14 @@
 
 // State machine definitions
 enum SystemState {
-  STATE_STANDBY,        // Everything idle (OLED & LEDs off)
+  STATE_STANDBY,        // Everything idle (OLED & LEDs off), PIR wakes this
   STATE_AMBIENT,        // Woken up by PIR motion (peacock breathe, "Welcome")
   STATE_MANTRA_ACTIVE,  // Mouse Back touched: Plays 30-sec mantra
   STATE_FEET_ACTIVE,    // Feet touched: Plays alternating Ganeshmantra1 / Ganeshmantra2 (30s)
-  STATE_AARTI           // Idle-triggered Aarti chant (web dashboard's AARTI_MODE)
+  STATE_AARTI,          // Idle-triggered or manually-closed Aarti chant
+  STATE_TEMPLE_CLOSED   // Night mode after Aarti closes the temple - OLED/LEDs off like
+                         // STANDBY, but deliberately only a touch (feet/mouse-back) wakes
+                         // it, not PIR - matches the web dashboard's TEMPLE_CLOSED design.
 };
 
 // DFPlayer Mini SD card layout: all tracks live in a folder literally named

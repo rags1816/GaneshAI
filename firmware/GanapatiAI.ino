@@ -59,6 +59,12 @@ bool motionDetected = false;
 bool feetTouched = false;
 bool backTouched = false;
 
+// Set right before an Aarti chant that should end in STATE_TEMPLE_CLOSED
+// (idle timeout, or an explicit close request) rather than returning to
+// STATE_AMBIENT (an Aarti triggered directly via /api/control?action=aarti
+// with no close intent).
+bool aartiThenClose = false;
+
 // Track Struct Definition
 struct MantraTrack {
   int dfTrack;
@@ -199,6 +205,8 @@ void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
 void triggerAarti();
+void triggerAartiThenClose();
+void openTempleFromClosed();
 void stopAudioAndStandby();
 
 // ==========================================
@@ -436,6 +444,7 @@ void handleWebRoutes() {
       case STATE_MANTRA_ACTIVE: stateStr = "MANTRA_ACTIVE"; break;
       case STATE_FEET_ACTIVE: stateStr = "FEET_ACTIVE"; break;
       case STATE_AARTI: stateStr = "AARTI_MODE"; break;
+      case STATE_TEMPLE_CLOSED: stateStr = "TEMPLE_CLOSED"; break;
       default: stateStr = "STANDBY"; break;
     }
 
@@ -455,6 +464,10 @@ void handleWebRoutes() {
       triggerFeetMantra();
     } else if (action == "aarti") {
       triggerAarti();
+    } else if (action == "close") {
+      triggerAartiThenClose();
+    } else if (action == "open") {
+      openTempleFromClosed();
     } else if (action == "stop") {
       stopAudioAndStandby();
     }
@@ -528,7 +541,10 @@ void handleWebRoutes() {
 void checkSensors() {
   unsigned long now = millis();
 
-  if (pirEnabled && currentState == STATE_STANDBY) {
+  // Read in both STANDBY (wakes it) and AMBIENT (resets the idle timer so
+  // continued presence delays the auto-close Aarti) - previously only read
+  // during STANDBY, which left AMBIENT's "someone's still here" branch dead.
+  if (pirEnabled && (currentState == STATE_STANDBY || currentState == STATE_AMBIENT)) {
     int pirState = digitalRead(PIR_PIN);
     if (pirState == HIGH && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
       motionDetected = true;
@@ -573,7 +589,7 @@ void updateStateMachine() {
         triggerFeetMantra();
       } else if (motionDetected) {
         motionDetected = false;
-        setSystemState(STATE_AMBIENT, 30000); 
+        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
       break;
 
@@ -586,11 +602,13 @@ void updateStateMachine() {
         triggerFeetMantra();
       } else if (motionDetected) {
         motionDetected = false;
-        stateTimer = now; 
+        stateTimer = now;
       }
-      
+
       if (now - stateTimer > stateDuration) {
-        setSystemState(STATE_STANDBY);
+        // Nobody around for AMBIENT_TIMEOUT - close the temple for the
+        // night with the Aarti chant first, same as a manual close.
+        triggerAartiThenClose();
       }
       break;
 
@@ -604,10 +622,10 @@ void updateStateMachine() {
         triggerFeetMantra();
         return;
       }
-      
+
       if (now - stateTimer > stateDuration) {
         myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, 30000); 
+        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
       break;
 
@@ -624,24 +642,44 @@ void updateStateMachine() {
 
       if (now - stateTimer > stateDuration) {
         myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, 30000);
+        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
       break;
 
     case STATE_AARTI:
       if (backTouched) {
         backTouched = false;
+        aartiThenClose = false;
         triggerMantra();
         return;
       } else if (feetTouched) {
         feetTouched = false;
+        aartiThenClose = false;
         triggerFeetMantra();
         return;
       }
 
       if (now - stateTimer > stateDuration) {
         myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, 30000);
+        if (aartiThenClose) {
+          aartiThenClose = false;
+          setSystemState(STATE_TEMPLE_CLOSED);
+        } else {
+          setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+        }
+      }
+      break;
+
+    case STATE_TEMPLE_CLOSED:
+      // Deliberately only a touch wakes the closed temple - not PIR
+      // (motionDetected is ignored here on purpose, matching the web
+      // dashboard's TEMPLE_CLOSED design).
+      if (backTouched) {
+        backTouched = false;
+        triggerMantra();
+      } else if (feetTouched) {
+        feetTouched = false;
+        triggerFeetMantra();
       }
       break;
   }
@@ -658,11 +696,11 @@ void setSystemState(SystemState newState, unsigned long duration) {
   stateDuration = duration;
   scrollX = 128;
 
-  if (newState == STATE_STANDBY) {
+  if (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED) {
     feetDisplayLocked = false;
     FastLED.clear();
     FastLED.show();
-    u8g2.setPowerSave(1); 
+    u8g2.setPowerSave(1);
   } else {
     u8g2.setPowerSave(0); 
     if (newState == STATE_AMBIENT) {
@@ -729,10 +767,10 @@ void triggerFeetMantra() {
 }
 
 void triggerAarti() {
-  // Fired by the web dashboard's idle-triggered Aarti ritual
-  // (see /api/control?action=aarti in web_dashboard.h). The dashboard runs
-  // its own ~4-minute timer independently, so this only needs to actually
-  // start the physical chant and reflect AARTI_MODE back via /api/state.
+  // Fired autonomously by AMBIENT_TIMEOUT idle above, by the /api/control
+  // ?action=close route, or directly via ?action=aarti (dashboard button or
+  // manual test) - in every case this just needs to start the physical
+  // chant and reflect AARTI_MODE back via /api/state.
   myDFPlayer.stop();
   delay(50);
 
@@ -741,6 +779,23 @@ void triggerAarti() {
 
   setSystemState(STATE_AARTI, AARTI_DURATION);
   myDFPlayer.playMp3Folder(AARTI_TRACK);
+}
+
+// Aarti that ends in STATE_TEMPLE_CLOSED once it finishes, instead of
+// returning to STATE_AMBIENT - the idle-timeout auto-close and the
+// dashboard's manual "Close Temple" button both go through this.
+void triggerAartiThenClose() {
+  aartiThenClose = true;
+  triggerAarti();
+}
+
+// Manually reopen after STATE_TEMPLE_CLOSED (dashboard's "Open Temple"
+// button) - a touch already does this on its own, this just lets it be
+// triggered remotely too.
+void openTempleFromClosed() {
+  if (currentState == STATE_TEMPLE_CLOSED) {
+    setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+  }
 }
 
 void stopAudioAndStandby() {
@@ -756,7 +811,7 @@ void stopAudioAndStandby() {
 // looks the same on the physical ring as it does in the browser simulation:
 //   0 Peacock Wave, 1 Circuit Pulse, 2 Golden Aura, 3 Rainbow Dream, 4 Diya Flicker
 void animateLeds() {
-  if (currentState == STATE_STANDBY) {
+  if (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();
     return;
@@ -839,7 +894,7 @@ void animateLeds() {
 // OLED Text Drawing & Scrolling (U8g2)
 // ==========================================
 void drawOLED() {
-  if (currentState == STATE_STANDBY) return;
+  if (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) return;
 
   unsigned long now = millis();
   static unsigned long lastOledDraw = 0;

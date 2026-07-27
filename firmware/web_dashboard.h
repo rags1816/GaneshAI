@@ -812,7 +812,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
         </details>
 
-        <details class="collapsible-section">
+        <details class="collapsible-section" open>
         <summary class="section-title">System Settings</summary>
         <div class="toggle-container">
             <span style="font-size: 12px; color: #a8b2d1;">PIR Motion Detector</span>
@@ -1917,8 +1917,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 // If nobody touches anything for a while, offer a short Aarti -
                 // but only once per wake cycle, so the device actually settles
                 // to sleep afterward instead of looping Aarti indefinitely.
+                // On a physical device this stays firmware-owned (its own
+                // AMBIENT_TIMEOUT drives the same idle-close autonomously,
+                // so the temple still closes even with no browser open) -
+                // only arm this local timer for the standalone simulator.
                 if (aartiTimer) clearTimeout(aartiTimer);
-                if (!aartiDoneThisWake) {
+                if (!aartiDoneThisWake && !isPhysicalESP) {
                     aartiTimer = setTimeout(() => {
                         if (state === "AMBIENT") triggerAartiMode();
                     }, AARTI_IDLE_MS);
@@ -1955,7 +1959,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
                     startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
                     if (isPhysicalESP) {
-                        sendESPControl('aarti');
+                        // aartiOnComplete is set by closeTemple()/triggerAartiMode()
+                        // (both intend to close afterward) and cleared by
+                        // openTemple() (wakes into Ambient instead) - mirror
+                        // that same intent to the firmware's own state machine.
+                        sendESPControl(aartiOnComplete ? 'close' : 'aarti');
                         autoReturnTimer = setTimeout(finishAarti, 239000); // 3.59 mins (239s)
                     } else {
                         globalMantraPlayer.src = AARTI_TRACK_FILE;
