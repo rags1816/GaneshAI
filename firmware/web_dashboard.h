@@ -2687,6 +2687,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // track is playing.
         function pollDeviceState() {
             fetch('/api/state').then(r => r.json()).then(data => {
+                const prevState = state;
+                const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "AARTI_MODE");
+                const nowIdle = (data.state === "STANDBY" || data.state === "AMBIENT" || data.state === "TEMPLE_CLOSED");
+
                 state = data.state;
                 blessings = data.blessings;
                 brightness = data.brightness;
@@ -2708,6 +2712,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 if (pirToggle) pirToggle.checked = pirEnabled;
                 if (langSelect) langSelect.value = selectedLang;
                 if (themeSelect) themeSelect.value = selectedTheme;
+
+                // The real device already left playback on its own (its
+                // onboard AMBIENT timeout is 30s, well ahead of this
+                // browser's 120s local timer) - stop any locally-playing
+                // audio/timers left over from when this browser initiated
+                // that same trigger, so the dashboard doesn't keep humming
+                // or showing "now playing" after the device moved on.
+                if (wasActive && nowIdle) {
+                    if (autoReturnTimer) clearTimeout(autoReturnTimer);
+                    if (feetDisplayTimer) clearTimeout(feetDisplayTimer);
+                    if (aartiTimer) clearTimeout(aartiTimer);
+                    stopHum();
+                    stopNowPlaying();
+                }
 
                 updateUI();
             }).catch(() => {});
