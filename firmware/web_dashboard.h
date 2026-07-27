@@ -2329,9 +2329,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
 
         function closeTemple() {
+            if (state === "TEMPLE_CLOSED") return;
             initAudio();
-            playBellTone(250, 2.5); // closing bell
-            changeState("TEMPLE_CLOSED");
+            // Closing the temple - manually or automatically - always plays
+            // the Aarti chant first (3 bells, then GaneshAarti.mp3), then
+            // settles into TEMPLE_CLOSED once it finishes.
+            aartiOnComplete = () => changeState("TEMPLE_CLOSED");
+            ringWakeBells(3);
         }
         // Manual wake (temple was closed, someone touched a pad): same 3
         // bells + Aarti ritual as the idle trigger, but settles into a
