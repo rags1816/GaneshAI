@@ -68,7 +68,7 @@ struct MantraTrack {
 // 14 Devotional Tracks mapping
 const int NUM_TRACKS = 14;
 MantraTrack mantraTracks[NUM_TRACKS] = {
-  {1, 24000},  // Ganapathimantrai.mp3 (Vakratundaya - 24s)
+  {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
   {4, 27360},  // Ganapathimantra2.mp3 (27s)
   {5, 55350},  // Ganeshmantra3.mp3 (55s)

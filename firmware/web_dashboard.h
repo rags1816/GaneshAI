@@ -268,6 +268,28 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        .collapsible-section {
+            margin-bottom: 4px;
+        }
+        .collapsible-section > summary.section-title {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+        .collapsible-section > summary.section-title::-webkit-details-marker {
+            display: none;
+        }
+        .collapsible-section > summary.section-title::after {
+            content: "\25BE"; /* ▾ */
+            font-size: 10px;
+            transition: transform 0.15s ease;
+        }
+        .collapsible-section[open] > summary.section-title::after {
+            transform: rotate(180deg);
+        }
 
         .btn-group {
             display: grid;
@@ -620,6 +642,25 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             </div>
         </div>
 
+        <div class="section-title">🎵 Now Playing</div>
+        <div id="now-playing-panel" style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 10px; border: 1px solid var(--border-color); margin-bottom: 12px;">
+            <div id="now-playing-track" style="font-size: 12px; color: #fff; margin-bottom: 6px;">Nothing playing</div>
+            <div style="background: rgba(255,255,255,0.08); border-radius: 6px; height: 6px; overflow: hidden; margin-bottom: 4px;">
+                <div id="now-playing-bar" style="background: linear-gradient(90deg, var(--accent-teal), #ffd700); height: 100%; width: 0%; transition: width 0.4s linear;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #8892b0;">
+                <span id="now-playing-elapsed">0:00</span>
+                <span id="now-playing-total">0:00</span>
+            </div>
+        </div>
+
+        <details class="collapsible-section">
+        <summary class="section-title">📜 Song Library</summary>
+        <div id="song-library-list" style="max-height: 220px; overflow-y: auto; background: rgba(2,12,27,0.3); border-radius: 10px; padding: 6px; border: 1px solid var(--border-color); margin-bottom: 12px;">
+            <!-- populated by renderSongLibrary() -->
+        </div>
+        </details>
+
         <!-- Advanced Pitch Simulator Config -->
         <div style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 8px; margin-bottom: 12px; border: 1px dashed var(--border-color);">
             <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">AI MIC SETTINGS (SIMULATION)</div>
@@ -677,11 +718,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <button class="btn-action" style="flex: 1;" onclick="openTemple()">🌅 Open Temple</button>
         </div>
 
-        <div class="section-title">🌸 Virtual Puja & Prayers</div>
+        <details class="collapsible-section">
+        <summary class="section-title">🌸 Virtual Puja & Prayers</summary>
         <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
             <input type="text" id="puja-name-input" class="select-input" placeholder="Devotee Name (Optional)..." style="font-size: 11px; padding: 6px; margin-bottom: 6px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
             <input type="text" id="puja-input" class="select-input" placeholder="Type a prayer or wish here..." style="font-size: 11px; padding: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.4); border-color: rgba(255, 215, 0, 0.2); width: 100%; box-sizing: border-box; border-radius: 6px; color: #fff;">
-            
+
             <div style="font-size: 8px; text-transform: uppercase; color: #8892b0; margin-bottom: 4px;">Choose an offering:</div>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;">
                 <button id="opt-hibiscus" class="offering-btn active-offering" onclick="selectOffering('hibiscus')">
@@ -701,13 +743,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     <span style="font-size: 7px; font-weight: normal; color: #a8b2d1;">Coconut</span>
                 </button>
             </div>
-            
+
             <button class="btn-action" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #ffd700, #ffa500); color: #050d1a; font-weight: bold; border-color: #ffd700; border-radius: 8px; display: flex; flex-direction: row; gap: 4px; align-items: center; justify-content: center; height: auto;" onclick="submitPuja()">
                 <span>✨ Offer Prasad & Send Prayer ✨</span>
             </button>
         </div>
+        </details>
 
-        <div class="section-title">🕌 Priest Queue</div>
+        <details class="collapsible-section">
+        <summary class="section-title">🕌 Priest Queue</summary>
         <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 0 10px rgba(255, 215, 0, 0.05);">
             <div id="queue-status" style="font-size: 10px; color: var(--text-muted); margin-bottom: 8px; text-align: left;">No pending offerings.</div>
             <div id="queue-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 8px;">
@@ -719,8 +763,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 </button>
             </div>
         </div>
+        </details>
 
-        <div class="section-title">Theme of the Day</div>
+        <details class="collapsible-section">
+        <summary class="section-title">Theme of the Day</summary>
         <div style="margin-bottom: 12px;">
             <select id="theme-select" class="select-input" onchange="updateTheme()">
                 <option value="tue">Tuesday: Ganesha Theme (Maroon & Gold)</option>
@@ -732,8 +778,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 <option value="sun">Sunday: Sun Theme (Ruby Red & Gold)</option>
             </select>
         </div>
+        </details>
 
-        <div class="section-title">LED Customization</div>
+        <details class="collapsible-section">
+        <summary class="section-title">LED Customization</summary>
         <div class="slider-container">
             <div class="slider-label">
                 <span>Brightness</span>
@@ -751,8 +799,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 <option value="4">Diya Flicker (Warm)</option>
             </select>
         </div>
+        </details>
 
-        <div class="section-title">Audio Settings</div>
+        <details class="collapsible-section">
+        <summary class="section-title">Audio Settings</summary>
         <div class="slider-container" style="margin-bottom: 12px;">
             <div class="slider-label">
                 <span>Volume</span>
@@ -760,8 +810,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             </div>
             <input type="range" id="vol-slider" class="slider" min="0" max="30" value="15" oninput="updateVolume()">
         </div>
+        </details>
 
-        <div class="section-title">System Settings</div>
+        <details class="collapsible-section">
+        <summary class="section-title">System Settings</summary>
         <div class="toggle-container">
             <span style="font-size: 12px; color: #a8b2d1;">PIR Motion Detector</span>
             <label class="switch">
@@ -769,11 +821,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 <span class="slider-toggle"></span>
             </label>
         </div>
-        
+
         <div class="toggle-container" style="margin-bottom: 5px;">
             <span style="font-size: 12px; color: #a8b2d1;">Simulate PIR Detection</span>
             <button style="padding: 2px 6px; font-size: 9px;" onclick="triggerPIR()">Trigger PIR</button>
         </div>
+        </details>
 
         <footer>
             Lord of Wisdom &bull; 2026 Theme
@@ -816,6 +869,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // generous enough for the blessings loop to actually roll through
         // multiple entries of the 48-blessing list.
         const AMBIENT_IDLE_MS = 120000;
+        // Fallback-only cushion added on top of a track's known duration when
+        // arming the MANTRA_ACTIVE/FEET_ACTIVE safety-net timer, so a slow
+        // network/buffering start doesn't cause the timer to cut audio off
+        // before the real onended event has a chance to fire first.
+        const ADVANCE_SAFETY_MARGIN_MS = 8000;
         // Tracks whether the welcome banner has already played for the
         // current "wake" cycle - it should only show once per STANDBY->AMBIENT
         // wake, not on every AMBIENT/MANTRA_ACTIVE/FEET_ACTIVE transition in
@@ -1097,7 +1155,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         let currentBlessingIndex = 0;
 
         const mantraTracks = [
-            { file: "Ganapathimantrai.mp3", duration: 24000, dfTrack: 1 },
+            { file: "Ganapathimantrai.mp3", duration: 19121, dfTrack: 1 },
             { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
             { file: "Ganapathimantra2.mp3", duration: 27360, dfTrack: 4 },
             { file: "Ganeshmantra3.mp3", duration: 55350, dfTrack: 5 },
@@ -1113,9 +1171,78 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
         ];
 
-        let mouseStep = 0; 
-        let feetStep = 0;  
+        let mouseStep = 0;
+        let feetStep = 0;
         const globalMantraPlayer = new Audio();
+
+        // --- Now Playing / Song Library (item 3) ---
+        let nowPlayingFile = null;
+        let nowPlayingDurationMs = 0;
+        let nowPlayingStartTs = 0;
+
+        function formatTime(ms) {
+            const totalSec = Math.max(0, Math.round(ms / 1000));
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            return m + ":" + String(s).padStart(2, '0');
+        }
+
+        function startNowPlaying(file, durationMs) {
+            nowPlayingFile = file;
+            nowPlayingDurationMs = durationMs;
+            nowPlayingStartTs = Date.now();
+        }
+
+        function stopNowPlaying() {
+            nowPlayingFile = null;
+        }
+
+        function updateNowPlayingDisplay() {
+            const trackEl = document.getElementById('now-playing-track');
+            const barEl = document.getElementById('now-playing-bar');
+            const elapsedEl = document.getElementById('now-playing-elapsed');
+            const totalEl = document.getElementById('now-playing-total');
+            if (!trackEl) return;
+
+            const isActive = nowPlayingFile && (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE" || state === "AARTI_MODE");
+            if (!isActive) {
+                trackEl.innerText = "Nothing playing";
+                barEl.style.width = "0%";
+                elapsedEl.innerText = "0:00";
+                totalEl.innerText = "0:00";
+                highlightSongLibraryRow(null);
+                return;
+            }
+
+            const elapsedMs = Date.now() - nowPlayingStartTs;
+            const pct = nowPlayingDurationMs > 0 ? Math.min(100, (elapsedMs / nowPlayingDurationMs) * 100) : 0;
+            trackEl.innerText = nowPlayingFile.replace(/\.mp3$/i, '');
+            barEl.style.width = pct + "%";
+            elapsedEl.innerText = formatTime(elapsedMs);
+            totalEl.innerText = formatTime(nowPlayingDurationMs);
+            highlightSongLibraryRow(nowPlayingFile);
+        }
+        setInterval(updateNowPlayingDisplay, 500);
+
+        function highlightSongLibraryRow(file) {
+            const rows = document.querySelectorAll('#song-library-list .song-row');
+            rows.forEach(row => {
+                row.style.color = (file && row.dataset.file === file) ? '#ffd700' : '';
+                row.style.fontWeight = (file && row.dataset.file === file) ? 'bold' : 'normal';
+            });
+        }
+
+        function renderSongLibrary() {
+            const container = document.getElementById('song-library-list');
+            if (!container) return;
+            const allTracks = mantraTracks.concat([{ file: AARTI_TRACK_FILE, duration: AARTI_FALLBACK_DURATION_MS }]);
+            container.innerHTML = allTracks.map(t => `
+                <div class="song-row" data-file="${t.file}" style="display: flex; justify-content: space-between; padding: 4px 6px; font-size: 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span>${t.file.replace(/\.mp3$/i, '')}</span>
+                    <span style="color: #8892b0;">${formatTime(t.duration)}</span>
+                </div>
+            `).join('');
+        }
 
         // Audio-reactive breathing setup: both the real mp3 (globalMantraPlayer)
         // and the synthesized fallback hum route through this shared bus, so
@@ -1766,6 +1893,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             if (newState === "STANDBY") {
                 setOledText("");
                 stopHum();
+                stopNowPlaying();
                 // Reset so the welcome banner plays again next time the device wakes.
                 introPlayed = false;
                 aartiDoneThisWake = false;
@@ -1775,12 +1903,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 // the Aarti idle timer.
                 setOledText("");
                 stopHum();
+                stopNowPlaying();
                 introPlayed = false;
                 aartiDoneThisWake = false;
             } else if (newState === "AMBIENT") {
                 // In Ambient, roll the entire combined blessings loop
                 startAmbientRoll();
                 stopHum();
+                stopNowPlaying();
                 if (duration > 0) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
                 }
@@ -1823,6 +1953,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         }
                     };
 
+                    startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
                     if (isPhysicalESP) {
                         sendESPControl('aarti');
                         autoReturnTimer = setTimeout(finishAarti, 239000); // 3.59 mins (239s)
@@ -1849,13 +1980,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 blessings++;
                 // Keep blessings rolling during Mouse Back playback!
                 startAmbientRoll();
-                
+
                 // Increment immediately at start of play (matches ESP32)
                 mouseStep = (mouseStep + 1) % mantraTracks.length;
-                
+
+                // Safety-net only: the real advance happens via the audio
+                // element's onended event (see triggerMantra), which fires at
+                // the track's true end regardless of buffering/start delay.
+                // This timer just covers the case onended never fires at all.
                 autoReturnTimer = setTimeout(() => {
                     changeState("AMBIENT", AMBIENT_IDLE_MS);
-                }, duration);
+                }, duration + ADVANCE_SAFETY_MARGIN_MS);
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
                 feetStep = (feetStep + 1) % mantraTracks.length;
@@ -1881,24 +2016,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 }, 12000);
                 
                 if (duration > 0) {
-                    autoReturnTimer = setTimeout(() => {
-                        const prevState = window.ganeshaPrevState || "AMBIENT";
-                        window.ganeshaPrevState = null;
-
-                        // If a mantra was interrupted mid-play by the offering,
-                        // resume the SAME track from the SAME position - not a
-                        // fresh track from the beginning.
-                        if (resumePausedTrack()) return;
-
-                        if (prevState === "STANDBY") {
-                            changeState("STANDBY");
-                        } else {
-                            // AMBIENT, or anything with nothing to resume -
-                            // settle into a normal Ambient idle.
-                            changeState("AMBIENT", AMBIENT_IDLE_MS);
-                        }
-                    }, duration);
+                    // Safety-net only: the real advance happens via the audio
+                    // element's onended event (see triggerFeetMantra), which
+                    // fires at the track's true end. This timer just covers
+                    // the case onended never fires at all.
+                    autoReturnTimer = setTimeout(advanceFromFeetActive, duration + ADVANCE_SAFETY_MARGIN_MS);
                 }
+            }
+        }
+
+        // Shared by both the FEET_ACTIVE safety-net timer and the audio
+        // element's real onended event - whichever fires first wins, and
+        // calling changeState() from either path cancels the other's timer.
+        function advanceFromFeetActive() {
+            if (state !== "FEET_ACTIVE") return;
+            const prevState = window.ganeshaPrevState || "AMBIENT";
+            window.ganeshaPrevState = null;
+
+            // If a mantra was interrupted mid-play by the offering,
+            // resume the SAME track from the SAME position - not a
+            // fresh track from the beginning.
+            if (resumePausedTrack()) return;
+
+            if (prevState === "STANDBY") {
+                changeState("STANDBY");
+            } else {
+                // AMBIENT, or anything with nothing to resume -
+                // settle into a normal Ambient idle.
+                changeState("AMBIENT", AMBIENT_IDLE_MS);
             }
         }
  
@@ -1934,14 +2079,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             // Load and play immediately inside the user touch event thread
             globalMantraPlayer.src = track.file;
             globalMantraPlayer.volume = volume / 30;
+            // Advance the instant the track actually finishes, rather than
+            // waiting for the fixed-duration fallback timer - see item 5,
+            // large files were getting clipped by a few seconds on slow
+            // buffering starts.
+            globalMantraPlayer.onended = () => {
+                globalMantraPlayer.onended = null;
+                if (state === "MANTRA_ACTIVE") changeState("AMBIENT", AMBIENT_IDLE_MS);
+            };
+            startNowPlaying(track.file, track.duration);
             globalMantraPlayer.play().then(() => {
                 console.log("Playing Mouse Loop: " + track.file);
             }).catch((err) => {
                 isRealMantraPlaying = false;
+                globalMantraPlayer.onended = null;
                 console.log(track.file + " failed to play, using synth:", err);
                 synthesizeHum(220, track.duration / 1000);
             });
-            
+
             changeState("MANTRA_ACTIVE", track.duration);
         }
  
@@ -1964,15 +2119,23 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             setTimeout(() => {
                 globalMantraPlayer.src = track.file;
                 globalMantraPlayer.volume = volume / 30;
+                // Advance the instant the track actually finishes, rather
+                // than waiting for the fixed-duration fallback timer.
+                globalMantraPlayer.onended = () => {
+                    globalMantraPlayer.onended = null;
+                    advanceFromFeetActive();
+                };
+                startNowPlaying(track.file, track.duration);
                 globalMantraPlayer.play().then(() => {
                     console.log("Playing Feet Loop: " + track.file);
                 }).catch((err) => {
                     isRealFeetMantraPlaying = false;
+                    globalMantraPlayer.onended = null;
                     console.log(track.file + " failed to play, using synth:", err);
                     synthesizeHum(220, track.duration / 1000);
                 });
             }, BELL_LEAD_MS);
-            
+
             changeState("FEET_ACTIVE", track.duration + BELL_LEAD_MS);
         }
 
@@ -2505,6 +2668,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         drawLeds();
         // Render initial queue list
         renderQueue();
+        // Render the static song library list (item 3)
+        renderSongLibrary();
         // Poll online database queue every 4 seconds
         setInterval(renderQueue, 4000);
         // Start in Standby
