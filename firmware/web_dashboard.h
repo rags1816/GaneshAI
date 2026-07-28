@@ -2433,9 +2433,30 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             // send regardless of what this browser currently believes.
             if (isPhysicalESP) sendESPControl('open');
             if (state !== "TEMPLE_CLOSED") return;
+
             initAudio();
-            aartiOnComplete = null; // default behavior: settle to Ambient/ready
-            ringWakeBells(3);
+            blessings++;
+
+            // Quick reopening greeting: bell + one short mantra preview
+            // (mantraTracks[0] specifically, picked for testing - not the
+            // rotating mouseStep), NOT the full ~4-minute Aarti ritual this
+            // used to reuse from closeTemple() via ringWakeBells()+
+            // AARTI_MODE - which meant opening could idle its way into
+            // ANOTHER auto-close within minutes. Only previewed locally in
+            // the standalone simulator; the physical device's real speaker
+            // plays its own version via /api/control?action=open above.
+            if (!isPhysicalESP) {
+                playBellTone(250, 1.0);
+                setTimeout(() => {
+                    const track = mantraTracks[0];
+                    globalMantraPlayer.src = track.file;
+                    globalMantraPlayer.volume = volume / 30;
+                    startNowPlaying(track.file, track.duration);
+                    globalMantraPlayer.play().catch(() => synthesizeHum(220, track.duration / 1000));
+                }, 900);
+            }
+
+            changeState("AMBIENT", AMBIENT_IDLE_MS);
         }
 
         function onMousePadDown() {

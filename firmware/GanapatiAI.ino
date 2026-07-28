@@ -909,12 +909,29 @@ void triggerAartiThenClose() {
 }
 
 // Manually reopen after STATE_TEMPLE_CLOSED (dashboard's "Open Temple"
-// button) - a touch already does this on its own, this just lets it be
-// triggered remotely too.
+// button, or a touch while closed) - a quick bell + one short mantra
+// (mantraTracks[0] specifically, picked for testing - not the rotating
+// mouseStep), NOT the full ~4-minute Aarti chant. Opening and closing are
+// not symmetric: closing is meant to be a deliberate, unhurried ritual,
+// but reusing that same long ritual for opening meant the temple could
+// idle its way into ANOTHER auto-close within minutes of just opening.
+// Settles into AMBIENT since the short track finishes well before
+// AMBIENT_TIMEOUT's own 60s idle check would matter.
 void openTempleFromClosed() {
-  if (currentState == STATE_TEMPLE_CLOSED) {
-    setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
-  }
+  if (currentState != STATE_TEMPLE_CLOSED) return;
+
+  myDFPlayer.stop();
+  delay(50);
+  myDFPlayer.playMp3Folder(BELL_TRACK);
+  delay(900); // let the bell ring out before the mantra starts
+
+  myDFPlayer.stop();
+  delay(50);
+  myDFPlayer.playMp3Folder(mantraTracks[0].dfTrack);
+
+  blessingCounter++;
+  strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
+  setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
 }
 
 void stopAudioAndStandby() {
