@@ -616,19 +616,22 @@ void checkSensors() {
 void updateStateMachine() {
   unsigned long now = millis();
 
-  // If 12 seconds have passed since Feet touch, unlock and let the ambient
-  // blessing rotation immediately show a fresh one (rather than falling
-  // back to the fixed welcome sentence).
+  // If 12 seconds have passed since a Feet or Mouse Back touch, unlock and
+  // let the blessing rotation immediately show a fresh one (rather than
+  // falling back to the fixed welcome sentence). feetDisplayLocked/Timer
+  // are shared by both touches - only one is ever active at a time.
   if (feetDisplayLocked && (now - feetDisplayTimer > 12000)) {
     feetDisplayLocked = false;
     lastAmbientBlessingRotate = 0;
     Serial.println("OLED: 12 seconds elapsed, resumed blessings roll.");
   }
 
-  // While Ambient (awake, nobody actively engaging) and not showing a
-  // locked feet-touch blessing, rotate through the same 48-message list
-  // the web dashboard uses, instead of one fixed scrolling sentence.
-  if (currentState == STATE_AMBIENT && !feetDisplayLocked &&
+  // While Ambient or a Mouse Back mantra is playing (nobody needs a
+  // locked personalized blessing right now), rotate through the same
+  // 48-message list the web dashboard uses, instead of one fixed
+  // scrolling sentence. Feet Touch's own 12s-locked blessing takes
+  // priority over this while feetDisplayLocked is set.
+  if ((currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE) && !feetDisplayLocked &&
       now - lastAmbientBlessingRotate > AMBIENT_BLESSING_ROTATE_MS) {
     lastAmbientBlessingRotate = now;
     if (ambientBlessingIdx % 2 == 0) {
@@ -781,24 +784,36 @@ void setSystemState(SystemState newState, unsigned long duration) {
 
 void triggerMantra() {
   blessingCounter++;
-  
+
   // Stop whatever is playing before starting the next track
   myDFPlayer.stop();
   delay(50);
-  
-  feetDisplayLocked = false; // Reset feet lock when mouse back is touched
-  
+
+  // Lock screen display timer (12 seconds) - same pattern as Feet Touch:
+  // show one personalized blessing first, then let the rotation resume
+  // for however much longer the (often much longer) mantra keeps playing.
+  feetDisplayTimer = millis();
+  feetDisplayLocked = true;
+
   // Get track from struct array
   int trackIndex = mouseStep;
   int dfTrack = mantraTracks[trackIndex].dfTrack;
   unsigned long duration = mantraTracks[trackIndex].duration;
-  
+
+  // Alternate child and adult blessings based on track index parity,
+  // same as Feet Touch.
+  int r;
+  if (trackIndex % 2 == 0) {
+    r = random(0, 26);
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
+  } else {
+    r = random(0, 22);
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledAdultBlessingsList[r]);
+  }
+
   setSystemState(STATE_MANTRA_ACTIVE, duration);
   myDFPlayer.playMp3Folder(dfTrack);
-  
-  // Display continues rolling blessings loop during Mouse play
-  strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
-  
+
   mouseStep = (mouseStep + 1) % NUM_TRACKS;
 }
 

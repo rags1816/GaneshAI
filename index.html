@@ -993,9 +993,17 @@
 
         // True Temple Bell Sound Synthesis with 5-Second Beating Oscillation
         function playBellTone(freq = 250, duration = 5.0) {
+            // The physical device's real speaker (via its DFPlayer) already
+            // plays the actual bell chime - its web server can't serve the
+            // real Ganapathibell.mp3 (or any mp3) at all, so this would
+            // always 404 and fall back to a synthesized approximation,
+            // producing an unwanted second/wrong-sounding chime. Skip
+            // entirely on a physical device; only used in the simulator.
+            if (isPhysicalESP) return;
+
             initAudio();
             if (volume === 0) return;
-            
+
             // Set volume based on dashboard slider
             bellAudio.volume = volume / 30;
 
@@ -2087,27 +2095,35 @@
 
             const track = mantraTracks[mouseStep];
             isRealMantraPlaying = true;
-
-            // Load and play immediately inside the user touch event thread
-            globalMantraPlayer.src = track.file;
-            globalMantraPlayer.volume = volume / 30;
-            // Advance the instant the track actually finishes, rather than
-            // waiting for the fixed-duration fallback timer - see item 5,
-            // large files were getting clipped by a few seconds on slow
-            // buffering starts.
-            globalMantraPlayer.onended = () => {
-                globalMantraPlayer.onended = null;
-                if (state === "MANTRA_ACTIVE") changeState("AMBIENT", AMBIENT_IDLE_MS);
-            };
             startNowPlaying(track.file, track.duration);
-            globalMantraPlayer.play().then(() => {
-                console.log("Playing Mouse Loop: " + track.file);
-            }).catch((err) => {
-                isRealMantraPlaying = false;
-                globalMantraPlayer.onended = null;
-                console.log(track.file + " failed to play, using synth:", err);
-                synthesizeHum(220, track.duration / 1000);
-            });
+
+            // The real speaker (via the ESP32's DFPlayer) already plays the
+            // correct audio on a physical device - its web server only
+            // serves the HTML page and API routes, never the actual mp3
+            // files, so a local playback attempt here would just 404 and
+            // fall back to a synthesized approximation, creating an
+            // unwanted second sound. Only mirror audio locally in the
+            // standalone simulator, where the real files are reachable.
+            if (!isPhysicalESP) {
+                globalMantraPlayer.src = track.file;
+                globalMantraPlayer.volume = volume / 30;
+                // Advance the instant the track actually finishes, rather than
+                // waiting for the fixed-duration fallback timer - see item 5,
+                // large files were getting clipped by a few seconds on slow
+                // buffering starts.
+                globalMantraPlayer.onended = () => {
+                    globalMantraPlayer.onended = null;
+                    if (state === "MANTRA_ACTIVE") changeState("AMBIENT", AMBIENT_IDLE_MS);
+                };
+                globalMantraPlayer.play().then(() => {
+                    console.log("Playing Mouse Loop: " + track.file);
+                }).catch((err) => {
+                    isRealMantraPlaying = false;
+                    globalMantraPlayer.onended = null;
+                    console.log(track.file + " failed to play, using synth:", err);
+                    synthesizeHum(220, track.duration / 1000);
+                });
+            }
 
             changeState("MANTRA_ACTIVE", track.duration);
         }
@@ -2119,34 +2135,42 @@
             stopHum(); // Stop any currently playing audio / synth hum
             ensureMantraAudioGraph();
 
-            // "Entering the temple" moment: ring the bell first, just like a
-            // devotee would on stepping in.
-            playBellTone(250, 1.8);
             triggerFeetFlash();
 
             const track = mantraTracks[feetStep];
             isRealFeetMantraPlaying = true;
             const BELL_LEAD_MS = 900; // let the bell ring out before the chant begins
+            startNowPlaying(track.file, track.duration);
 
-            setTimeout(() => {
-                globalMantraPlayer.src = track.file;
-                globalMantraPlayer.volume = volume / 30;
-                // Advance the instant the track actually finishes, rather
-                // than waiting for the fixed-duration fallback timer.
-                globalMantraPlayer.onended = () => {
-                    globalMantraPlayer.onended = null;
-                    advanceFromFeetActive();
-                };
-                startNowPlaying(track.file, track.duration);
-                globalMantraPlayer.play().then(() => {
-                    console.log("Playing Feet Loop: " + track.file);
-                }).catch((err) => {
-                    isRealFeetMantraPlaying = false;
-                    globalMantraPlayer.onended = null;
-                    console.log(track.file + " failed to play, using synth:", err);
-                    synthesizeHum(220, track.duration / 1000);
-                });
-            }, BELL_LEAD_MS);
+            // Same reasoning as triggerMantra(): the physical device's real
+            // speaker already handles actual audio (bell + chant); its web
+            // server can't serve the real mp3/bell files, so mirroring
+            // locally here would just fall back to a synthesized
+            // approximation - only do this in the standalone simulator.
+            if (!isPhysicalESP) {
+                // "Entering the temple" moment: ring the bell first, just
+                // like a devotee would on stepping in.
+                playBellTone(250, 1.8);
+
+                setTimeout(() => {
+                    globalMantraPlayer.src = track.file;
+                    globalMantraPlayer.volume = volume / 30;
+                    // Advance the instant the track actually finishes, rather
+                    // than waiting for the fixed-duration fallback timer.
+                    globalMantraPlayer.onended = () => {
+                        globalMantraPlayer.onended = null;
+                        advanceFromFeetActive();
+                    };
+                    globalMantraPlayer.play().then(() => {
+                        console.log("Playing Feet Loop: " + track.file);
+                    }).catch((err) => {
+                        isRealFeetMantraPlaying = false;
+                        globalMantraPlayer.onended = null;
+                        console.log(track.file + " failed to play, using synth:", err);
+                        synthesizeHum(220, track.duration / 1000);
+                    });
+                }, BELL_LEAD_MS);
+            }
 
             changeState("FEET_ACTIVE", track.duration + BELL_LEAD_MS);
         }
