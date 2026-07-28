@@ -2271,6 +2271,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         function triggerStop() {
             window.speechSynthesis.cancel();
             pausedTrackInfo = null; // a manual stop discards any pending resume
+            // Always reach the real device first and unconditionally, so this
+            // works as a guaranteed recovery button even if this browser's
+            // local state tracking has drifted out of sync with the device
+            // (e.g. missed/failed polls) - stopAudioAndStandby() on the
+            // firmware side resets to STANDBY regardless of its prior state.
+            if (isPhysicalESP) sendESPControl('stop');
             if (state === "STANDBY") {
                 // Second press while already stopped: close the temple down
                 // completely (night mode) - the "exit" gesture.
@@ -2352,6 +2358,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // bells + Aarti ritual as the idle trigger, but settles into a
         // normal ready Ambient state afterward instead of closing again.
         function openTemple() {
+            // Always reach the real device, even if this browser's local
+            // state tracking has drifted out of sync with it (e.g. missed
+            // polls) - openTempleFromClosed() on the firmware side only
+            // acts if IT thinks it's actually closed, so this is safe to
+            // send regardless of what this browser currently believes.
+            if (isPhysicalESP) sendESPControl('open');
             if (state !== "TEMPLE_CLOSED") return;
             initAudio();
             aartiOnComplete = null; // default behavior: settle to Ambient/ready
