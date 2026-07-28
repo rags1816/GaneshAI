@@ -103,8 +103,19 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
 };
 
 // Dynamic Playlist Counters
-int mouseStep = 0; 
-int feetStep = 0;  
+int mouseStep = 0;
+int feetStep = 0;
+
+// The DFPlayer folder-track number (matches mantraTracks[].dfTrack, or
+// AARTI_TRACK) currently audibly playing - 0 means nothing from the
+// devotional library is playing right now (BELL_TRACK doesn't count).
+// Exposed via /api/state as "track" so the dashboard's Now Playing/Song
+// Library panel can highlight the right entry even when a mantra was
+// started by a PHYSICAL touch the browser never saw a local trigger for
+// - previously the dashboard only knew this if IT had started the track
+// itself locally. Also doubles as the "what to resume" memory for
+// triggerPersonalizedOffering() below.
+int currentPlayingTrack = 0;
 
 // Customization & Settings
 int blessingCounter = 0;
@@ -278,6 +289,14 @@ void setup() {
   pinMode(TOUCH_BACK_PIN, INPUT);
   Serial.println("DEBUG: TOUCH_BACK_PIN configured.");
   Serial.println("DEBUG: Sensor pins configured successfully.");
+  // Printed explicitly because these two config.h flags being left false
+  // is the single most common reason touch "does nothing" after wiring a
+  // sensor - checkSensors() completely skips reading a pin whose
+  // _CONNECTED flag is false, on purpose (see config.h), and that's easy
+  // to forget to flip after wiring. If either shows "false" here and you
+  // HAVE wired that sensor, that's very likely the whole problem.
+  Serial.printf("DEBUG: TOUCH_FEET_CONNECTED=%s  TOUCH_BACK_CONNECTED=%s\n",
+                TOUCH_FEET_CONNECTED ? "true" : "false", TOUCH_BACK_CONNECTED ? "true" : "false");
 
   // 2. Initialize OLED Display
   Serial.println("DEBUG: Initializing OLED Display...");
@@ -486,9 +505,9 @@ void handleWebRoutes() {
     // same time (previously each picked randomly on its own timer).
     char json[700];
     int n = snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"blessing\":\"",
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"blessing\":\"",
       stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
-      pirEnabled ? "true" : "false", selectedLang, selectedTheme);
+      pirEnabled ? "true" : "false", selectedLang, selectedTheme, currentPlayingTrack);
 
     // Minimal JSON string escaping - none of today's blessing/welcome text
     // needs it, but a future text edit could introduce a quote/backslash
@@ -608,6 +627,23 @@ void handleWebRoutes() {
 void checkSensors() {
   unsigned long now = millis();
 
+  // Always read + report the RAW PIR pin on every edge, independent of
+  // pirEnabled/currentState - this is deliberately separate from the
+  // gated logic below, so Serial Monitor can answer "is the sensor itself
+  // even seeing motion" on its own, regardless of whether the firmware is
+  // currently in a state that would act on it. If this never prints HIGH
+  // while you wave a hand in front of the sensor, the problem is upstream
+  // of all this code (wiring/power/the sensor itself) - if it DOES print
+  // HIGH but nothing happens, the problem is the gating below (state not
+  // STANDBY, or pirEnabled false).
+  static bool lastPirRaw = false;
+  bool pirRaw = (digitalRead(PIR_PIN) == HIGH);
+  if (pirRaw != lastPirRaw) {
+    Serial.printf("PIR raw pin -> %s   (currentState=%d [0=STANDBY], pirEnabled=%s)\n",
+                  pirRaw ? "HIGH" : "LOW", (int)currentState, pirEnabled ? "true" : "false");
+    lastPirRaw = pirRaw;
+  }
+
   // STANDBY only: PIR wakes the temple, but must NOT also reset AMBIENT's
   // idle-to-Aarti timer. Tried that (reading PIR during AMBIENT too, to let
   // continued presence delay the close) and confirmed by simulation that it
@@ -616,8 +652,7 @@ void checkSensors() {
   // 60s countdown and left AMBIENT stuck forever, never reaching Aarti at
   // all. Only an actual touch (feet/mouse-back) counts as "someone's here."
   if (pirEnabled && currentState == STATE_STANDBY) {
-    int pirState = digitalRead(PIR_PIN);
-    if (pirState == HIGH && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
+    if (pirRaw && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
       motionDetected = true;
       lastMotionTrigger = now;
     }
@@ -743,15 +778,19 @@ void updateStateMachine() {
       if (now - stateTimer > stateDuration) {
         if (offeringDisplayActive) {
           // The 12-second personalized offering display is done. If it
-          // interrupted an actual mantra mid-play, resume that SAME track
-          // from the SAME position (the DFPlayer module remembers exactly
-          // where pause() left off) and the remaining time on its state
-          // timer - rather than restarting it, cutting it short, or
-          // dropping back to standby and losing it entirely.
+          // interrupted an actual mantra mid-play, resume it by replaying
+          // the SAME track (currentPlayingTrack, untouched by the
+          // BELL_TRACK the offering played) from the beginning, with the
+          // remaining time from its state timer - see the note in
+          // triggerPersonalizedOffering() for why this restarts the track
+          // instead of using DFPlayer's pause()/start() (unreliable on
+          // many DFPlayer Mini clones).
           offeringDisplayActive = false;
           if (offeringInterrupted) {
             offeringInterrupted = false;
-            myDFPlayer.start();
+            myDFPlayer.stop();
+            delay(50);
+            myDFPlayer.playMp3Folder(currentPlayingTrack);
             setSystemState(offeringPausedState, offeringPausedRemainingMs);
           } else {
             myDFPlayer.stop();
@@ -817,6 +856,7 @@ void setSystemState(SystemState newState, unsigned long duration) {
 
   if (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED) {
     feetDisplayLocked = false;
+    currentPlayingTrack = 0;
     FastLED.clear();
     FastLED.show();
     u8g2.setPowerSave(1);
@@ -866,6 +906,7 @@ void triggerMantra() {
   }
 
   setSystemState(STATE_MANTRA_ACTIVE, duration);
+  currentPlayingTrack = dfTrack;
   myDFPlayer.playMp3Folder(dfTrack);
 
   mouseStep = (mouseStep + 1) % NUM_TRACKS;
@@ -902,8 +943,9 @@ void triggerFeetMantra() {
   }
   
   setSystemState(STATE_FEET_ACTIVE, duration);
+  currentPlayingTrack = dfTrack;
   myDFPlayer.playMp3Folder(dfTrack);
-  
+
   feetStep = (feetStep + 1) % NUM_TRACKS;
 }
 
@@ -915,21 +957,26 @@ void triggerFeetMantra() {
 void triggerPersonalizedOffering(String name, String offeringType, String prayer) {
   blessingCounter++;
 
-  // If a mantra is actively playing, pause the DFPlayer (it remembers its
-  // exact position) instead of stopping it, and remember how much of this
-  // mantra's state timer was left, so the mantra can resume exactly where
-  // it paused - both audio and blessing rotation - once the 12-second
-  // offering display finishes. Otherwise (idle/Ambient/etc.) there's
-  // nothing to resume, just show the offering and settle back to standby.
+  // If a mantra is actively playing, remember it so it can resume once the
+  // 12-second offering display finishes - both which track (currentPlaying
+  // Track, untouched by the BELL_TRACK played below) and how much of its
+  // state timer was left. Otherwise (idle/Ambient/etc.) there's nothing to
+  // resume, just show the offering and settle back to standby.
+  //
+  // NOTE: this used to call myDFPlayer.pause() and resume with .start(),
+  // which the DFPlayer Mini datasheet documents but which many cheap
+  // DFPlayer Mini clones do NOT reliably honor in practice (a widely
+  // reported issue - start() silently does nothing on affected boards, so
+  // the mantra never came back after an offering). Restarting the SAME
+  // track from the beginning is less elegant (loses the exact playback
+  // position) but works on every DFPlayer clone, which matters more.
   offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE);
   if (offeringInterrupted) {
     offeringPausedState = currentState;
     unsigned long elapsed = millis() - stateTimer;
     offeringPausedRemainingMs = (elapsed < stateDuration) ? (stateDuration - elapsed) : 1000;
-    myDFPlayer.pause();
-  } else {
-    myDFPlayer.stop();
   }
+  myDFPlayer.stop();
   offeringDisplayActive = true;
   delay(50);
   myDFPlayer.playMp3Folder(BELL_TRACK);
@@ -960,6 +1007,7 @@ void triggerAarti() {
   strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
 
   setSystemState(STATE_AARTI, AARTI_DURATION);
+  currentPlayingTrack = AARTI_TRACK;
   myDFPlayer.playMp3Folder(AARTI_TRACK);
 }
 
@@ -1000,6 +1048,7 @@ void openTempleFromClosed() {
   myDFPlayer.stop();
   delay(50);
   myDFPlayer.playMp3Folder(mantraTracks[0].dfTrack);
+  currentPlayingTrack = mantraTracks[0].dfTrack;
 
   blessingCounter++;
   feetDisplayTimer = millis();

@@ -3554,6 +3554,23 @@ var QRCode;
                     startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
                 }
 
+                // Same problem, but for Mantra/Feet: a PHYSICAL touch starts
+                // playback entirely on the device's own mouseStep/feetStep -
+                // this browser never called triggerMantra()/triggerFeetMantra()
+                // itself, so it has no idea which of the 14 tracks is actually
+                // playing (especially the very first touch after power-on, or
+                // any touch this particular browser tab didn't originate).
+                // /api/state's "track" field (the firmware's actual DFPlayer
+                // folder-track number) is the fix - look up the matching entry
+                // and light up the Song Library / Now Playing panel correctly
+                // regardless of who triggered it.
+                if ((data.state === "MANTRA_ACTIVE" || data.state === "FEET_ACTIVE") && data.track) {
+                    const physicalTrack = mantraTracks.find(t => t.dfTrack === data.track);
+                    if (physicalTrack && nowPlayingFile !== physicalTrack.file) {
+                        startNowPlaying(physicalTrack.file, physicalTrack.duration);
+                    }
+                }
+
                 // True content sync: the firmware is now the single source of
                 // truth for what text is showing (see /api/state's
                 // "blessing" field, straight from its own scrollText) -
