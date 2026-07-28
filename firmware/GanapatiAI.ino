@@ -474,7 +474,12 @@ void handleWebRoutes() {
     // Minimal JSON string escaping - none of today's blessing/welcome text
     // needs it, but a future text edit could introduce a quote/backslash
     // and silently break the dashboard's JSON.parse() without this.
-    for (const char* s = scrollText; *s && n < (int)sizeof(json) - 3; s++) {
+    // Bound reserves room for a full 2-byte escape sequence PLUS the
+    // closing "} written after the loop (3 bytes with the null
+    // terminator) - checking against just 3 bytes of margin left a
+    // narrow edge case where a final escaped character could leave only
+    // 1 byte free, truncating the closing brace.
+    for (const char* s = scrollText; *s && n < (int)sizeof(json) - 6; s++) {
       if (*s == '"' || *s == '\\') json[n++] = '\\';
       if ((unsigned char)*s >= 0x20) json[n++] = *s;
     }
