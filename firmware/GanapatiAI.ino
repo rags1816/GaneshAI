@@ -541,10 +541,14 @@ void handleWebRoutes() {
 void checkSensors() {
   unsigned long now = millis();
 
-  // Read in both STANDBY (wakes it) and AMBIENT (resets the idle timer so
-  // continued presence delays the auto-close Aarti) - previously only read
-  // during STANDBY, which left AMBIENT's "someone's still here" branch dead.
-  if (pirEnabled && (currentState == STATE_STANDBY || currentState == STATE_AMBIENT)) {
+  // STANDBY only: PIR wakes the temple, but must NOT also reset AMBIENT's
+  // idle-to-Aarti timer. Tried that (reading PIR during AMBIENT too, to let
+  // continued presence delay the close) and confirmed by simulation that it
+  // backfires - almost any real PIR sensor picks up occasional ambient
+  // motion/heat/light changes over a few minutes, which kept resetting the
+  // 60s countdown and left AMBIENT stuck forever, never reaching Aarti at
+  // all. Only an actual touch (feet/mouse-back) counts as "someone's here."
+  if (pirEnabled && currentState == STATE_STANDBY) {
     int pirState = digitalRead(PIR_PIN);
     if (pirState == HIGH && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
       motionDetected = true;
@@ -594,15 +598,16 @@ void updateStateMachine() {
       break;
 
     case STATE_AMBIENT:
+      // motionDetected is never set true here (checkSensors() only reads
+      // PIR during STANDBY) - only an actual touch resets the idle timer,
+      // deliberately, so a sensitive PIR can't block the temple from ever
+      // closing for the night.
       if (backTouched) {
         backTouched = false;
         triggerMantra();
       } else if (feetTouched) {
         feetTouched = false;
         triggerFeetMantra();
-      } else if (motionDetected) {
-        motionDetected = false;
-        stateTimer = now;
       }
 
       if (now - stateTimer > stateDuration) {
