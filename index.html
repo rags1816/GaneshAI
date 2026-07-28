@@ -2637,22 +2637,34 @@ var QRCode;
                 // Increment immediately at start of play (matches ESP32)
                 mouseStep = (mouseStep + 1) % mantraTracks.length;
 
-                // Safety-net only: the real advance happens via the audio
-                // element's onended event (see triggerMantra), which fires at
-                // the track's true end regardless of buffering/start delay.
-                // This timer just covers the case onended never fires at all.
-                autoReturnTimer = setTimeout(() => {
-                    changeState("AMBIENT", AMBIENT_IDLE_MS);
-                }, duration + ADVANCE_SAFETY_MARGIN_MS);
+                // This local duration-based timer is a fallback for the
+                // standalone simulator only. On a physical device, polling
+                // is the sole authority on real state (pollDeviceState()'s
+                // wasActive/nowIdle check already stops local audio/timers
+                // once the device moves on) - this timer doesn't know the
+                // real firmware's actual timing, so letting it fire
+                // independently caused it to race the poll and briefly
+                // show stale/wrong blessing text.
+                if (!isPhysicalESP) {
+                    autoReturnTimer = setTimeout(() => {
+                        changeState("AMBIENT", AMBIENT_IDLE_MS);
+                    }, duration + ADVANCE_SAFETY_MARGIN_MS);
+                }
             } else if (newState === "FEET_ACTIVE") {
                 blessings++;
                 feetStep = (feetStep + 1) % mantraTracks.length;
 
+                // On a physical device, the firmware picks and locks its own
+                // personalized blessing - polling (pollDeviceState()'s
+                // "blessing" sync) is what shows it here, same as Ambient/
+                // Mantra. Picking one locally too would show different text
+                // than the real device for as long as it takes the next
+                // poll to correct it.
                 if (personalizedText) {
                     // An offering was approved / admin-simulated - show the
                     // personalized thank-you built from that specific submission.
                     setOledText(personalizedText);
-                } else {
+                } else if (!isPhysicalESP) {
                     // A real physical touch - show the next blessing in the
                     // 48-message rotation, same mood-tint/sparkle/chime as Ambient.
                     const nextBlessing = combinedBlessings[currentBlessingIndex];
@@ -2660,19 +2672,18 @@ var QRCode;
                     setOledText(`   [BLESSING] ${nextBlessing}   `);
                     onNewBlessingShown(nextBlessing);
                 }
-                
+
                 // Lock screen on this blessing for 12 seconds, then resume rolling loop
                 feetDisplayTimer = setTimeout(() => {
                     if (state === "FEET_ACTIVE") {
                         startAmbientRoll();
                     }
                 }, 12000);
-                
-                if (duration > 0) {
-                    // Safety-net only: the real advance happens via the audio
-                    // element's onended event (see triggerFeetMantra), which
-                    // fires at the track's true end. This timer just covers
-                    // the case onended never fires at all.
+
+                // Same reasoning as MANTRA_ACTIVE above - fallback for the
+                // standalone simulator only, polling is the sole authority
+                // on a physical device.
+                if (duration > 0 && !isPhysicalESP) {
                     autoReturnTimer = setTimeout(advanceFromFeetActive, duration + ADVANCE_SAFETY_MARGIN_MS);
                 }
             }
