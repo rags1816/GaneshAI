@@ -2241,33 +2241,68 @@
         function submitPuja() {
             const nameInput = document.getElementById('puja-name-input');
             const textInput = document.getElementById('puja-input');
-            
-            const name = nameInput.value.trim();
+
+            const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const text = textInput.value.trim();
-            
+
             initAudio();
             capturePausedTrack();
             stopHum();
-            
+
             // Ring the temple bell
             playBellTone();
-            
+
             const displayMsg = formatPersonalizedBlessing(name, selectedOffering, text);
-            
+
             // Save previous state before entering feet active devotee display (only if not already in feet display)
             if (state !== "FEET_ACTIVE") {
                 window.ganeshaPrevState = state;
             }
-            
+
             // Enter FEET_ACTIVE state to show the personalized gold text (12 seconds)
             changeState("FEET_ACTIVE", 12000, displayMsg);
-            
+
+            // Actually add this to the Priest Queue - this step was missing
+            // entirely before, so submitting here never created anything
+            // for a priest to approve/reject. Same shape/relay pattern as
+            // puja.html's (the separate devotee-facing page) submitPuja(),
+            // which already had this right.
+            const newRequest = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                name: name,
+                offering: selectedOffering,
+                prayer: text
+            };
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            localQueue.push(newRequest);
+            localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+            localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+            renderQueue();
+
+            // Best-effort background sync so other devices/tabs see it too -
+            // same relay pattern used by approveQueueItem()/rejectQueueItem().
+            const appKey = "sxnoamwe";
+            const itemKey = "ganesha_queue";
+            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
+            fetch(readUrl)
+                .then(res => res.json())
+                .then(b64data => {
+                    let onlineQueue = [];
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
+                    }
+                    if (!Array.isArray(onlineQueue)) onlineQueue = [];
+                    onlineQueue.push(newRequest);
+                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
+                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
+                    return fetch(writeUrl, { method: 'POST' });
+                })
+                .catch(err => console.warn("Background relay sync failed for new offering (still added locally):", err));
+
             // Clear input after submission
             textInput.value = "";
             nameInput.value = "";
-            
-            // Wireless broadcast to local physical ESP32 on same network
-            fetch(`/api/puja?text=${encodeURIComponent(text)}&offering=${selectedOffering}`).catch(() => {});
         }
 
         // Squeaky Talk-Back Output
