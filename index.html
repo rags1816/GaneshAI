@@ -2647,7 +2647,11 @@ var QRCode;
                 // show stale/wrong blessing text.
                 if (!isPhysicalESP) {
                     autoReturnTimer = setTimeout(() => {
-                        changeState("AMBIENT", AMBIENT_IDLE_MS);
+                        // One whole mantra done, nobody touched again - back to
+                        // sleep. Only PIR (from STANDBY) or a fresh touch wakes
+                        // things up again; AMBIENT is no longer the automatic
+                        // landing state after a mantra finishes.
+                        changeState("STANDBY");
                     }, duration + ADVANCE_SAFETY_MARGIN_MS);
                 }
             } else if (newState === "FEET_ACTIVE") {
@@ -2694,7 +2698,6 @@ var QRCode;
         // calling changeState() from either path cancels the other's timer.
         function advanceFromFeetActive() {
             if (state !== "FEET_ACTIVE") return;
-            const prevState = window.ganeshaPrevState || "AMBIENT";
             window.ganeshaPrevState = null;
 
             // If a mantra was interrupted mid-play by the offering,
@@ -2702,13 +2705,11 @@ var QRCode;
             // fresh track from the beginning.
             if (resumePausedTrack()) return;
 
-            if (prevState === "STANDBY") {
-                changeState("STANDBY");
-            } else {
-                // AMBIENT, or anything with nothing to resume -
-                // settle into a normal Ambient idle.
-                changeState("AMBIENT", AMBIENT_IDLE_MS);
-            }
+            // One whole mantra (or a non-interrupting offering display) is
+            // done and nobody touched again - back to sleep, matching the
+            // firmware. Only PIR (from STANDBY) or a fresh touch wakes
+            // things up again.
+            changeState("STANDBY");
         }
  
         // Dropdown Events
@@ -2757,7 +2758,9 @@ var QRCode;
                 // buffering starts.
                 globalMantraPlayer.onended = () => {
                     globalMantraPlayer.onended = null;
-                    if (state === "MANTRA_ACTIVE") changeState("AMBIENT", AMBIENT_IDLE_MS);
+                    // One whole mantra done, nobody touched again - back to
+                    // sleep, not Ambient; only PIR or a fresh touch wakes it.
+                    if (state === "MANTRA_ACTIVE") changeState("STANDBY");
                 };
                 globalMantraPlayer.play().then(() => {
                     console.log("Playing Mouse Loop: " + track.file);
@@ -2869,7 +2872,9 @@ var QRCode;
                 globalMantraPlayer.onended = null;
                 isRealMantraPlaying = false;
                 isRealFeetMantraPlaying = false;
-                changeState("AMBIENT", AMBIENT_IDLE_MS);
+                // The resumed mantra has now actually finished - back to
+                // sleep, matching the firmware's mantra-end behavior.
+                changeState("STANDBY");
             };
             globalMantraPlayer.play().then(() => {
                 // Seek AFTER playback starts - seeking a paused element before
@@ -2877,7 +2882,7 @@ var QRCode;
                 // from the beginning instead of continuing where it left off.
                 try { globalMantraPlayer.currentTime = info.time; } catch (e) {}
             }).catch(() => {
-                changeState("AMBIENT", AMBIENT_IDLE_MS);
+                changeState("STANDBY");
             });
             return true;
         }
@@ -3061,9 +3066,16 @@ var QRCode;
             aartiOnComplete = () => changeState("TEMPLE_CLOSED");
             ringWakeBells(3);
         }
-        // Manual wake (temple was closed, someone touched a pad): same 3
-        // bells + Aarti ritual as the idle trigger, but settles into a
-        // normal ready Ambient state afterward instead of closing again.
+        // Manual wake (temple was closed, someone touched a pad): a quick
+        // bell + one short mantra preview, NOT the full ~4-minute Aarti
+        // ritual this used to reuse from closeTemple() via ringWakeBells()+
+        // AARTI_MODE - which meant opening could idle its way into ANOTHER
+        // auto-close within minutes. Settles into STANDBY once the short
+        // mantra ends (like any other mantra) instead of landing directly
+        // in AMBIENT - landing in AMBIENT was the bug: AMBIENT's own idle
+        // timer would then close the temple again within about a minute of
+        // it just opening, never giving PIR (STANDBY -> AMBIENT) a chance
+        // to be tested at all.
         function openTemple() {
             // Always reach the real device, even if this browser's local
             // state tracking has drifted out of sync with it (e.g. missed
@@ -3076,26 +3088,27 @@ var QRCode;
             initAudio();
             blessings++;
 
+            const track = mantraTracks[0];
             // Quick reopening greeting: bell + one short mantra preview
             // (mantraTracks[0] specifically, picked for testing - not the
-            // rotating mouseStep), NOT the full ~4-minute Aarti ritual this
-            // used to reuse from closeTemple() via ringWakeBells()+
-            // AARTI_MODE - which meant opening could idle its way into
-            // ANOTHER auto-close within minutes. Only previewed locally in
-            // the standalone simulator; the physical device's real speaker
-            // plays its own version via /api/control?action=open above.
+            // rotating mouseStep). Only previewed locally in the standalone
+            // simulator; the physical device's real speaker plays its own
+            // version via /api/control?action=open above.
             if (!isPhysicalESP) {
                 playBellTone(250, 1.0);
                 setTimeout(() => {
-                    const track = mantraTracks[0];
                     globalMantraPlayer.src = track.file;
                     globalMantraPlayer.volume = volume / 30;
                     startNowPlaying(track.file, track.duration);
+                    globalMantraPlayer.onended = () => {
+                        globalMantraPlayer.onended = null;
+                        if (state === "MANTRA_ACTIVE") changeState("STANDBY");
+                    };
                     globalMantraPlayer.play().catch(() => synthesizeHum(220, track.duration / 1000));
                 }, 900);
             }
 
-            changeState("AMBIENT", AMBIENT_IDLE_MS);
+            changeState("MANTRA_ACTIVE", track.duration + 900);
         }
 
         function onMousePadDown() {
@@ -3322,6 +3335,34 @@ var QRCode;
                 });
         }
 
+        // Applies the actual "priest approved this offering" effect: bell,
+        // 12-second personalized display, and (on the physical device) the
+        // real OLED/DFPlayer offering via /api/control?action=offering.
+        // Factored out of approveQueueItem() because the item being
+        // approved might come from THIS browser's local queue (dashboard's
+        // own quick-offering panel) or ONLY from the online relay queue (a
+        // devotee's submission via puja.html on a different phone) - both
+        // need to trigger the exact same effect once found.
+        function applyApprovedOffering(item) {
+            if (!item) return;
+            initAudio();
+            capturePausedTrack();
+            stopHum();
+            playBellTone(); // Ring the temple bell tone
+            const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
+            if (state !== "FEET_ACTIVE") {
+                window.ganeshaPrevState = state;
+            }
+            changeState("FEET_ACTIVE", 12000, displayMsg);
+
+            // Show the devotee's actual name/offering/prayer on the
+            // physical OLED too, not just this browser's local preview.
+            if (isPhysicalESP) {
+                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}`;
+                sendESPControl('offering', params);
+            }
+        }
+
         function approveQueueItem(id) {
             // Act locally FIRST and immediately - a priest tapping Approve
             // should always work even if the network relay is slow,
@@ -3333,27 +3374,18 @@ var QRCode;
             localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
 
-            if (item) {
-                initAudio();
-                capturePausedTrack();
-                stopHum();
-                playBellTone(); // Ring the temple bell tone
-                const displayMsg = formatPersonalizedBlessing(item.name, item.offering, item.prayer);
-                if (state !== "FEET_ACTIVE") {
-                    window.ganeshaPrevState = state;
-                }
-                changeState("FEET_ACTIVE", 12000, displayMsg);
-
-                // Show the devotee's actual name/offering/prayer on the
-                // physical OLED too, not just this browser's local preview.
-                if (isPhysicalESP) {
-                    const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}`;
-                    sendESPControl('offering', params);
-                }
-            }
+            if (item) applyApprovedOffering(item);
             renderQueue();
 
-            // Best-effort background sync so other devices see the removal too.
+            // Reconcile against the online relay too. This is not just
+            // cleanup: a devotee submitting via puja.html on a DIFFERENT
+            // phone (the QR code flow) only ever lands in the online relay
+            // queue, never in this browser's localStorage - so if `item`
+            // was null above, this is the ONLY place that ever has the
+            // actual name/offering/prayer to act on. Previously this just
+            // removed the item from the relay and re-rendered, which is
+            // exactly the reported bug: approving a devotee's real
+            // submission "just cleared the queue" with no bell/display.
             const appKey = "sxnoamwe";
             const itemKey = "ganesha_queue";
             const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
@@ -3366,6 +3398,9 @@ var QRCode;
                     }
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
+                    if (!item && indexOnline !== -1) {
+                        applyApprovedOffering(onlineQueue[indexOnline]);
+                    }
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
                     const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
                     const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;

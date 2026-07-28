@@ -66,6 +66,17 @@ bool backTouched = false;
 // with no close intent).
 bool aartiThenClose = false;
 
+// Offering-approval pause/resume tracking (see triggerPersonalizedOffering()):
+// when a priest approves an offering while a mantra is actively playing, the
+// DFPlayer is paused (not stopped) and the interrupted state/remaining time
+// is remembered here so the 12-second offering display can resume the exact
+// same track from the exact same position afterward, instead of restarting
+// or silently dropping the rest of the mantra.
+bool offeringDisplayActive = false;
+bool offeringInterrupted = false;
+SystemState offeringPausedState = STATE_STANDBY;
+unsigned long offeringPausedRemainingMs = 0;
+
 // Track Struct Definition
 struct MantraTrack {
   int dfTrack;
@@ -648,7 +659,7 @@ void updateStateMachine() {
   // 48-message list the web dashboard uses, instead of one fixed
   // scrolling sentence. Feet Touch's own 12s-locked blessing takes
   // priority over this while feetDisplayLocked is set.
-  if ((currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE) && !feetDisplayLocked &&
+  if ((currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE) && !feetDisplayLocked &&
       now - lastAmbientBlessingRotate > AMBIENT_BLESSING_ROTATE_MS) {
     lastAmbientBlessingRotate = now;
     if (ambientBlessingIdx % 2 == 0) {
@@ -709,9 +720,12 @@ void updateStateMachine() {
         return;
       }
 
+      // One whole mantra done, nobody touched again - go back to sleep.
+      // Only PIR (from STANDBY) or a fresh touch wakes things up again;
+      // AMBIENT is no longer the automatic landing state after a mantra.
       if (now - stateTimer > stateDuration) {
         myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+        setSystemState(STATE_STANDBY);
       }
       break;
 
@@ -727,8 +741,27 @@ void updateStateMachine() {
       }
 
       if (now - stateTimer > stateDuration) {
-        myDFPlayer.stop();
-        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+        if (offeringDisplayActive) {
+          // The 12-second personalized offering display is done. If it
+          // interrupted an actual mantra mid-play, resume that SAME track
+          // from the SAME position (the DFPlayer module remembers exactly
+          // where pause() left off) and the remaining time on its state
+          // timer - rather than restarting it, cutting it short, or
+          // dropping back to standby and losing it entirely.
+          offeringDisplayActive = false;
+          if (offeringInterrupted) {
+            offeringInterrupted = false;
+            myDFPlayer.start();
+            setSystemState(offeringPausedState, offeringPausedRemainingMs);
+          } else {
+            myDFPlayer.stop();
+            setSystemState(STATE_STANDBY);
+          }
+        } else {
+          // One whole mantra done, nobody touched again - go back to sleep.
+          myDFPlayer.stop();
+          setSystemState(STATE_STANDBY);
+        }
       }
       break;
 
@@ -802,6 +835,10 @@ void setSystemState(SystemState newState, unsigned long duration) {
 void triggerMantra() {
   blessingCounter++;
 
+  // A fresh touch always wins over any pending offering resume.
+  offeringDisplayActive = false;
+  offeringInterrupted = false;
+
   // Stop whatever is playing before starting the next track
   myDFPlayer.stop();
   delay(50);
@@ -836,7 +873,11 @@ void triggerMantra() {
 
 void triggerFeetMantra() {
   blessingCounter++;
-  
+
+  // A fresh touch always wins over any pending offering resume.
+  offeringDisplayActive = false;
+  offeringInterrupted = false;
+
   // Stop whatever is playing before starting the next track
   myDFPlayer.stop();
   delay(50);
@@ -874,7 +915,22 @@ void triggerFeetMantra() {
 void triggerPersonalizedOffering(String name, String offeringType, String prayer) {
   blessingCounter++;
 
-  myDFPlayer.stop();
+  // If a mantra is actively playing, pause the DFPlayer (it remembers its
+  // exact position) instead of stopping it, and remember how much of this
+  // mantra's state timer was left, so the mantra can resume exactly where
+  // it paused - both audio and blessing rotation - once the 12-second
+  // offering display finishes. Otherwise (idle/Ambient/etc.) there's
+  // nothing to resume, just show the offering and settle back to standby.
+  offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE);
+  if (offeringInterrupted) {
+    offeringPausedState = currentState;
+    unsigned long elapsed = millis() - stateTimer;
+    offeringPausedRemainingMs = (elapsed < stateDuration) ? (stateDuration - elapsed) : 1000;
+    myDFPlayer.pause();
+  } else {
+    myDFPlayer.stop();
+  }
+  offeringDisplayActive = true;
   delay(50);
   myDFPlayer.playMp3Folder(BELL_TRACK);
 
@@ -922,10 +978,19 @@ void triggerAartiThenClose() {
 // not symmetric: closing is meant to be a deliberate, unhurried ritual,
 // but reusing that same long ritual for opening meant the temple could
 // idle its way into ANOTHER auto-close within minutes of just opening.
-// Settles into AMBIENT since the short track finishes well before
-// AMBIENT_TIMEOUT's own 60s idle check would matter.
+//
+// Settles into STATE_MANTRA_ACTIVE (like any other mantra) rather than
+// jumping straight into STATE_AMBIENT - once this short welcome mantra
+// ends it falls through to STATE_STANDBY same as any other mantra, and
+// from there PIR is what takes it to AMBIENT. Landing directly in AMBIENT
+// here was the bug: AMBIENT's own idle timer would then close the temple
+// again within about a minute of it just opening, with no chance to ever
+// see STANDBY or test PIR at all.
 void openTempleFromClosed() {
   if (currentState != STATE_TEMPLE_CLOSED) return;
+
+  offeringDisplayActive = false;
+  offeringInterrupted = false;
 
   myDFPlayer.stop();
   delay(50);
@@ -937,8 +1002,10 @@ void openTempleFromClosed() {
   myDFPlayer.playMp3Folder(mantraTracks[0].dfTrack);
 
   blessingCounter++;
+  feetDisplayTimer = millis();
+  feetDisplayLocked = true;
   strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
-  setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+  setSystemState(STATE_MANTRA_ACTIVE, mantraTracks[0].duration);
 }
 
 void stopAudioAndStandby() {
