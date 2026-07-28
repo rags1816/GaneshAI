@@ -850,8 +850,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // real device so the standalone simulator never tries to reach a
         // nonexistent local device.
         const isPhysicalESP = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'rags1816.github.io' && window.location.hostname !== '');
-        const sendESPControl = (action) => {
-            fetch(`/api/control?action=${action}`).catch(() => {});
+        const sendESPControl = (action, extraParams = '') => {
+            fetch(`/api/control?action=${action}${extraParams}`).catch(() => {});
         };
         const espGet = (path) => {
             fetch(path).catch(() => {});
@@ -2683,6 +2683,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     window.ganeshaPrevState = state;
                 }
                 changeState("FEET_ACTIVE", 12000, displayMsg);
+
+                // Show the devotee's actual name/offering/prayer on the
+                // physical OLED too, not just this browser's local preview.
+                if (isPhysicalESP) {
+                    const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}`;
+                    sendESPControl('offering', params);
+                }
             }
             renderQueue();
 

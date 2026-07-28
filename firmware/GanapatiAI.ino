@@ -211,6 +211,7 @@ void drawOLED();
 void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
+void triggerPersonalizedOffering(String name, String offeringType, String prayer);
 void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
@@ -509,6 +510,15 @@ void handleWebRoutes() {
       }
     } else if (action == "stop") {
       stopAudioAndStandby();
+    } else if (action == "offering") {
+      // Fired when the priest approves a devotee's submission from the
+      // Priest Queue (see approveQueueItem() in web_dashboard.h) - shows
+      // their actual name/offering/prayer on the physical OLED, the same
+      // way puja.html's submission ends up in the queue in the first place.
+      String name = server.arg("name");
+      String offeringType = server.arg("offering");
+      String prayer = server.arg("prayer");
+      triggerPersonalizedOffering(name, offeringType, prayer);
     }
     server.send(200, "text/plain", "OK");
   });
@@ -847,6 +857,32 @@ void triggerFeetMantra() {
   myDFPlayer.playMp3Folder(dfTrack);
   
   feetStep = (feetStep + 1) % NUM_TRACKS;
+}
+
+// Fired when the priest approves a devotee's submission from the Priest
+// Queue (see /api/control?action=offering, wired from approveQueueItem()
+// in web_dashboard.h) - shows their actual name/offering/prayer on the
+// physical OLED for 12s, the same personalized text already shown
+// locally in the browser dashboard when a priest approves an item.
+void triggerPersonalizedOffering(String name, String offeringType, String prayer) {
+  blessingCounter++;
+
+  myDFPlayer.stop();
+  delay(50);
+  myDFPlayer.playMp3Folder(BELL_TRACK);
+
+  feetDisplayTimer = millis();
+  feetDisplayLocked = true;
+
+  if (name.length() == 0) name = "Anonymous Devotee";
+
+  if (prayer.length() > 0) {
+    snprintf(scrollText, sizeof(scrollText), "   [OFFERING] %s: %s   ", name.c_str(), prayer.c_str());
+  } else {
+    snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
+  }
+
+  setSystemState(STATE_FEET_ACTIVE, 12000);
 }
 
 void triggerAarti() {
