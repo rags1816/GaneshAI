@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 
+// Bump this any time GanapatiAI.ino/config.h/web_dashboard.h change - the
+// boot log prints it, so the Serial Monitor is the definitive proof of
+// what's actually flashed on the board, independent of any download or
+// browser-cache issue on the file-sync side.
+#define FIRMWARE_VERSION "2026-07-28-r1"
+
 // ==========================================
 // Hardware Pin Definitions
 // ==========================================

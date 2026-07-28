@@ -2738,6 +2738,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     stopNowPlaying();
                 }
 
+                // The device can also enter AARTI_MODE entirely on its own
+                // (the firmware's autonomous idle-timeout close), with no
+                // local button click to have called startNowPlaying() - so
+                // the panel would otherwise sit on "Nothing playing" even
+                // though Aarti is genuinely running. If we don't already
+                // know what's playing, assume it's the Aarti track once we
+                // see AARTI_MODE reported back.
+                if (data.state === "AARTI_MODE" && nowPlayingFile === null) {
+                    startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
+                }
+
                 updateUI();
             }).catch(() => {});
         }

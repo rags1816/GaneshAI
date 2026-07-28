@@ -225,6 +225,11 @@ void setup() {
   Serial.println("\n==================================");
   Serial.println("  Initializing Advanced Ganapati  ");
   Serial.println("==================================");
+  // Bump FIRMWARE_VERSION any time GanapatiAI.ino/config.h changes, so the
+  // boot log itself proves what's actually flashed - no download/caching
+  // ambiguity possible, unlike checking a saved local file.
+  Serial.print("FIRMWARE_VERSION: ");
+  Serial.println(FIRMWARE_VERSION);
 
   // Unconditional, earliest-possible sanity check: dump the raw RTC memory
   // value before any crash-check logic touches it, so we know whether RTC
