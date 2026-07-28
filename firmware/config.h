@@ -77,6 +77,7 @@ enum SystemState {
 
 // DFPlayer Mini SD card layout: all tracks live in a folder literally named
 // "mp3" (0001.mp3, 0002.mp3, ...) - played via playMp3Folder(), NOT play().
+#define BELL_TRACK       3      // Ganapathibell.mp3 - the only track not in mantraTracks[]/AARTI_TRACK
 #define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
 #define AARTI_DURATION   240000 // ~4 min, matches web dashboard's AARTI_FALLBACK_DURATION_MS
 

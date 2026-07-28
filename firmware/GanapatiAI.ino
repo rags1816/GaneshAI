@@ -406,7 +406,7 @@ void setup() {
   // 8. Play Startup Sound
   Serial.println("STEP 8: Playing startup sound...");
   if (dfReady) {
-    myDFPlayer.playMp3Folder(3);
+    myDFPlayer.playMp3Folder(BELL_TRACK);
     Serial.println("STEP 8: Startup sound played!");
   } else {
     Serial.println("STEP 8: Startup sound SKIPPED (DFPlayer not ready)");
@@ -475,6 +475,13 @@ void handleWebRoutes() {
       triggerAartiThenClose();
     } else if (action == "open") {
       openTempleFromClosed();
+    } else if (action == "pir") {
+      // Dashboard's "Simulate PIR Detection" button, remote-triggered -
+      // mirrors exactly what a real motion detection does in checkSensors().
+      if (currentState == STATE_STANDBY) {
+        myDFPlayer.playMp3Folder(BELL_TRACK);
+        setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
+      }
     } else if (action == "stop") {
       stopAudioAndStandby();
     }
@@ -621,6 +628,7 @@ void updateStateMachine() {
         triggerFeetMantra();
       } else if (motionDetected) {
         motionDetected = false;
+        myDFPlayer.playMp3Folder(BELL_TRACK);
         setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
       break;

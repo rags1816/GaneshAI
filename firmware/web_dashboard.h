@@ -2282,6 +2282,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         function triggerPIR() {
             if (pirEnabled && state === "STANDBY") {
+                initAudio();
+                playBellTone(250, 1.5);
+                if (isPhysicalESP) sendESPControl('pir');
                 changeState("AMBIENT", AMBIENT_IDLE_MS);
             }
         }
