@@ -563,13 +563,15 @@ void checkSensors() {
     }
   }
 
-  // Always check touch inputs (allows skipping tracks)
+  // Always check touch inputs (allows skipping tracks) - gated per-pin by
+  // TOUCH_FEET_CONNECTED/TOUCH_BACK_CONNECTED so an unwired, floating pin
+  // can't fire phantom touches (see config.h).
   if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
-    if (digitalRead(TOUCH_FEET_PIN) == HIGH) {
+    if (TOUCH_FEET_CONNECTED && digitalRead(TOUCH_FEET_PIN) == HIGH) {
       feetTouched = true;
       lastTouchTrigger = now;
     }
-    else if (digitalRead(TOUCH_BACK_PIN) == HIGH) {
+    else if (TOUCH_BACK_CONNECTED && digitalRead(TOUCH_BACK_PIN) == HIGH) {
       backTouched = true;
       lastTouchTrigger = now;
     }

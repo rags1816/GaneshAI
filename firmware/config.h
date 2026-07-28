@@ -17,6 +17,13 @@
 #define TOUCH_FEET_PIN   27   // Touch Sensor 2: Idol Feet (Alternating Mantra trigger)
 #define TOUCH_BACK_PIN   15   // Touch Sensor 3: Mouse Back Stroke (Mantra trigger)
 
+// Set to true only once each TP223 module's OUT pin is actually wired to
+// its GPIO above - until then the pin is floating/uncertain and produces
+// phantom touches, which was confusing testing of unrelated features
+// (PIR, Ambient, Aarti). Flip independently as each gets wired for real.
+#define TOUCH_FEET_CONNECTED   false
+#define TOUCH_BACK_CONNECTED   false
+
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
 #define NUM_LEDS         24   // 24 LEDs in the ring
