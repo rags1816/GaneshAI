@@ -460,11 +460,26 @@ void handleWebRoutes() {
       default: stateStr = "STANDBY"; break;
     }
 
-    char json[220];
-    snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d}",
+    // "blessing" makes the firmware the single source of truth for what
+    // text is currently showing - the dashboard displays this verbatim
+    // instead of running its own independent rotation, so the physical
+    // OLED and the dashboard always show the exact same line at the exact
+    // same time (previously each picked randomly on its own timer).
+    char json[700];
+    int n = snprintf(json, sizeof(json),
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"blessing\":\"",
       stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
       pirEnabled ? "true" : "false", selectedLang, selectedTheme);
+
+    // Minimal JSON string escaping - none of today's blessing/welcome text
+    // needs it, but a future text edit could introduce a quote/backslash
+    // and silently break the dashboard's JSON.parse() without this.
+    for (const char* s = scrollText; *s && n < (int)sizeof(json) - 3; s++) {
+      if (*s == '"' || *s == '\\') json[n++] = '\\';
+      if ((unsigned char)*s >= 0x20) json[n++] = *s;
+    }
+    n += snprintf(json + n, sizeof(json) - n, "\"}");
+
     server.send(200, "application/json", json);
   });
 

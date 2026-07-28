@@ -1505,8 +1505,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         scrollX -= 2;
                         if (scrollX < -textWidth) {
                             scrollX = 180;
-                            // When a message finishes scrolling, load the next blessing from the 48-blessings loop!
-                            if (state === "AMBIENT" || state === "MANTRA_ACTIVE") {
+                            // When a message finishes scrolling, load the next blessing from
+                            // the 48-blessings loop - but only in the standalone simulator.
+                            // On a physical device, pollDeviceState() is the one that updates
+                            // scroller text (from the firmware's own scrollText), so picking
+                            // independently here would show different text than the display.
+                            if (!isPhysicalESP && (state === "AMBIENT" || state === "MANTRA_ACTIVE")) {
                                 const nextBlessing = combinedBlessings[currentBlessingIndex];
                                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
                                 const nextText = `   [BLESSING] ${nextBlessing}   `;
@@ -1874,6 +1878,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             if (!introPlayed) {
                 introPlayed = true;
                 setOledText(WELCOME_BANNER);
+            } else if (isPhysicalESP) {
+                // On a physical device, pollDeviceState() drives what's shown
+                // (the firmware's own scrollText, via /api/state's "blessing"
+                // field) - don't also pick independently here, or the two
+                // would show different text at the same moment.
             } else {
                 const nextBlessing = combinedBlessings[currentBlessingIndex];
                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
@@ -2759,6 +2768,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 // see AARTI_MODE reported back.
                 if (data.state === "AARTI_MODE" && nowPlayingFile === null) {
                     startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
+                }
+
+                // True content sync: the firmware is now the single source of
+                // truth for what text is showing (see /api/state's
+                // "blessing" field, straight from its own scrollText) -
+                // display exactly that instead of running an independent
+                // local rotation, so the physical OLED and the dashboard
+                // always show the same line at the same time.
+                if (data.blessing && data.blessing !== currentText &&
+                    (data.state === "AMBIENT" || data.state === "MANTRA_ACTIVE" ||
+                     data.state === "FEET_ACTIVE" || data.state === "AARTI_MODE")) {
+                    setOledText(data.blessing);
                 }
 
                 updateUI();
