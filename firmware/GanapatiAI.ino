@@ -118,6 +118,13 @@ unsigned long lastScrollUpdate = 0;
 unsigned long feetDisplayTimer = 0;
 bool feetDisplayLocked = false;
 
+// Ambient blessing rotation - cycles through the same 48-message list
+// (oledChildBlessingsList + oledAdultBlessingsList) the web dashboard
+// rotates through, instead of showing one fixed scrolling sentence.
+unsigned long lastAmbientBlessingRotate = 0;
+int ambientBlessingIdx = 0;
+#define AMBIENT_BLESSING_ROTATE_MS 15000
+
 // ==========================================
 // Text Database
 // ==========================================
@@ -575,11 +582,30 @@ void checkSensors() {
 void updateStateMachine() {
   unsigned long now = millis();
 
-  // If 12 seconds have passed since Feet touch, unlock and resume rolling loop
+  // If 12 seconds have passed since Feet touch, unlock and let the ambient
+  // blessing rotation immediately show a fresh one (rather than falling
+  // back to the fixed welcome sentence).
   if (feetDisplayLocked && (now - feetDisplayTimer > 12000)) {
     feetDisplayLocked = false;
-    strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText)); // Resume the combined rolling blessings
+    lastAmbientBlessingRotate = 0;
     Serial.println("OLED: 12 seconds elapsed, resumed blessings roll.");
+  }
+
+  // While Ambient (awake, nobody actively engaging) and not showing a
+  // locked feet-touch blessing, rotate through the same 48-message list
+  // the web dashboard uses, instead of one fixed scrolling sentence.
+  if (currentState == STATE_AMBIENT && !feetDisplayLocked &&
+      now - lastAmbientBlessingRotate > AMBIENT_BLESSING_ROTATE_MS) {
+    lastAmbientBlessingRotate = now;
+    if (ambientBlessingIdx % 2 == 0) {
+      int r = random(0, 26);
+      snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
+    } else {
+      int r = random(0, 22);
+      snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledAdultBlessingsList[r]);
+    }
+    scrollX = 128;
+    ambientBlessingIdx++;
   }
 
   switch (currentState) {
@@ -710,8 +736,10 @@ void setSystemState(SystemState newState, unsigned long duration) {
     u8g2.setPowerSave(0); 
     if (newState == STATE_AMBIENT) {
       feetDisplayLocked = false;
-      // In Ambient, roll the entire combined blessings loop
+      // Show the welcome sentence first; updateStateMachine() switches to
+      // rotating blessings after AMBIENT_BLESSING_ROTATE_MS.
       strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
+      lastAmbientBlessingRotate = stateTimer;
     }
   }
 }
