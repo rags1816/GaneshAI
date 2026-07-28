@@ -16,6 +16,7 @@
 #include <DFRobotDFPlayerMini.h>
 #include "config.h"
 #include "web_dashboard.h"
+#include "puja_page.h"
 
 #ifdef U8G2_HAVE_HW_I2C
 #include <Wire.h>
@@ -447,6 +448,12 @@ void loop() {
 void handleWebRoutes() {
   server.on("/", HTTP_GET, []() {
     server.send_P(200, "text/html", INDEX_HTML);
+  });
+
+  // Devotee-facing offering submission page - the QR code on the admin
+  // dashboard links here so devotees can submit from their own phones.
+  server.on("/puja", HTTP_GET, []() {
+    server.send_P(200, "text/html", PUJA_HTML);
   });
 
   server.on("/api/state", HTTP_GET, []() {
