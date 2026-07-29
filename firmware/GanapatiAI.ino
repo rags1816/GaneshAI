@@ -1161,38 +1161,33 @@ void drawOLED() {
   lastOledDraw = now;
 
   u8g2.clearBuffer();
-  
-  u8g2.drawFrame(0, 0, 128, 64);
-  u8g2.drawHLine(0, 14, 128);
-  u8g2.drawHLine(0, 48, 128);
 
+  // Small state tag, top-right corner only. The old header band
+  // ("GANAPATI AI 2026") and the "Devotional Hits" footer used to box the
+  // blessing text into a 34px-tall strip drawn at 6x12 - unreadable from
+  // more than arm's length on a screen this small. Both are dropped so
+  // the blessing text below can use almost the full 64px height instead.
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(4, 10, "GANAPATI AI 2026");
-  
-  if (currentState == STATE_AMBIENT) {
-    u8g2.drawStr(90, 10, "[AMBIENT]");
-  } else if (currentState == STATE_MANTRA_ACTIVE) {
-    u8g2.drawStr(90, 10, "[MANTRA]");
-  } else if (currentState == STATE_FEET_ACTIVE) {
-    u8g2.drawStr(90, 10, "[MANTRA]");
-  } else if (currentState == STATE_AARTI) {
-    u8g2.drawStr(90, 10, "[AARTI]");
-  }
+  const char* tag = "";
+  if (currentState == STATE_AMBIENT) tag = "AMBIENT";
+  else if (currentState == STATE_MANTRA_ACTIVE) tag = "MANTRA";
+  else if (currentState == STATE_FEET_ACTIVE) tag = "MANTRA";
+  else if (currentState == STATE_AARTI) tag = "AARTI";
+  int tagWidth = u8g2.getStrWidth(tag);
+  u8g2.drawStr(124 - tagWidth, 8, tag);
 
-  char countStr[40];
-  snprintf(countStr, sizeof(countStr), "Devotional Hits: %d", blessingCounter);
-  u8g2.drawStr(6, 57, countStr);
-
-  u8g2.setFont(u8g2_font_6x12_tf);
+  // The actual content devotees read - now large enough to be legible
+  // from across a room instead of squinting at a small font.
+  u8g2.setFont(u8g2_font_logisoso20_tf);
 
   int textWidth = u8g2.getUTF8Width(scrollText);
-  u8g2.drawUTF8(scrollX, 34, scrollText);
-  
+  u8g2.drawUTF8(scrollX, 46, scrollText);
+
   if (now - lastScrollUpdate > TEXT_SCROLL_SPD) {
     lastScrollUpdate = now;
     scrollX -= 2;
     if (scrollX < -textWidth) {
-      scrollX = 124;
+      scrollX = 128;
     }
   }
 
