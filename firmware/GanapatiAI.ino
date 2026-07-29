@@ -144,24 +144,22 @@ unsigned long lastScrollUpdate = 0;
 
 // Display lock helper for Feet touch / Mouse Back / offerings. The lock
 // holds ONE message on screen (no blessing rotation) for feetDisplayLockMs
-// before the rotation resumes. Normally 12s, but an offering stretches it
-// to however long that specific message needs to scroll fully across at
-// least once - a long devotee name+prayer cannot physically finish a pass
-// in 12s, so devotees were only ever seeing a fragment of their own
-// offering on the physical display.
+// before the rotation resumes. 12s for an ordinary touch; an offering sets
+// it long and the state machine clears it explicitly once the message has
+// finished a real scroll pass, because a long devotee name+prayer cannot
+// physically finish a pass in 12s and devotees were only ever seeing a
+// fragment of their own offering.
 unsigned long feetDisplayTimer = 0;
 unsigned long feetDisplayLockMs = 12000;
 bool feetDisplayLocked = false;
 
-// One horizontal scroll pass takes (textWidthPx + 128) / SCROLL_PX_PER_STEP
-// steps, one step per drawOLED frame (~OLED_FRAME_MS). Kept here so
-// triggerPersonalizedOffering() can size an offering's display window to
-// the actual message instead of assuming a fixed 12s fits.
+// Pixels moved per drawOLED frame. Deliberately NOT used to predict how
+// long a scroll pass will take: drawOLED's 33ms gate plus loop()'s
+// delay(10) makes real frames land every ~40ms, so any arithmetic
+// estimate runs ~20% fast and clipped the tail off offering messages.
+// Code that needs to know a pass finished waits on scrollPassComplete,
+// which drawOLED sets from the actual scroll position.
 #define SCROLL_PX_PER_STEP 3
-#define OLED_FRAME_MS      33
-unsigned long scrollPassDurationMs(int textWidthPx) {
-  return (unsigned long)((textWidthPx + 128) / SCROLL_PX_PER_STEP) * OLED_FRAME_MS;
-}
 
 // Ambient blessing rotation - cycles through the same 48-message list
 // (oledChildBlessingsList + oledAdultBlessingsList) the web dashboard
@@ -871,18 +869,41 @@ void updateStateMachine() {
         return;
       }
 
-      if (now - stateTimer > stateDuration) {
+      // An offering's display ends only once the message has ACTUALLY
+      // finished one full scroll pass (scrollPassComplete, set by
+      // drawOLED) - not when a pre-computed duration expires. The
+      // computed estimate was consistently short because drawOLED's 33ms
+      // gate combined with loop()'s delay(10) makes real frames land
+      // every ~40ms, so the text scrolls ~20% slower than any 33ms-based
+      // calculation predicts - which clipped the last word or two off
+      // every offering. Waiting on the real scroll state is immune to
+      // that drift entirely. stateDuration still sets the 12s minimum,
+      // and the hard cap stops a pathologically long message (or a
+      // stalled scroll) from holding the display forever.
+      {
+        bool offeringMinElapsed = (now - stateTimer > stateDuration);
+        bool offeringHardCap    = (now - stateTimer > stateDuration + 20000);
+        bool offeringDone = offeringMinElapsed && (scrollPassComplete || offeringHardCap);
+        bool plainDone    = (now - stateTimer > stateDuration);
+
+      if (offeringDisplayActive ? offeringDone : plainDone) {
         if (offeringDisplayActive) {
-          // The 12-second personalized offering display is done. If it
-          // interrupted an actual mantra mid-play, resume it by replaying
-          // the SAME track (currentPlayingTrack, untouched by the
-          // BELL_TRACK the offering played) from the beginning, with the
-          // remaining time from its state timer - see the note in
+          // Offering display finished. If it interrupted an actual mantra
+          // mid-play, resume it by replaying the SAME track
+          // (currentPlayingTrack, untouched by the BELL_TRACK the
+          // offering played) - see the note in
           // triggerPersonalizedOffering() for why this restarts the track
           // instead of using DFPlayer's pause()/start() (unreliable on
           // many DFPlayer Mini clones).
           offeringDisplayActive = false;
-          Serial.printf("OFFERING: 12s display done, offeringInterrupted=%s, resumeTrack=%d, resumeState=%d\n",
+          // Release the display lock explicitly so the resumed mantra's
+          // blessing rotation starts again immediately, and reset the
+          // lock window for the next ordinary touch.
+          feetDisplayLocked = false;
+          feetDisplayLockMs = 12000;
+          scrollPassComplete = true;
+          Serial.printf("OFFERING: display done after %lums (cap hit: %s), offeringInterrupted=%s, resumeTrack=%d, resumeState=%d\n",
+                        now - stateTimer, offeringHardCap ? "yes" : "no",
                         offeringInterrupted ? "true" : "false", currentPlayingTrack, (int)offeringPausedState);
           if (offeringInterrupted) {
             offeringInterrupted = false;
@@ -906,6 +927,7 @@ void updateStateMachine() {
           myDFPlayer.stop();
           setSystemState(STATE_STANDBY);
         }
+      }
       }
       break;
 
@@ -997,6 +1019,7 @@ void triggerMantra() {
   // for however much longer the (often much longer) mantra keeps playing.
   feetDisplayTimer = millis();
   feetDisplayLocked = true;
+  feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
 
   // Get track from struct array
   int trackIndex = mouseStep;
@@ -1035,6 +1058,7 @@ void triggerFeetMantra() {
   // Lock screen display timer (12 seconds)
   feetDisplayTimer = millis();
   feetDisplayLocked = true;
+  feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
   
   // Get track from struct array
   int trackIndex = feetStep;
@@ -1115,20 +1139,20 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
   }
 
-  // Size the display window to THIS message: a fixed 12s is not enough
-  // for a long devotee name + prayer to scroll fully across even once at
-  // the big r11 font, so devotees were reading fragments of their own
-  // offering on the physical display (the dashboard, being a static text
-  // line, always looked fine - hence "display too slow vs dashboard").
-  // Hold it for one complete pass plus a beat, with 12s as the floor.
+  // 12s is only the MINIMUM here. The display actually ends when the
+  // message has finished a real scroll pass (see STATE_FEET_ACTIVE in
+  // updateStateMachine) - trying to pre-compute the pass duration was
+  // what clipped the last word or two, because real frame timing runs
+  // ~20% slower than the arithmetic predicted. feetDisplayLockMs is set
+  // generously so the blessing rotation can't overwrite the offering
+  // mid-pass; the state machine clears the lock explicitly when the
+  // offering display genuinely finishes.
   u8g2.setFont(u8g2_font_logisoso20_tf);
-  unsigned long offeringDisplayMs = scrollPassDurationMs(u8g2.getUTF8Width(scrollText)) + 1500;
-  if (offeringDisplayMs < 12000) offeringDisplayMs = 12000;
-  feetDisplayLockMs = offeringDisplayMs;
-  Serial.printf("OFFERING: display window %lums for a %dpx message\n",
-                offeringDisplayMs, u8g2.getUTF8Width(scrollText));
+  Serial.printf("OFFERING: showing a %dpx message, min 12s, ends on full scroll pass\n",
+                u8g2.getUTF8Width(scrollText));
+  feetDisplayLockMs = 600000UL; // effectively "until the offering ends"
 
-  setSystemState(STATE_FEET_ACTIVE, offeringDisplayMs);
+  setSystemState(STATE_FEET_ACTIVE, 12000);
 }
 
 void triggerAarti() {
@@ -1171,7 +1195,14 @@ void triggerAartiThenClose() {
 // again within about a minute of it just opening, with no chance to ever
 // see STANDBY or test PIR at all.
 void openTempleFromClosed() {
-  if (currentState != STATE_TEMPLE_CLOSED) return;
+  // Accepts STANDBY as well as TEMPLE_CLOSED. It used to reject anything
+  // but TEMPLE_CLOSED, which meant pressing "Open Temple" while the idol
+  // sat in STANDBY - now the normal resting state after every mantra -
+  // returned instantly: no bell, no state change, a button that looked
+  // dead. That also left no way to wake the temple at all once the PIR
+  // was disabled. Opening from STANDBY is the same welcoming gesture, so
+  // it runs the same bell + welcome mantra.
+  if (currentState != STATE_TEMPLE_CLOSED && currentState != STATE_STANDBY) return;
 
   offeringDisplayActive = false;
   offeringInterrupted = false;
@@ -1189,6 +1220,7 @@ void openTempleFromClosed() {
   blessingCounter++;
   feetDisplayTimer = millis();
   feetDisplayLocked = true;
+  feetDisplayLockMs = 12000;
   strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
   setSystemState(STATE_MANTRA_ACTIVE, mantraTracks[0].duration);
 }
