@@ -67,15 +67,20 @@ bool backTouched = false;
 bool aartiThenClose = false;
 
 // Offering-approval pause/resume tracking (see triggerPersonalizedOffering()):
-// when a priest approves an offering while a mantra is actively playing, the
-// DFPlayer is paused (not stopped) and the interrupted state/remaining time
-// is remembered here so the 12-second offering display can resume the exact
-// same track from the exact same position afterward, instead of restarting
-// or silently dropping the rest of the mantra.
+// when a priest approves an offering while a mantra/Aarti is playing, the
+// interrupted state and its FULL original duration are remembered here so
+// the 12-second offering display can resume it afterward.
+//
+// This stores the FULL duration, not "how much was left" - a real bug
+// found on hardware: since resuming replays the track from the
+// beginning (see triggerPersonalizedOffering() for why), giving it only
+// the time that was LEFT before the interruption meant an offering
+// approved near the end of a track cut the resumed replay off almost
+// immediately - it needs the full track length again, not the remainder.
 bool offeringDisplayActive = false;
 bool offeringInterrupted = false;
 SystemState offeringPausedState = STATE_STANDBY;
-unsigned long offeringPausedRemainingMs = 0;
+unsigned long offeringPausedDurationMs = 0;
 
 // Track Struct Definition
 struct MantraTrack {
@@ -832,7 +837,7 @@ void updateStateMachine() {
             if (offeringPausedState == STATE_AARTI) {
               strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
             }
-            setSystemState(offeringPausedState, offeringPausedRemainingMs);
+            setSystemState(offeringPausedState, offeringPausedDurationMs);
           } else {
             myDFPlayer.stop();
             setSystemState(STATE_STANDBY);
@@ -1027,11 +1032,14 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
   offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI);
   if (offeringInterrupted) {
     offeringPausedState = currentState;
-    unsigned long elapsed = millis() - stateTimer;
-    offeringPausedRemainingMs = (elapsed < stateDuration) ? (stateDuration - elapsed) : 1000;
+    // The FULL duration, not the remainder - see the note on
+    // offeringPausedDurationMs above. Replaying from the start needs the
+    // whole track's time again, regardless of how far in it was when
+    // this offering interrupted it.
+    offeringPausedDurationMs = stateDuration;
   }
-  Serial.printf("OFFERING: approved while currentState=%d, offeringInterrupted=%s, pausedTrack=%d, remainingMs=%lu\n",
-                (int)currentState, offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedRemainingMs);
+  Serial.printf("OFFERING: approved while currentState=%d, offeringInterrupted=%s, pausedTrack=%d, fullDurationMs=%lu\n",
+                (int)currentState, offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedDurationMs);
   myDFPlayer.stop();
   offeringDisplayActive = true;
   delay(50);
