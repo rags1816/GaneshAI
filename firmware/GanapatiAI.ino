@@ -296,15 +296,20 @@ void setup() {
   Serial.println("DEBUG: Random seed set successfully.");
 
   // 1. Initialize Sensor Pins
-  // INPUT_PULLDOWN (was plain INPUT): the raw pin was observed toggling
-  // every 33-81ms on real hardware - the signature of a floating or
-  // marginally-connected input picking up noise, not real motion. The
-  // AM312's output actively drives HIGH on detection, so an internal
-  // pull-down can't mask a genuine trigger - it only pins the line LOW
-  // when the sensor isn't driving it, which is exactly what a
-  // noisy/loose line needs.
-  pinMode(PIR_PIN, INPUT_PULLDOWN);
-  Serial.println("DEBUG: PIR_PIN configured (with internal pull-down).");
+  // Plain INPUT, no pull - deliberately. r15 briefly used INPUT_PULLDOWN
+  // to quiet a noisy line, but that was wrong for this sensor: the
+  // AM312's output stage is extremely weak (~100uA source, famously too
+  // weak to even light an LED), while holding the ESP32's ~45k internal
+  // pull-down at 3.3V takes ~73uA of continuous drive - the sensor can
+  // lose that fight, sagging the pin below the ~2.5V HIGH threshold so
+  // the firmware NEVER sees motion from a perfectly healthy, correctly
+  // wired sensor. The AM312 drives its output both HIGH and LOW
+  // (push-pull), so with sound wiring it needs no pull at all. The
+  // original 33-81ms noise was the old sensor/loose wire (since
+  // physically replaced); the 100ms sustain filter in checkSensors()
+  // stays as protection against any residual noise.
+  pinMode(PIR_PIN, INPUT);
+  Serial.println("DEBUG: PIR_PIN configured (plain INPUT, no pull - AM312 output is too weak to fight a pull-down).");
   pinMode(TOUCH_FEET_PIN, INPUT);
   Serial.println("DEBUG: TOUCH_FEET_PIN configured.");
   pinMode(TOUCH_BACK_PIN, INPUT);
