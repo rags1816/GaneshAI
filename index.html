@@ -2608,7 +2608,14 @@ var QRCode;
                         // (both intend to close afterward) and cleared by
                         // openTemple() (wakes into Ambient instead) - mirror
                         // that same intent to the firmware's own state machine.
-                        sendESPControl(aartiOnComplete ? 'close' : 'aarti');
+                        // Skipped if closeTemple() already dispatched 'close'
+                        // immediately (see aartiPhysicalAlreadyDispatched) -
+                        // sending it again here would restart the Aarti chant
+                        // the device already began playing several seconds ago.
+                        if (!aartiPhysicalAlreadyDispatched) {
+                            sendESPControl(aartiOnComplete ? 'close' : 'aarti');
+                        }
+                        aartiPhysicalAlreadyDispatched = false;
                         autoReturnTimer = setTimeout(finishAarti, 239000); // 3.59 mins (239s)
                     } else {
                         globalMantraPlayer.src = AARTI_TRACK_FILE;
@@ -2999,10 +3006,19 @@ var QRCode;
         }
 
         function triggerPIR() {
+            // Always reach the real device, even if this browser's local
+            // state tracking has drifted out of sync with it (same
+            // pattern as triggerStop()/openTemple()/closeTemple()) - the
+            // firmware only acts if it's actually in STANDBY anyway, so
+            // this is safe to send regardless of what this browser
+            // currently believes. Previously this was gated on the
+            // browser's own (possibly stale) `state` and silently did
+            // nothing - with no error shown - if that copy wasn't
+            // exactly "STANDBY", which looked exactly like a dead button.
+            if (isPhysicalESP) sendESPControl('pir');
             if (pirEnabled && state === "STANDBY") {
                 initAudio();
                 playBellTone(250, 1.5);
-                if (isPhysicalESP) sendESPControl('pir');
                 changeState("AMBIENT", AMBIENT_IDLE_MS);
             }
         }
@@ -3011,6 +3027,13 @@ var QRCode;
         // started the ritual (idle timeout vs. manual wake), defaults to
         // settling into a normal ready Ambient state if nothing set it.
         let aartiOnComplete = null;
+
+        // Set by closeTemple() when it has already reached the physical
+        // device immediately (see below) - prevents the AARTI_MODE branch
+        // in changeState() from sending a SECOND, redundant 'close' a few
+        // seconds later through the local ringWakeBells() chain, which
+        // would restart the just-started Aarti chant on the real device.
+        let aartiPhysicalAlreadyDispatched = false;
 
         // Shared "temple wakes up" ritual: 3 quick bells, then the full Aarti.
         function ringWakeBells(remaining) {
@@ -3059,9 +3082,24 @@ var QRCode;
 
         function closeTemple() {
             if (state === "TEMPLE_CLOSED") return;
+
+            // Reach the real device IMMEDIATELY, same pattern as
+            // openTemple()/triggerStop() - this used to be missing
+            // entirely, so the only way 'close' ever reached the
+            // physical device was several seconds later, indirectly,
+            // through the local ringWakeBells() -> AARTI_MODE chain
+            // below (which exists purely to simulate bell/chant audio in
+            // the standalone browser simulator - those local Web Audio
+            // tones are inaudible on the real idol's speaker anyway).
+            // On a physical device that made the button look
+            // unresponsive/broken for 5+ seconds after every press.
+            if (isPhysicalESP) {
+                sendESPControl('close');
+                aartiPhysicalAlreadyDispatched = true;
+            }
+
             initAudio();
-            // Closing the temple - manually or automatically - always plays
-            // the Aarti chant first (3 bells, then GaneshAarti.mp3), then
+            // Local simulator ritual - 3 bells, then GaneshAarti.mp3, then
             // settles into TEMPLE_CLOSED once it finishes.
             aartiOnComplete = () => changeState("TEMPLE_CLOSED");
             ringWakeBells(3);

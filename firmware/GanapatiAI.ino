@@ -146,7 +146,16 @@ bool feetDisplayLocked = false;
 // rotates through, instead of showing one fixed scrolling sentence.
 unsigned long lastAmbientBlessingRotate = 0;
 int ambientBlessingIdx = 0;
-#define AMBIENT_BLESSING_ROTATE_MS 15000
+// Was a fixed 15s timer - broke once the OLED font got much bigger (see
+// drawOLED()): wider glyphs mean a typical blessing sentence takes far
+// longer than 15s to fully scroll across a 128px screen, so most
+// blessings were getting replaced mid-scroll, sometimes after only a
+// couple of words were visible. Rotation is now driven by
+// scrollPassComplete (set by drawOLED() when the CURRENT text has
+// actually finished one full scroll pass) instead - this is just the
+// minimum floor so a very short string can't flicker instantly.
+#define MIN_BLESSING_DISPLAY_MS 2000
+bool scrollPassComplete = false;
 
 // ==========================================
 // Text Database
@@ -701,6 +710,7 @@ void updateStateMachine() {
   if (feetDisplayLocked && (now - feetDisplayTimer > 12000)) {
     feetDisplayLocked = false;
     lastAmbientBlessingRotate = 0;
+    scrollPassComplete = true; // force the rotation below to fire immediately
     Serial.println("OLED: 12 seconds elapsed, resumed blessings roll.");
   }
 
@@ -709,9 +719,16 @@ void updateStateMachine() {
   // 48-message list the web dashboard uses, instead of one fixed
   // scrolling sentence. Feet Touch's own 12s-locked blessing takes
   // priority over this while feetDisplayLocked is set.
+  //
+  // Gated on scrollPassComplete (set by drawOLED() once the CURRENT text
+  // has actually finished scrolling all the way across), not a fixed
+  // timer - see the MIN_BLESSING_DISPLAY_MS comment for why a fixed
+  // timer broke once the font got bigger. MIN_BLESSING_DISPLAY_MS is
+  // just a floor against flickering on a very short string.
   if ((currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE) && !feetDisplayLocked &&
-      now - lastAmbientBlessingRotate > AMBIENT_BLESSING_ROTATE_MS) {
+      scrollPassComplete && (now - lastAmbientBlessingRotate > MIN_BLESSING_DISPLAY_MS)) {
     lastAmbientBlessingRotate = now;
+    scrollPassComplete = false;
     if (ambientBlessingIdx % 2 == 0) {
       int r = random(0, 26);
       snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
@@ -801,10 +818,12 @@ void updateStateMachine() {
           // instead of using DFPlayer's pause()/start() (unreliable on
           // many DFPlayer Mini clones).
           offeringDisplayActive = false;
+          Serial.printf("OFFERING: 12s display done, offeringInterrupted=%s, resumeTrack=%d, resumeState=%d\n",
+                        offeringInterrupted ? "true" : "false", currentPlayingTrack, (int)offeringPausedState);
           if (offeringInterrupted) {
             offeringInterrupted = false;
             myDFPlayer.stop();
-            delay(50);
+            delay(100); // was 50ms - some DFPlayer Mini clones drop a command sent too soon after stop()
             myDFPlayer.playMp3Folder(currentPlayingTrack);
             // Resuming into Aarti specifically: restore its fixed display
             // text, since it was overwritten by the offering's "[OFFERING]
@@ -875,6 +894,10 @@ void setSystemState(SystemState newState, unsigned long duration) {
   stateTimer = millis();
   stateDuration = duration;
   scrollX = 128;
+  // Every fresh state entry starts a fresh scroll pass for whatever text
+  // was just set - the blessing rotation below must not fire again until
+  // THIS text has had its own chance to fully scroll across the screen.
+  scrollPassComplete = false;
 
   if (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED) {
     feetDisplayLocked = false;
@@ -1007,6 +1030,8 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     unsigned long elapsed = millis() - stateTimer;
     offeringPausedRemainingMs = (elapsed < stateDuration) ? (stateDuration - elapsed) : 1000;
   }
+  Serial.printf("OFFERING: approved while currentState=%d, offeringInterrupted=%s, pausedTrack=%d, remainingMs=%lu\n",
+                (int)currentState, offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedRemainingMs);
   myDFPlayer.stop();
   offeringDisplayActive = true;
   delay(50);
@@ -1219,6 +1244,7 @@ void drawOLED() {
     scrollX -= 2;
     if (scrollX < -textWidth) {
       scrollX = 128;
+      scrollPassComplete = true;
     }
   }
 
