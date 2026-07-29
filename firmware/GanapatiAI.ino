@@ -313,20 +313,13 @@ void setup() {
   Serial.println("DEBUG: Random seed set successfully.");
 
   // 1. Initialize Sensor Pins
-  // Plain INPUT, no pull - deliberately. r15 briefly used INPUT_PULLDOWN
-  // to quiet a noisy line, but that was wrong for this sensor: the
-  // AM312's output stage is extremely weak (~100uA source, famously too
-  // weak to even light an LED), while holding the ESP32's ~45k internal
-  // pull-down at 3.3V takes ~73uA of continuous drive - the sensor can
-  // lose that fight, sagging the pin below the ~2.5V HIGH threshold so
-  // the firmware NEVER sees motion from a perfectly healthy, correctly
-  // wired sensor. The AM312 drives its output both HIGH and LOW
-  // (push-pull), so with sound wiring it needs no pull at all. The
-  // original 33-81ms noise was the old sensor/loose wire (since
-  // physically replaced); the 100ms sustain filter in checkSensors()
-  // stays as protection against any residual noise.
+  // Plain INPUT, no pull. An internal pull-down (tried in r15) can drag
+  // the AM312's very weak output (~100uA) below the HIGH threshold and
+  // mute a perfectly good sensor; the AM312 drives both HIGH and LOW on
+  // its own, so it needs no pull with sound wiring.
   pinMode(PIR_PIN, INPUT);
-  Serial.println("DEBUG: PIR_PIN configured (plain INPUT, no pull - AM312 output is too weak to fight a pull-down).");
+  Serial.printf("DEBUG: PIR on GPIO%d, PIR_CONNECTED=%s\n",
+                PIR_PIN, PIR_CONNECTED ? "true" : "false");
   pinMode(TOUCH_FEET_PIN, INPUT);
   Serial.println("DEBUG: TOUCH_FEET_PIN configured.");
   pinMode(TOUCH_BACK_PIN, INPUT);
@@ -681,53 +674,30 @@ void handleWebRoutes() {
 void checkSensors() {
   unsigned long now = millis();
 
-  // Always read + report the RAW PIR pin on every edge, independent of
-  // pirEnabled/currentState - this is deliberately separate from the
-  // gated logic below, so Serial Monitor can answer "is the sensor itself
-  // even seeing motion" on its own, regardless of whether the firmware is
-  // currently in a state that would act on it. If this never prints HIGH
-  // while you wave a hand in front of the sensor, the problem is upstream
-  // of all this code (wiring/power/the sensor itself) - if it DOES print
-  // HIGH but nothing happens, the problem is the gating below (state not
-  // STANDBY, or pirEnabled false).
+  // ---- PIR motion sensing ------------------------------------------
+  // PIR_CONNECTED=false (config.h) skips the sensor completely - no reads,
+  // no logs, no wake. Everything else (touch pads, dashboard, offerings,
+  // rituals) works without it, so a misbehaving sensor can never block or
+  // muddy testing of unrelated features.
   //
-  // CONFIRMED on real hardware: the raw pin was toggling every 33-81ms -
-  // far too fast to be real motion (a hand doesn't leave and re-enter the
-  // sensor's view every 30ms). That's electrical noise on the signal line
-  // (loose connection, floating input, or power noise), not a false
-  // "PIR is broken" reading, and not something the debounce below caught,
-  // since MOTION_DEBOUNCE only limits how often a CONFIRMED trigger can
-  // fire again - it doesn't filter noise on the raw read itself. Added a
-  // confirmation window: the pin must read HIGH continuously for 100ms
-  // before it's trusted as real motion. Costs nothing for a genuine
-  // AM312 detection (it holds HIGH for a couple of seconds), but filters
-  // out pure noise spikes shorter than that.
-  // r15 FIX: the per-edge Serial print that used to live here was itself
-  // a serious bug on a noisy line. With the pin toggling every 33-81ms
-  // (as captured on real hardware), it printed up to ~30 lines/second
-  // forever - and once the serial TX buffer saturates, Serial.printf
-  // BLOCKS, slowing the entire main loop: OLED scrolling ran visibly
-  // slower, web-server requests (dashboard buttons!) lagged or timed
-  // out, and state timing turned erratic. One noisy pin + verbose
-  // logging degraded the whole device. Diagnostics are now a
-  // rate-limited summary: at most one line every 2 seconds, reporting
-  // how many edges occurred in that window - same information for
-  // debugging wiring, none of the flooding.
-  // DUTY-CYCLE detection, not "sustained HIGH". Hardware showed the pin
-  // toggling ~55 times/second (108-123 edges per 2s) - that is mains-hum
-  // frequency on an undriven wire, and it is NOT something an AM312 can
-  // produce (its output holds HIGH for ~2 SECONDS per detection). Any
-  // single digitalRead() of such a line returns HIGH ~half the time,
-  // which is why the log said "now HIGH" while nothing ever triggered.
+  // Detection is by DUTY CYCLE over a 250ms window, not "pin is HIGH" and
+  // not "HIGH sustained for 100ms". Real hardware showed this pin toggling
+  // ~55 times/second - mains-hum frequency on an undriven wire, and
+  // impossible for an AM312, whose output holds HIGH for ~2 SECONDS per
+  // detection. Any single digitalRead() of such a line returns HIGH about
+  // half the time, which is exactly why a log line could say "HIGH" while
+  // nothing ever legitimately triggered. Duty cycle separates the cases:
+  //   ~40-60%  -> line floating/noisy, sensor is NOT driving it (wiring)
+  //   >=90%    -> line genuinely held HIGH = real motion
+  // The window is ~25 samples (loop runs every ~10ms) and far shorter than
+  // the AM312's ~2s pulse, so a true detection always fills a whole window.
   //
-  // Measuring what fraction of a 250ms window reads HIGH separates the
-  // two cases unambiguously:
-  //   ~40-60%  -> the line is floating/noisy, the sensor is NOT driving
-  //               it (no firmware change can fix that - it's wiring)
-  //   >=90%    -> something is genuinely holding the line HIGH = motion
-  // The window is ~25 samples (loop runs every ~10ms) and is far shorter
-  // than the AM312's ~2s output pulse, so a real detection always fills
-  // at least one whole window.
+  // Logging is rate-limited to one line per 2s. An earlier per-edge print
+  // was itself a serious bug: on a noisy line it emitted ~30 lines/second,
+  // and once the serial TX buffer saturates Serial.printf BLOCKS, stalling
+  // the main loop - which also drives the OLED scroll, the state machine,
+  // and the web server. That one flood made the display sluggish and the
+  // dashboard buttons unresponsive.
   static unsigned int pirSamples = 0;
   static unsigned int pirHighSamples = 0;
   static unsigned long pirWindowStart = 0;
@@ -735,26 +705,28 @@ void checkSensors() {
   static int pirDutyPct = 0;
   static bool pirMotionLive = false;
 
-  pirSamples++;
-  if (digitalRead(PIR_PIN) == HIGH) pirHighSamples++;
+  if (PIR_CONNECTED) {
+    pirSamples++;
+    if (digitalRead(PIR_PIN) == HIGH) pirHighSamples++;
 
-  if (now - pirWindowStart >= 250) {
-    pirDutyPct = pirSamples ? (int)((pirHighSamples * 100UL) / pirSamples) : 0;
-    pirMotionLive = (pirDutyPct >= 90);
-    pirSamples = 0;
-    pirHighSamples = 0;
-    pirWindowStart = now;
+    if (now - pirWindowStart >= 250) {
+      pirDutyPct = pirSamples ? (int)((pirHighSamples * 100UL) / pirSamples) : 0;
+      pirMotionLive = (pirDutyPct >= 90);
+      pirSamples = 0;
+      pirHighSamples = 0;
+      pirWindowStart = now;
 
-    // Rate-limited so a noisy line can never flood serial and stall the
-    // main loop (that flood was itself slowing the OLED and web server
-    // in r13). Silence here means a clean, quiet idle line.
-    if (pirDutyPct > 5 && now - lastPirReport > 2000) {
-      lastPirReport = now;
-      const char* verdict = pirMotionLive ? "MOTION (line driven HIGH)"
-                                          : "NOISE - sensor not driving the pin, check OUT wire/pin";
-      Serial.printf("PIR: duty %d%% over 250ms -> %s  (state=%d [0=STANDBY], pirEnabled=%s)\n",
-                    pirDutyPct, verdict, (int)currentState, pirEnabled ? "true" : "false");
+      if (pirDutyPct > 5 && now - lastPirReport > 2000) {
+        lastPirReport = now;
+        const char* verdict = pirMotionLive
+            ? "MOTION (line driven HIGH)"
+            : "NOISE - sensor not driving the pin, check OUT wire/pin";
+        Serial.printf("PIR: duty %d%% over 250ms -> %s  (state=%d [0=STANDBY], pirEnabled=%s)\n",
+                      pirDutyPct, verdict, (int)currentState, pirEnabled ? "true" : "false");
+      }
     }
+  } else {
+    pirMotionLive = false;
   }
 
   bool pirConfirmed = pirMotionLive;

@@ -7,28 +7,43 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-29-r17"
+#define FIRMWARE_VERSION "2026-07-29-r18"
 
 // ==========================================
 // Hardware Pin Definitions
 // ==========================================
 
 // Sensors
-#define PIR_PIN          13   // AM312 Motion Sensor Pin
-// NOTE: was GPIO12 (MTDI / VDD_SDIO strapping pin). With the touch sensor
-// unplugged that pin floats, and if noise pulls it HIGH at reset the ESP32
-// selects the wrong flash voltage and hangs/reboots before setup() ever
-// runs (no Serial, no OLED). Moved to GPIO27, a plain non-strapping input.
-// Rewire the feet sensor's signal line to GPIO27 when reconnecting it.
+// PIR moved 13 -> 19. GPIO13 doubles as JTAG MTCK, and after the sensor
+// and wiring were both replaced the pin STILL showed ~55Hz noise (i.e.
+// mains hum on an undriven line) - even when forced high. GPIO19 is a
+// plain bidirectional GPIO with no strapping, JTAG, or flash role and
+// nothing else on this build uses it. REWIRE the AM312's OUT lead to
+// D19; VIN and GND stay where they are.
+#define PIR_PIN          19   // AM312 Motion Sensor Pin (was 13 = JTAG MTCK)
+
+// Set false to ignore the PIR entirely - no reads, no wake, no logs.
+// The rest of the temple (touch pads, dashboard, offerings, Aarti,
+// rituals) is fully functional without it: PIR's only job is
+// STANDBY -> AMBIENT, which the dashboard's "Trigger PIR" button and any
+// touch also do. Flip this to false if the sensor keeps misbehaving so it
+// can never block or confuse testing of everything else again.
+#define PIR_CONNECTED    true
+
+// Touch pads (TP223 modules). Feet was originally GPIO12 (MTDI /
+// VDD_SDIO strapping pin) - with the sensor unplugged that pin floats,
+// and if noise pulls it HIGH at reset the ESP32 selects the wrong flash
+// voltage and hangs before setup() ever runs (no Serial, no OLED). Moved
+// to GPIO27, a plain non-strapping input.
 #define TOUCH_FEET_PIN   27   // Touch Sensor 2: Idol Feet (Alternating Mantra trigger)
 #define TOUCH_BACK_PIN   15   // Touch Sensor 3: Mouse Back Stroke (Mantra trigger)
 
-// Set to true only once each TP223 module's OUT pin is actually wired to
-// its GPIO above - until then the pin is floating/uncertain and produces
-// phantom touches, which was confusing testing of unrelated features
-// (PIR, Ambient, Aarti). Flip independently as each gets wired for real.
-#define TOUCH_FEET_CONNECTED   false
-#define TOUCH_BACK_CONNECTED   false
+// Both true now that the pads are soldered. If either pad turns out to be
+// only partly connected, set THAT one back to false: a floating pin fires
+// phantom touches that look like mantras starting at random, which
+// previously made unrelated features (PIR, Ambient, Aarti) look broken.
+#define TOUCH_FEET_CONNECTED   true
+#define TOUCH_BACK_CONNECTED   true
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
