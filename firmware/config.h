@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-29-r20"
+#define FIRMWARE_VERSION "2026-07-29-r21"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -39,12 +39,16 @@
 #define TOUCH_FEET_PIN   27   // Touch Sensor 2: Idol Feet (Alternating Mantra trigger)
 #define TOUCH_BACK_PIN   15   // Touch Sensor 3: Mouse Back Stroke (Mantra trigger)
 
-// Both true now that the pads are soldered. If either pad turns out to be
-// only partly connected, set THAT one back to false: a floating pin fires
-// phantom touches that look like mantras starting at random, which
-// previously made unrelated features (PIR, Ambient, Aarti) look broken.
-#define TOUCH_FEET_CONNECTED   true
-#define TOUCH_BACK_CONNECTED   true
+// FALSE until each pad's OUT lead is actually landed on its GPIO above.
+// These were briefly set true on the strength of "pads are soldered", but
+// soldered is not the same as connected to the board: with the leads off,
+// GPIO27/15 float and pick up the same mains hum as the PIR line, firing
+// phantom touches. That put the device into FEET_ACTIVE by itself, with
+// no one touching anything. Flip each one to true only after that pad's
+// wire is on its pin, and expect random self-starting mantras if you turn
+// one on early.
+#define TOUCH_FEET_CONNECTED   false
+#define TOUCH_BACK_CONNECTED   false
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

@@ -53,6 +53,22 @@ SystemState currentState = STATE_STANDBY;
 unsigned long stateTimer = 0;
 unsigned long stateDuration = 0;
 
+// Human-readable state name for Serial logs. Bare enum numbers in the log
+// ("state=3") are genuinely ambiguous while debugging - it cost a whole
+// test round working out that state=3 meant FEET_ACTIVE fired by a
+// phantom touch on a floating pin, not motion detection working.
+const char* stateName(SystemState s) {
+  switch (s) {
+    case STATE_STANDBY:       return "STANDBY";
+    case STATE_AMBIENT:       return "AMBIENT";
+    case STATE_MANTRA_ACTIVE: return "MANTRA_ACTIVE";
+    case STATE_FEET_ACTIVE:   return "FEET_ACTIVE";
+    case STATE_AARTI:         return "AARTI";
+    case STATE_TEMPLE_CLOSED: return "TEMPLE_CLOSED";
+    default:                  return "?";
+  }
+}
+
 // Sensor Tracking
 unsigned long lastMotionTrigger = 0;
 unsigned long lastTouchTrigger = 0;
@@ -719,8 +735,8 @@ void checkSensors() {
         const char* verdict = pirMotionLive
             ? "MOTION (line driven HIGH)"
             : "NOISE - sensor not driving the pin, check OUT wire/pin";
-        Serial.printf("PIR: duty %d%% over 250ms -> %s  (state=%d [0=STANDBY], pirEnabled=%s)\n",
-                      pirDutyPct, verdict, (int)currentState, pirEnabled ? "true" : "false");
+        Serial.printf("PIR: duty %d%% over 250ms -> %s  (state=%s, pirEnabled=%s)\n",
+                      pirDutyPct, verdict, stateName(currentState), pirEnabled ? "true" : "false");
       }
     }
   } else {
@@ -750,10 +766,16 @@ void checkSensors() {
     if (TOUCH_FEET_CONNECTED && digitalRead(TOUCH_FEET_PIN) == HIGH) {
       feetTouched = true;
       lastTouchTrigger = now;
+      // Logged so a phantom touch on a floating/unconnected pad is
+      // immediately distinguishable from a real one: if this appears when
+      // nobody touched anything, that pad's lead is not landed on its pin
+      // and its _CONNECTED flag should go back to false.
+      Serial.printf("TOUCH: feet pad HIGH (GPIO%d) while %s\n", TOUCH_FEET_PIN, stateName(currentState));
     }
     else if (TOUCH_BACK_CONNECTED && digitalRead(TOUCH_BACK_PIN) == HIGH) {
       backTouched = true;
       lastTouchTrigger = now;
+      Serial.printf("TOUCH: mouse-back pad HIGH (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
     }
   }
 }
@@ -902,9 +924,9 @@ void updateStateMachine() {
           feetDisplayLocked = false;
           feetDisplayLockMs = 12000;
           scrollPassComplete = true;
-          Serial.printf("OFFERING: display done after %lums (cap hit: %s), offeringInterrupted=%s, resumeTrack=%d, resumeState=%d\n",
+          Serial.printf("OFFERING: display done after %lums (cap hit: %s), offeringInterrupted=%s, resumeTrack=%d, resumeState=%s\n",
                         now - stateTimer, offeringHardCap ? "yes" : "no",
-                        offeringInterrupted ? "true" : "false", currentPlayingTrack, (int)offeringPausedState);
+                        offeringInterrupted ? "true" : "false", currentPlayingTrack, stateName(offeringPausedState));
           if (offeringInterrupted) {
             offeringInterrupted = false;
             myDFPlayer.stop();
@@ -1121,8 +1143,8 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     // this offering interrupted it.
     offeringPausedDurationMs = stateDuration;
   }
-  Serial.printf("OFFERING: approved while currentState=%d, offeringInterrupted=%s, pausedTrack=%d, fullDurationMs=%lu\n",
-                (int)currentState, offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedDurationMs);
+  Serial.printf("OFFERING: approved while state=%s, offeringInterrupted=%s, pausedTrack=%d, fullDurationMs=%lu\n",
+                stateName(currentState), offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedDurationMs);
   myDFPlayer.stop();
   offeringDisplayActive = true;
   delay(50);
