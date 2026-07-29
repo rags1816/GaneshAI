@@ -636,13 +636,28 @@ void checkSensors() {
   // of all this code (wiring/power/the sensor itself) - if it DOES print
   // HIGH but nothing happens, the problem is the gating below (state not
   // STANDBY, or pirEnabled false).
+  //
+  // CONFIRMED on real hardware: the raw pin was toggling every 33-81ms -
+  // far too fast to be real motion (a hand doesn't leave and re-enter the
+  // sensor's view every 30ms). That's electrical noise on the signal line
+  // (loose connection, floating input, or power noise), not a false
+  // "PIR is broken" reading, and not something the debounce below caught,
+  // since MOTION_DEBOUNCE only limits how often a CONFIRMED trigger can
+  // fire again - it doesn't filter noise on the raw read itself. Added a
+  // confirmation window: the pin must read HIGH continuously for 100ms
+  // before it's trusted as real motion. Costs nothing for a genuine
+  // AM312 detection (it holds HIGH for a couple of seconds), but filters
+  // out pure noise spikes shorter than that.
   static bool lastPirRaw = false;
+  static unsigned long pirHighSince = 0;
   bool pirRaw = (digitalRead(PIR_PIN) == HIGH);
   if (pirRaw != lastPirRaw) {
     Serial.printf("PIR raw pin -> %s   (currentState=%d [0=STANDBY], pirEnabled=%s)\n",
                   pirRaw ? "HIGH" : "LOW", (int)currentState, pirEnabled ? "true" : "false");
     lastPirRaw = pirRaw;
+    if (pirRaw) pirHighSince = now;
   }
+  bool pirConfirmed = pirRaw && (now - pirHighSince > 100);
 
   // STANDBY only: PIR wakes the temple, but must NOT also reset AMBIENT's
   // idle-to-Aarti timer. Tried that (reading PIR during AMBIENT too, to let
@@ -652,7 +667,7 @@ void checkSensors() {
   // 60s countdown and left AMBIENT stuck forever, never reaching Aarti at
   // all. Only an actual touch (feet/mouse-back) counts as "someone's here."
   if (pirEnabled && currentState == STATE_STANDBY) {
-    if (pirRaw && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
+    if (pirConfirmed && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
       motionDetected = true;
       lastMotionTrigger = now;
     }
@@ -791,6 +806,13 @@ void updateStateMachine() {
             myDFPlayer.stop();
             delay(50);
             myDFPlayer.playMp3Folder(currentPlayingTrack);
+            // Resuming into Aarti specifically: restore its fixed display
+            // text, since it was overwritten by the offering's "[OFFERING]
+            // ..." line and (unlike Ambient/Mantra/Feet) Aarti doesn't
+            // have a rotating blessing loop to naturally replace it.
+            if (offeringPausedState == STATE_AARTI) {
+              strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
+            }
             setSystemState(offeringPausedState, offeringPausedRemainingMs);
           } else {
             myDFPlayer.stop();
@@ -957,11 +979,12 @@ void triggerFeetMantra() {
 void triggerPersonalizedOffering(String name, String offeringType, String prayer) {
   blessingCounter++;
 
-  // If a mantra is actively playing, remember it so it can resume once the
-  // 12-second offering display finishes - both which track (currentPlaying
-  // Track, untouched by the BELL_TRACK played below) and how much of its
-  // state timer was left. Otherwise (idle/Ambient/etc.) there's nothing to
-  // resume, just show the offering and settle back to standby.
+  // If a mantra OR the Aarti chant is actively playing, remember it so it
+  // can resume once the 12-second offering display finishes - both which
+  // track (currentPlayingTrack, untouched by the BELL_TRACK played below)
+  // and how much of its state timer was left. Otherwise (idle/Ambient/
+  // etc.) there's nothing to resume, just show the offering and settle
+  // back to standby.
   //
   // NOTE: this used to call myDFPlayer.pause() and resume with .start(),
   // which the DFPlayer Mini datasheet documents but which many cheap
@@ -970,7 +993,15 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
   // the mantra never came back after an offering). Restarting the SAME
   // track from the beginning is less elegant (loses the exact playback
   // position) but works on every DFPlayer clone, which matters more.
-  offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE);
+  //
+  // AARTI was missing from this condition until now - an offering
+  // approved mid-Aarti was silently treated as "nothing to resume" and
+  // just stopped for good, matching the reported "pauses the Aarti but
+  // doesn't play it back" bug. aartiThenClose is left untouched here on
+  // purpose - it's not reset anywhere during this interruption, so
+  // whichever ritual intent (close the temple afterward, or not) the
+  // Aarti had before being interrupted is still correct once resumed.
+  offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI);
   if (offeringInterrupted) {
     offeringPausedState = currentState;
     unsigned long elapsed = millis() - stateTimer;
