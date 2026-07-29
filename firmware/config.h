@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-29-r18"
+#define FIRMWARE_VERSION "2026-07-29-r19"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -22,13 +22,14 @@
 // D19; VIN and GND stay where they are.
 #define PIR_PIN          19   // AM312 Motion Sensor Pin (was 13 = JTAG MTCK)
 
-// Set false to ignore the PIR entirely - no reads, no wake, no logs.
-// The rest of the temple (touch pads, dashboard, offerings, Aarti,
-// rituals) is fully functional without it: PIR's only job is
-// STANDBY -> AMBIENT, which the dashboard's "Trigger PIR" button and any
-// touch also do. Flip this to false if the sensor keeps misbehaving so it
-// can never block or confuse testing of everything else again.
-#define PIR_CONNECTED    true
+// DISABLED. On both GPIO13 and a fresh GPIO19 the line measured only
+// 27-40% duty - i.e. the AM312 is not driving the pin at all (an undriven
+// wire picking up mains hum), which no pin choice or firmware change can
+// fix. The temple is fully functional without it: STANDBY -> AMBIENT still
+// happens via the dashboard's "Trigger PIR" button (/api/control?action=pir,
+// deliberately independent of this flag) or any touch on the pads. Set back
+// to true only after the sensor is confirmed to actually output a signal.
+#define PIR_CONNECTED    false
 
 // Touch pads (TP223 modules). Feet was originally GPIO12 (MTDI /
 // VDD_SDIO strapping pin) - with the sensor unplugged that pin floats,
