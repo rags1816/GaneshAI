@@ -142,9 +142,26 @@ char scrollText[300] = "";
 int scrollX = 128;
 unsigned long lastScrollUpdate = 0;
 
-// 12-second Display lock helper for Feet touch
+// Display lock helper for Feet touch / Mouse Back / offerings. The lock
+// holds ONE message on screen (no blessing rotation) for feetDisplayLockMs
+// before the rotation resumes. Normally 12s, but an offering stretches it
+// to however long that specific message needs to scroll fully across at
+// least once - a long devotee name+prayer cannot physically finish a pass
+// in 12s, so devotees were only ever seeing a fragment of their own
+// offering on the physical display.
 unsigned long feetDisplayTimer = 0;
+unsigned long feetDisplayLockMs = 12000;
 bool feetDisplayLocked = false;
+
+// One horizontal scroll pass takes (textWidthPx + 128) / SCROLL_PX_PER_STEP
+// steps, one step per drawOLED frame (~OLED_FRAME_MS). Kept here so
+// triggerPersonalizedOffering() can size an offering's display window to
+// the actual message instead of assuming a fixed 12s fits.
+#define SCROLL_PX_PER_STEP 3
+#define OLED_FRAME_MS      33
+unsigned long scrollPassDurationMs(int textWidthPx) {
+  return (unsigned long)((textWidthPx + 128) / SCROLL_PX_PER_STEP) * OLED_FRAME_MS;
+}
 
 // Ambient blessing rotation - cycles through the same 48-message list
 // (oledChildBlessingsList + oledAdultBlessingsList) the web dashboard
@@ -696,24 +713,51 @@ void checkSensors() {
   // rate-limited summary: at most one line every 2 seconds, reporting
   // how many edges occurred in that window - same information for
   // debugging wiring, none of the flooding.
-  static bool lastPirRaw = false;
-  static unsigned long pirHighSince = 0;
-  static unsigned int pirEdgeCount = 0;
+  // DUTY-CYCLE detection, not "sustained HIGH". Hardware showed the pin
+  // toggling ~55 times/second (108-123 edges per 2s) - that is mains-hum
+  // frequency on an undriven wire, and it is NOT something an AM312 can
+  // produce (its output holds HIGH for ~2 SECONDS per detection). Any
+  // single digitalRead() of such a line returns HIGH ~half the time,
+  // which is why the log said "now HIGH" while nothing ever triggered.
+  //
+  // Measuring what fraction of a 250ms window reads HIGH separates the
+  // two cases unambiguously:
+  //   ~40-60%  -> the line is floating/noisy, the sensor is NOT driving
+  //               it (no firmware change can fix that - it's wiring)
+  //   >=90%    -> something is genuinely holding the line HIGH = motion
+  // The window is ~25 samples (loop runs every ~10ms) and is far shorter
+  // than the AM312's ~2s output pulse, so a real detection always fills
+  // at least one whole window.
+  static unsigned int pirSamples = 0;
+  static unsigned int pirHighSamples = 0;
+  static unsigned long pirWindowStart = 0;
   static unsigned long lastPirReport = 0;
-  bool pirRaw = (digitalRead(PIR_PIN) == HIGH);
-  if (pirRaw != lastPirRaw) {
-    lastPirRaw = pirRaw;
-    pirEdgeCount++;
-    if (pirRaw) pirHighSince = now;
+  static int pirDutyPct = 0;
+  static bool pirMotionLive = false;
+
+  pirSamples++;
+  if (digitalRead(PIR_PIN) == HIGH) pirHighSamples++;
+
+  if (now - pirWindowStart >= 250) {
+    pirDutyPct = pirSamples ? (int)((pirHighSamples * 100UL) / pirSamples) : 0;
+    pirMotionLive = (pirDutyPct >= 90);
+    pirSamples = 0;
+    pirHighSamples = 0;
+    pirWindowStart = now;
+
+    // Rate-limited so a noisy line can never flood serial and stall the
+    // main loop (that flood was itself slowing the OLED and web server
+    // in r13). Silence here means a clean, quiet idle line.
+    if (pirDutyPct > 5 && now - lastPirReport > 2000) {
+      lastPirReport = now;
+      const char* verdict = pirMotionLive ? "MOTION (line driven HIGH)"
+                                          : "NOISE - sensor not driving the pin, check OUT wire/pin";
+      Serial.printf("PIR: duty %d%% over 250ms -> %s  (state=%d [0=STANDBY], pirEnabled=%s)\n",
+                    pirDutyPct, verdict, (int)currentState, pirEnabled ? "true" : "false");
+    }
   }
-  if (pirEdgeCount > 0 && now - lastPirReport > 2000) {
-    Serial.printf("PIR: %u edge(s) in last %lus, now %s (state=%d, pirEnabled=%s) - >20 edges here means line noise, check wiring\n",
-                  pirEdgeCount, (now - lastPirReport) / 1000, pirRaw ? "HIGH" : "LOW",
-                  (int)currentState, pirEnabled ? "true" : "false");
-    pirEdgeCount = 0;
-    lastPirReport = now;
-  }
-  bool pirConfirmed = pirRaw && (now - pirHighSince > 100);
+
+  bool pirConfirmed = pirMotionLive;
 
   // STANDBY only: PIR wakes the temple, but must NOT also reset AMBIENT's
   // idle-to-Aarti timer. Tried that (reading PIR during AMBIENT too, to let
@@ -754,11 +798,12 @@ void updateStateMachine() {
   // let the blessing rotation immediately show a fresh one (rather than
   // falling back to the fixed welcome sentence). feetDisplayLocked/Timer
   // are shared by both touches - only one is ever active at a time.
-  if (feetDisplayLocked && (now - feetDisplayTimer > 12000)) {
+  if (feetDisplayLocked && (now - feetDisplayTimer > feetDisplayLockMs)) {
     feetDisplayLocked = false;
+    feetDisplayLockMs = 12000; // back to the default for the next touch
     lastAmbientBlessingRotate = 0;
     scrollPassComplete = true; // force the rotation below to fire immediately
-    Serial.println("OLED: 12 seconds elapsed, resumed blessings roll.");
+    Serial.println("OLED: display lock elapsed, resumed blessings roll.");
   }
 
   // While Ambient or a Mouse Back mantra is playing (nobody needs a
@@ -957,7 +1002,7 @@ void setSystemState(SystemState newState, unsigned long duration) {
     if (newState == STATE_AMBIENT) {
       feetDisplayLocked = false;
       // Show the welcome sentence first; updateStateMachine() switches to
-      // rotating blessings after AMBIENT_BLESSING_ROTATE_MS.
+      // rotating blessings once this text finishes one scroll pass.
       strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
       lastAmbientBlessingRotate = stateTimer;
     }
@@ -1098,7 +1143,20 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
   }
 
-  setSystemState(STATE_FEET_ACTIVE, 12000);
+  // Size the display window to THIS message: a fixed 12s is not enough
+  // for a long devotee name + prayer to scroll fully across even once at
+  // the big r11 font, so devotees were reading fragments of their own
+  // offering on the physical display (the dashboard, being a static text
+  // line, always looked fine - hence "display too slow vs dashboard").
+  // Hold it for one complete pass plus a beat, with 12s as the floor.
+  u8g2.setFont(u8g2_font_logisoso20_tf);
+  unsigned long offeringDisplayMs = scrollPassDurationMs(u8g2.getUTF8Width(scrollText)) + 1500;
+  if (offeringDisplayMs < 12000) offeringDisplayMs = 12000;
+  feetDisplayLockMs = offeringDisplayMs;
+  Serial.printf("OFFERING: display window %lums for a %dpx message\n",
+                offeringDisplayMs, u8g2.getUTF8Width(scrollText));
+
+  setSystemState(STATE_FEET_ACTIVE, offeringDisplayMs);
 }
 
 void triggerAarti() {
@@ -1291,7 +1349,7 @@ void drawOLED() {
 
   if (now - lastScrollUpdate > TEXT_SCROLL_SPD) {
     lastScrollUpdate = now;
-    scrollX -= 2;
+    scrollX -= SCROLL_PX_PER_STEP; // see TEXT_SCROLL_SPD note in config.h
     if (scrollX < -textWidth) {
       scrollX = 128;
       scrollPassComplete = true;

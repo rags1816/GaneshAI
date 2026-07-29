@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-29-r16"
+#define FIRMWARE_VERSION "2026-07-29-r17"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -59,7 +59,17 @@
 #define AMBIENT_TIMEOUT  60000  // AMBIENT idle time before auto-triggering the closing Aarti (matches web dashboard's AARTI_IDLE_MS)
 #define MOTION_DEBOUNCE  3000   // Prevent rapid PIR re-triggers
 #define TOUCH_DEBOUNCE   2000   // Prevent double-clicks on touch pads
-#define TEXT_SCROLL_SPD  80     // OLED text horizontal scrolling speed (ms)
+// OLED horizontal scroll step interval (ms). 80ms was tuned for the old
+// small 6x12 font; after r11 tripled the glyph width (logisoso20) a
+// typical offering message took ~30s to scroll across while the
+// offering display window is only 12s - devotees saw two words before
+// it vanished. Set BELOW drawOLED's 33ms frame time so the scroll steps
+// on every frame (any value between 33 and 66 would quantize to ~66ms
+// steps and halve the speed): 3px per ~33ms frame = ~90px/s, so even a
+// long personalized offering (~900px) completes a full pass in ~10s,
+// inside the 12s window, and blessing rotation pace returns to a
+// reasonable ~7-10s per blessing.
+#define TEXT_SCROLL_SPD  30
 
 // Triggers Durations
 #define MANTRA_DURATION  30000  // Mouse Back: 30-sec lockout
