@@ -296,8 +296,15 @@ void setup() {
   Serial.println("DEBUG: Random seed set successfully.");
 
   // 1. Initialize Sensor Pins
-  pinMode(PIR_PIN, INPUT);
-  Serial.println("DEBUG: PIR_PIN configured.");
+  // INPUT_PULLDOWN (was plain INPUT): the raw pin was observed toggling
+  // every 33-81ms on real hardware - the signature of a floating or
+  // marginally-connected input picking up noise, not real motion. The
+  // AM312's output actively drives HIGH on detection, so an internal
+  // pull-down can't mask a genuine trigger - it only pins the line LOW
+  // when the sensor isn't driving it, which is exactly what a
+  // noisy/loose line needs.
+  pinMode(PIR_PIN, INPUT_PULLDOWN);
+  Serial.println("DEBUG: PIR_PIN configured (with internal pull-down).");
   pinMode(TOUCH_FEET_PIN, INPUT);
   Serial.println("DEBUG: TOUCH_FEET_PIN configured.");
   pinMode(TOUCH_BACK_PIN, INPUT);
@@ -517,11 +524,22 @@ void handleWebRoutes() {
     // instead of running its own independent rotation, so the physical
     // OLED and the dashboard always show the exact same line at the exact
     // same time (previously each picked randomly on its own timer).
+    // "elapsed"/"duration" let the dashboard's song timer mirror THIS
+    // device's actual playback clock instead of running its own local
+    // wall-clock timer - the local timer kept counting through offering
+    // interruptions and past the real end of tracks (both reported on
+    // hardware). stateTimer/stateDuration reset on every state entry,
+    // including the offering's 12s display and the resume afterward, so
+    // the dashboard timer restarts exactly when the device's does.
+    unsigned long stateElapsed = millis() - stateTimer;
+    if (stateElapsed > stateDuration) stateElapsed = stateDuration;
+
     char json[700];
     int n = snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"blessing\":\"",
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
       stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
-      pirEnabled ? "true" : "false", selectedLang, selectedTheme, currentPlayingTrack);
+      pirEnabled ? "true" : "false", selectedLang, selectedTheme, currentPlayingTrack,
+      stateElapsed, stateDuration);
 
     // Minimal JSON string escaping - none of today's blessing/welcome text
     // needs it, but a future text edit could introduce a quote/backslash
@@ -662,14 +680,33 @@ void checkSensors() {
   // before it's trusted as real motion. Costs nothing for a genuine
   // AM312 detection (it holds HIGH for a couple of seconds), but filters
   // out pure noise spikes shorter than that.
+  // r15 FIX: the per-edge Serial print that used to live here was itself
+  // a serious bug on a noisy line. With the pin toggling every 33-81ms
+  // (as captured on real hardware), it printed up to ~30 lines/second
+  // forever - and once the serial TX buffer saturates, Serial.printf
+  // BLOCKS, slowing the entire main loop: OLED scrolling ran visibly
+  // slower, web-server requests (dashboard buttons!) lagged or timed
+  // out, and state timing turned erratic. One noisy pin + verbose
+  // logging degraded the whole device. Diagnostics are now a
+  // rate-limited summary: at most one line every 2 seconds, reporting
+  // how many edges occurred in that window - same information for
+  // debugging wiring, none of the flooding.
   static bool lastPirRaw = false;
   static unsigned long pirHighSince = 0;
+  static unsigned int pirEdgeCount = 0;
+  static unsigned long lastPirReport = 0;
   bool pirRaw = (digitalRead(PIR_PIN) == HIGH);
   if (pirRaw != lastPirRaw) {
-    Serial.printf("PIR raw pin -> %s   (currentState=%d [0=STANDBY], pirEnabled=%s)\n",
-                  pirRaw ? "HIGH" : "LOW", (int)currentState, pirEnabled ? "true" : "false");
     lastPirRaw = pirRaw;
+    pirEdgeCount++;
     if (pirRaw) pirHighSince = now;
+  }
+  if (pirEdgeCount > 0 && now - lastPirReport > 2000) {
+    Serial.printf("PIR: %u edge(s) in last %lus, now %s (state=%d, pirEnabled=%s) - >20 edges here means line noise, check wiring\n",
+                  pirEdgeCount, (now - lastPirReport) / 1000, pirRaw ? "HIGH" : "LOW",
+                  (int)currentState, pirEnabled ? "true" : "false");
+    pirEdgeCount = 0;
+    lastPirReport = now;
   }
   bool pirConfirmed = pirRaw && (now - pirHighSince > 100);
 

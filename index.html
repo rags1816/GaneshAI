@@ -1850,7 +1850,11 @@ var QRCode;
                 return;
             }
 
-            const elapsedMs = Date.now() - nowPlayingStartTs;
+            // Clamp elapsed to the track length - the bar was already
+            // clamped but the elapsed TEXT wasn't, so the timer kept
+            // visibly counting past the end of the mp3 (reported bug).
+            let elapsedMs = Date.now() - nowPlayingStartTs;
+            if (nowPlayingDurationMs > 0 && elapsedMs > nowPlayingDurationMs) elapsedMs = nowPlayingDurationMs;
             const pct = nowPlayingDurationMs > 0 ? Math.min(100, (elapsedMs / nowPlayingDurationMs) * 100) : 0;
             trackEl.innerText = nowPlayingFile.replace(/\.mp3$/i, '');
             barEl.style.width = pct + "%";
@@ -2556,7 +2560,14 @@ var QRCode;
                 startAmbientRoll();
                 stopHum();
                 stopNowPlaying();
-                if (duration > 0) {
+                // Local AMBIENT->STANDBY countdown is simulator-only, same
+                // principle as every other local timer: on a physical
+                // device the firmware owns all state timing (its own
+                // AMBIENT_TIMEOUT idle-closes at 60s) and polling mirrors
+                // it - a second, unsynchronized local countdown just
+                // fights the poll and flips the UI to states the device
+                // isn't actually in.
+                if (duration > 0 && !isPhysicalESP) {
                     autoReturnTimer = setTimeout(() => changeState("STANDBY"), duration);
                 }
                 // If nobody touches anything for a while, offer a short Aarti -
@@ -2604,19 +2615,23 @@ var QRCode;
 
                     startNowPlaying(AARTI_TRACK_FILE, AARTI_FALLBACK_DURATION_MS);
                     if (isPhysicalESP) {
-                        // aartiOnComplete is set by closeTemple()/triggerAartiMode()
-                        // (both intend to close afterward) and cleared by
-                        // openTemple() (wakes into Ambient instead) - mirror
-                        // that same intent to the firmware's own state machine.
-                        // Skipped if closeTemple() already dispatched 'close'
-                        // immediately (see aartiPhysicalAlreadyDispatched) -
-                        // sending it again here would restart the Aarti chant
-                        // the device already began playing several seconds ago.
-                        if (!aartiPhysicalAlreadyDispatched) {
-                            sendESPControl(aartiOnComplete ? 'close' : 'aarti');
-                        }
+                        // On a physical device this branch is DISPLAY ONLY.
+                        // The 'close'/'aarti' command was already dispatched
+                        // by whichever button started this (closeTemple/
+                        // openTemple send immediately), and the firmware
+                        // runs the ritual on its own clock - polling
+                        // mirrors whatever it does next.
+                        //
+                        // The 239s finishAarti timer that used to be armed
+                        // here was THE reason Close Temple never worked
+                        // with the dashboard open: it sent 'stop' at 239s,
+                        // one second BEFORE the firmware's own 240s Aarti
+                        // completed - killing the ritual and forcing
+                        // STANDBY instead of TEMPLE_CLOSED, every time.
+                        // The dashboard must never drive ritual timing on
+                        // a real device; it only reflects it.
                         aartiPhysicalAlreadyDispatched = false;
-                        autoReturnTimer = setTimeout(finishAarti, 239000); // 3.59 mins (239s)
+                        aartiOnComplete = null;
                     } else {
                         globalMantraPlayer.src = AARTI_TRACK_FILE;
                         globalMantraPlayer.volume = volume / 30;
@@ -2684,12 +2699,19 @@ var QRCode;
                     onNewBlessingShown(nextBlessing);
                 }
 
-                // Lock screen on this blessing for 12 seconds, then resume rolling loop
-                feetDisplayTimer = setTimeout(() => {
-                    if (state === "FEET_ACTIVE") {
-                        startAmbientRoll();
-                    }
-                }, 12000);
+                // Lock screen on this blessing for 12 seconds, then resume
+                // the rolling loop - simulator only. On a physical device
+                // the firmware runs its own 12s lock and rotation, and the
+                // poll's "blessing" sync mirrors it; a local roll here
+                // would overwrite the synced text with locally-picked
+                // blessings the real OLED isn't showing.
+                if (!isPhysicalESP) {
+                    feetDisplayTimer = setTimeout(() => {
+                        if (state === "FEET_ACTIVE") {
+                            startAmbientRoll();
+                        }
+                    }, 12000);
+                }
 
                 // Same reasoning as MANTRA_ACTIVE above - fallback for the
                 // standalone simulator only, polling is the sole authority
@@ -2996,12 +3018,13 @@ var QRCode;
             // (e.g. missed/failed polls) - stopAudioAndStandby() on the
             // firmware side resets to STANDBY regardless of its prior state.
             if (isPhysicalESP) sendESPControl('stop');
-            if (state === "STANDBY") {
-                // Second press while already stopped: close the temple down
-                // completely (night mode) - the "exit" gesture.
-                closeTemple();
-                return;
-            }
+            // Stop ALWAYS just stops. The old "second press while already
+            // in STANDBY closes the temple" shortcut became a trap after
+            // the STANDBY-centric redesign: STANDBY is now the NORMAL
+            // resting state after every mantra, so pressing Stop at rest
+            // silently launched a 4-minute closing Aarti instead of
+            // stopping - reading as "the Stop button is broken." Closing
+            // has its own dedicated button; no hidden double-duty here.
             changeState("STANDBY");
         }
 
@@ -3602,6 +3625,19 @@ var QRCode;
                     if (physicalTrack && nowPlayingFile !== physicalTrack.file) {
                         startNowPlaying(physicalTrack.file, physicalTrack.duration);
                     }
+                }
+
+                // Anchor the song timer to the DEVICE's playback clock
+                // ("elapsed"/"duration" straight from its state timer)
+                // instead of this browser's own wall clock. The local
+                // clock kept counting through offering interruptions and
+                // past the real end of tracks; the device's stateTimer
+                // resets on every state entry - including the offering's
+                // 12s display and the resume after it - so this timer now
+                // restarts exactly when the device's does, every time.
+                if (nowPlayingFile !== null && typeof data.elapsed === "number") {
+                    nowPlayingStartTs = Date.now() - data.elapsed;
+                    if (data.duration > 0) nowPlayingDurationMs = data.duration;
                 }
 
                 // True content sync: the firmware is now the single source of
