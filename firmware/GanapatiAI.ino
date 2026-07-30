@@ -405,15 +405,25 @@ void setup() {
   }
 
   // 3. Initialize LEDs (FastLED)
-  Serial.println("DEBUG: Initializing FastLED...");
-  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(currentBrightness);
-  fill_solid(leds, NUM_LEDS, CRGB(0, 242, 254));
-  FastLED.show();
-  delay(400);
-  FastLED.clear();
-  FastLED.show();
-  Serial.println("DEBUG: FastLED initialized successfully.");
+  // Skipped entirely when LED_CONNECTED is false. FastLED's newer RMT5
+  // driver (the one that logs 'ChannelManager' / 'rmt_5' lines) was seen
+  // spinning on a repeating "...itself is hanging" message and stalling
+  // boot before the rest of setup could run. With no ring attached there
+  // is nothing to drive anyway, so keeping FastLED out of the boot path
+  // removes a whole subsystem - and its failure modes - from the picture.
+  if (LED_CONNECTED) {
+    Serial.println("DEBUG: Initializing FastLED...");
+    FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.setBrightness(currentBrightness);
+    fill_solid(leds, NUM_LEDS, CRGB(0, 242, 254));
+    FastLED.show();
+    delay(400);
+    FastLED.clear();
+    FastLED.show();
+    Serial.println("DEBUG: FastLED initialized successfully.");
+  } else {
+    Serial.println("DEBUG: FastLED SKIPPED (LED_CONNECTED=false in config.h).");
+  }
 
   // 4. Microphone (I2S driver removed - see git history; was an unused,
   // never-called legacy driver/i2s.h include suspected of conflicting with
@@ -547,6 +557,8 @@ void setup() {
   Serial.printf("  Feet pad (GPIO%d)     : %s, reads %s at rest\n", TOUCH_FEET_PIN,
                 TOUCH_FEET_CONNECTED ? "ENABLED" : "disabled - not read",
                 digitalRead(TOUCH_FEET_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
+  Serial.printf("  LED ring (GPIO%d)     : %s\n", LED_PIN,
+                LED_CONNECTED ? "ENABLED" : "disabled - FastLED not initialised");
   Serial.printf("  Mouse-back pad (GPIO%d): %s, reads %s at rest\n", TOUCH_BACK_PIN,
                 TOUCH_BACK_CONNECTED ? "ENABLED" : "disabled - not read",
                 digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
@@ -699,7 +711,7 @@ void handleWebRoutes() {
   server.on("/api/leds", HTTP_GET, []() {
     if (server.hasArg("brightness")) {
       currentBrightness = server.arg("brightness").toInt();
-      FastLED.setBrightness(currentBrightness);
+      if (LED_CONNECTED) FastLED.setBrightness(currentBrightness);
     }
     if (server.hasArg("pattern")) {
       currentPattern = server.arg("pattern").toInt();
@@ -1087,8 +1099,10 @@ void setSystemState(SystemState newState, unsigned long duration) {
   if (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED) {
     feetDisplayLocked = false;
     currentPlayingTrack = 0;
-    FastLED.clear();
-    FastLED.show();
+    if (LED_CONNECTED) {
+      FastLED.clear();
+      FastLED.show();
+    }
     u8g2.setPowerSave(1);
   } else {
     u8g2.setPowerSave(0); 
@@ -1337,6 +1351,7 @@ void stopAudioAndStandby() {
 // looks the same on the physical ring as it does in the browser simulation:
 //   0 Peacock Wave, 1 Circuit Pulse, 2 Golden Aura, 3 Rainbow Dream, 4 Diya Flicker
 void animateLeds() {
+  if (!LED_CONNECTED) return; // FastLED never initialised - see setup()
   if (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();

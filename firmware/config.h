@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-30-r24"
+#define FIRMWARE_VERSION "2026-07-30-r25"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -59,6 +59,21 @@
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
 #define NUM_LEDS         24   // 24 LEDs in the ring
+
+// FALSE while the ring is physically disconnected. When false, FastLED is
+// never initialised and never called - the boot log jumps straight past it.
+//
+// This is not only about having no ring attached. Newer FastLED versions
+// (the ones logging 'ChannelManager' and 'rmt_5' lines) were observed
+// spinning on a repeating "...itself is hanging" message and stalling the
+// boot before setup() could finish. Taking FastLED out of the boot path
+// removes that entire subsystem while the ring is off the board.
+//
+// Set true ONLY when the ring is reconnected - and give it its own 5V
+// supply, never the ESP32 board's 5V pin: 24 WS2812B pixels can pull ~1.4A,
+// far past what the board's regulator and USB path can deliver, which
+// browns out the chip into a reboot loop.
+#define LED_CONNECTED    false
 
 // OLED Display (I2C)
 #define OLED_SDA         21   // I2C Data Pin
