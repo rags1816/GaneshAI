@@ -63,11 +63,11 @@
 // FALSE while the ring is physically disconnected. When false, FastLED is
 // never initialised and never called - the boot log jumps straight past it.
 //
-// This is not only about having no ring attached. Newer FastLED versions
-// (the ones logging 'ChannelManager' and 'rmt_5' lines) were observed
-// spinning on a repeating "...itself is hanging" message and stalling the
-// boot before setup() could finish. Taking FastLED out of the boot path
-// removes that entire subsystem while the ring is off the board.
+// (An earlier version of this comment blamed FastLED for a repeating
+// "...itself is hanging" log line. That was wrong - the line is our own
+// DFPlayer retry message in setup(), truncated by the Serial Monitor.
+// FastLED was never implicated. This flag is kept purely because there is
+// no point driving a ring that is not attached, and it trims ~28KB flash.)
 //
 // Set true ONLY when the ring is reconnected - and give it its own 5V
 // supply, never the ESP32 board's 5V pin: 24 WS2812B pixels can pull ~1.4A,

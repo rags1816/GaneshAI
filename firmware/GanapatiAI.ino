@@ -405,12 +405,11 @@ void setup() {
   }
 
   // 3. Initialize LEDs (FastLED)
-  // Skipped entirely when LED_CONNECTED is false. FastLED's newer RMT5
-  // driver (the one that logs 'ChannelManager' / 'rmt_5' lines) was seen
-  // spinning on a repeating "...itself is hanging" message and stalling
-  // boot before the rest of setup could run. With no ring attached there
-  // is nothing to drive anyway, so keeping FastLED out of the boot path
-  // removes a whole subsystem - and its failure modes - from the picture.
+  // Skipped entirely when LED_CONNECTED is false: no point driving a ring
+  // that is not attached, and it keeps ~28KB of FastLED out of the build.
+  // (Not a FastLED bug - an earlier comment here wrongly blamed FastLED for
+  // a repeating "...itself is hanging" line that is actually the DFPlayer
+  // retry message below, truncated by the Serial Monitor.)
   if (LED_CONNECTED) {
     Serial.println("DEBUG: Initializing FastLED...");
     FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
