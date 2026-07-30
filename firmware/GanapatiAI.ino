@@ -76,6 +76,29 @@ bool motionDetected = false;
 bool feetTouched = false;
 bool backTouched = false;
 
+// Per-pad debounce state for the edge-triggered touch handling in
+// checkSensors(). "Stable" is the level a pad has actually held for
+// TOUCH_SETTLE_MS; brief bounces from a rough solder joint never reach it.
+#define TOUCH_SETTLE_MS 60
+bool feetLastRead = false, feetStable = false;
+bool backLastRead = false, backStable = false;
+unsigned long feetChangedAt = 0, backChangedAt = 0;
+
+// Advances one pad's debounce. Returns true only on the reading a pad's
+// stable level actually CHANGES, so callers see one event per real
+// press or release rather than a continuous "still HIGH" every pass.
+bool settleTouch(bool raw, bool &lastRead, unsigned long &changedAt, bool &stable, unsigned long now) {
+  if (raw != lastRead) {
+    lastRead = raw;
+    changedAt = now;
+  }
+  if (now - changedAt >= TOUCH_SETTLE_MS && stable != lastRead) {
+    stable = lastRead;
+    return true;
+  }
+  return false;
+}
+
 // Set right before an Aarti chant that should end in STATE_TEMPLE_CLOSED
 // (idle timeout, or an explicit close request) rather than returning to
 // STATE_AMBIENT (an Aarti triggered directly via /api/control?action=aarti
@@ -759,24 +782,51 @@ void checkSensors() {
     }
   }
 
-  // Always check touch inputs (allows skipping tracks) - gated per-pin by
-  // TOUCH_FEET_CONNECTED/TOUCH_BACK_CONNECTED so an unwired, floating pin
-  // can't fire phantom touches (see config.h).
-  if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
-    if (TOUCH_FEET_CONNECTED && digitalRead(TOUCH_FEET_PIN) == HIGH) {
+  // Touch pads: EDGE-triggered (fires once on untouched -> touched), not
+  // level-triggered. Reading "is the pin HIGH?" meant a pad that stayed
+  // HIGH - a devotee resting a hand on it, a TP223 in self-locking mode,
+  // or a marginal solder joint holding the line up - re-fired on every
+  // TOUCH_DEBOUNCE expiry, restarting the mantra from the top every 2
+  // seconds so it never actually played. Confirmed on hardware: an
+  // identical TOUCH line every 2.05s, exactly the debounce interval.
+  //
+  // Each pad is also settled independently: a reading must hold steady
+  // for TOUCH_SETTLE_MS before it counts as the new level, which rejects
+  // the short bounces a rough solder joint produces. TOUCH_DEBOUNCE then
+  // rate-limits genuine repeat taps.
+  bool feetRead = TOUCH_FEET_CONNECTED && (digitalRead(TOUCH_FEET_PIN) == HIGH);
+  bool backRead = TOUCH_BACK_CONNECTED && (digitalRead(TOUCH_BACK_PIN) == HIGH);
+  // Both advanced every pass, before any branching - putting these calls
+  // inside the if/else-if would let short-circuit evaluation skip one
+  // pad's debounce on any pass the other pad reported an edge.
+  bool feetEdge = settleTouch(feetRead, feetLastRead, feetChangedAt, feetStable, now);
+  bool backEdge = settleTouch(backRead, backLastRead, backChangedAt, backStable, now);
+  if (feetEdge && feetStable) {
+    if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
       feetTouched = true;
       lastTouchTrigger = now;
-      // Logged so a phantom touch on a floating/unconnected pad is
-      // immediately distinguishable from a real one: if this appears when
-      // nobody touched anything, that pad's lead is not landed on its pin
-      // and its _CONNECTED flag should go back to false.
-      Serial.printf("TOUCH: feet pad HIGH (GPIO%d) while %s\n", TOUCH_FEET_PIN, stateName(currentState));
+      // A TOUCH line with nobody touching means that pad's lead is not
+      // properly landed on its pin - set its _CONNECTED flag back to false
+      // rather than working around it.
+      Serial.printf("TOUCH: feet pad pressed (GPIO%d) while %s\n", TOUCH_FEET_PIN, stateName(currentState));
     }
-    else if (TOUCH_BACK_CONNECTED && digitalRead(TOUCH_BACK_PIN) == HIGH) {
+  } else if (backEdge && backStable) {
+    if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
       backTouched = true;
       lastTouchTrigger = now;
-      Serial.printf("TOUCH: mouse-back pad HIGH (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
+      Serial.printf("TOUCH: mouse-back pad pressed (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
     }
+  }
+
+  // A pad stuck HIGH for a long stretch is almost always a wiring/solder
+  // fault (or a TP223 left in self-lock mode). Edge triggering means it no
+  // longer breaks playback, but it does mean that pad is dead until it
+  // releases - so say so, rarely, instead of failing silently.
+  static unsigned long lastStuckWarn = 0;
+  if ((feetStable || backStable) && now - lastTouchTrigger > 30000 && now - lastStuckWarn > 30000) {
+    lastStuckWarn = now;
+    Serial.printf("TOUCH: %s%s held HIGH for 30s+ - likely a solder/wiring fault or a TP223 in self-lock mode; that pad won't trigger again until it releases\n",
+                  feetStable ? "feet " : "", backStable ? "mouse-back" : "");
   }
 }
 
