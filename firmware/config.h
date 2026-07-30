@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-30-r23"
+#define FIRMWARE_VERSION "2026-07-30-r24"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -37,22 +37,24 @@
 // voltage and hangs before setup() ever runs (no Serial, no OLED). Moved
 // to GPIO27, a plain non-strapping input.
 #define TOUCH_FEET_PIN   27   // Touch Sensor 2: Idol Feet (Alternating Mantra trigger)
-#define TOUCH_BACK_PIN   15   // Touch Sensor 3: Mouse Back Stroke (Mantra trigger)
 
-// FALSE until each pad's OUT lead is actually landed on its GPIO above.
-// These were briefly set true on the strength of "pads are soldered", but
-// soldered is not the same as connected to the board: with the leads off,
-// GPIO27/15 float and pick up the same mains hum as the PIR line, firing
-// phantom touches. That put the device into FEET_ACTIVE by itself, with
-// no one touching anything. Flip each one to true only after that pad's
-// wire is on its pin, and expect random self-starting mantras if you turn
-// one on early.
-// Feet pad is wired (it was producing a real signal on GPIO27), so this
-// stays true - having to re-enable it after every download was itself
-// causing "the pad does nothing" reports. Mouse-back stays false until
-// its lead is actually landed on GPIO15.
+// Mouse-back moved 15 -> 23. GPIO15 is the MTDO strapping pin - the same
+// class of pin the feet pad was moved off (GPIO12) for the same reason.
+// It never triggered on GPIO15 even with its flag enabled, and there is
+// corroborating evidence in the boot log: GPIO15 held LOW at reset
+// SUPPRESSES the ESP32 boot messages, yet the boot log printed normally,
+// so that pin was not being driven low by an idle TP223 as it should have
+// been. GPIO23 is a plain GPIO with no strapping, JTAG, or flash role.
+// REWIRE the mouse-back TP223's OUT lead from D15 to D23.
+#define TOUCH_BACK_PIN   23   // Touch Sensor 3: Mouse Back Stroke (was 15 = MTDO strapping pin)
+
+// Both pads are physically wired, so both stay enabled here. Turning one
+// off should only ever be a deliberate act (an unwired pin floats and
+// fires phantom touches); leaving them false by default was itself
+// generating false "the pad is dead" reports, which cost more time than
+// the phantom touches ever did.
 #define TOUCH_FEET_CONNECTED   true
-#define TOUCH_BACK_CONNECTED   false
+#define TOUCH_BACK_CONNECTED   true
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

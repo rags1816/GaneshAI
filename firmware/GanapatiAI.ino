@@ -537,10 +537,19 @@ void setup() {
   Serial.printf("CONFIG  %s\n", FIRMWARE_VERSION);
   Serial.printf("  PIR (GPIO%d)          : %s\n", PIR_PIN,
                 PIR_CONNECTED ? "ENABLED" : "disabled - not read");
-  Serial.printf("  Feet pad (GPIO%d)     : %s\n", TOUCH_FEET_PIN,
-                TOUCH_FEET_CONNECTED ? "ENABLED" : "disabled - not read");
-  Serial.printf("  Mouse-back pad (GPIO%d): %s\n", TOUCH_BACK_PIN,
-                TOUCH_BACK_CONNECTED ? "ENABLED" : "disabled - not read");
+  // The pin's ACTUAL level is printed alongside, because "enabled but
+  // silent" and "enabled but stuck" look identical otherwise. A TP223 in
+  // momentary mode idles LOW and pulses HIGH on touch, so at rest an
+  // enabled pad should read LOW here. Reading HIGH at rest means a stuck
+  // line (solder bridge, or the module set to self-lock mode); a pad that
+  // reads LOW but never logs a TOUCH when pressed is not receiving the
+  // module's output at all.
+  Serial.printf("  Feet pad (GPIO%d)     : %s, reads %s at rest\n", TOUCH_FEET_PIN,
+                TOUCH_FEET_CONNECTED ? "ENABLED" : "disabled - not read",
+                digitalRead(TOUCH_FEET_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
+  Serial.printf("  Mouse-back pad (GPIO%d): %s, reads %s at rest\n", TOUCH_BACK_PIN,
+                TOUCH_BACK_CONNECTED ? "ENABLED" : "disabled - not read",
+                digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
   Serial.println("  (a pad showing 'disabled' can never trigger - set its");
   Serial.println("   *_CONNECTED flag in config.h to true once it is wired)");
   Serial.println("----------------------------------------------------");
