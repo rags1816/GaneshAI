@@ -431,7 +431,12 @@ void setup() {
   u8g2.sendBuffer();
 
   // 5. Initialize DFPlayer Mini
-  Serial.println("STEP 5: Initializing DFPlayer Mini (Serial2, GPIO16/17)...");
+  // Pins printed from the actual macros, never hardcoded. This line used
+  // to read "GPIO16/17" - stale text from before the pins were moved to
+  // 25/26 (16/17 are merely ESP32 Serial2 defaults). Anyone wiring the
+  // module by that message would have connected it to the wrong pins.
+  Serial.printf("STEP 5: Initializing DFPlayer Mini (Serial2, ESP32 RX=GPIO%d <- DFPlayer TX, ESP32 TX=GPIO%d -> DFPlayer RX)...\n",
+                DFPLAYER_RX, DFPLAYER_TX);
   dfSerial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
   u8g2.drawStr(5, 60, "Audio Board: Connecting...");
   u8g2.sendBuffer();
