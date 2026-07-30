@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-30-r22"
+#define FIRMWARE_VERSION "2026-07-30-r23"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -47,7 +47,11 @@
 // no one touching anything. Flip each one to true only after that pad's
 // wire is on its pin, and expect random self-starting mantras if you turn
 // one on early.
-#define TOUCH_FEET_CONNECTED   false
+// Feet pad is wired (it was producing a real signal on GPIO27), so this
+// stays true - having to re-enable it after every download was itself
+// causing "the pad does nothing" reports. Mouse-back stays false until
+// its lead is actually landed on GPIO15.
+#define TOUCH_FEET_CONNECTED   true
 #define TOUCH_BACK_CONNECTED   false
 
 // NeoPixel LEDs
