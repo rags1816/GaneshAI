@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-31-r27"
+#define FIRMWARE_VERSION "2026-07-31-r28"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -81,13 +81,16 @@
 // instead of browning out its supply. This makes a modest supply safe
 // rather than merely hopeful.
 //
-// Sizing it:
+// Set for a dedicated 5V 3A switching adapter, which is what this build
+// uses. LOWER IT if you ever run the ring from anything weaker:
+//   5V 3A switching adapter (this build)               -> 1500
 //   HW-131 / MB102 breadboard supply (AMS1117 linear)  -> 450
-//   dedicated 5V 2A switching adapter                  -> 1500
-//   24 WS2812B at full white, unrestricted             -> ~1400 (do not)
-// Leave headroom: linear regulators shed the difference as heat, so
-// running one near its ceiling makes it hot and unreliable.
-#define LED_MAX_MILLIAMPS  450
+//   USB power                                          -> do not run the
+//     ring at all; USB's ~500mA cannot start 24 pixels and the resulting
+//     brownout resets the ESP32 into a reboot loop.
+// 24 WS2812B at full white draw ~1400mA, so 1500 leaves the ring
+// unrestricted on a 3A supply while still capping a runaway frame.
+#define LED_MAX_MILLIAMPS  1500
 
 // OLED Display (I2C)
 #define OLED_SDA         21   // I2C Data Pin
