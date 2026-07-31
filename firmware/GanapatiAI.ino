@@ -38,8 +38,31 @@ RTC_NOINIT_ATTR int lastStage;
 // ==========================================
 WebServer server(80);
 
-// OLED Display (SH1106 1.3" I2C)
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
+// OLED Display. Which panel is compiled in is chosen by OLED_MODEL in
+// config.h - see the comment block there. Both panels are 128x64, so
+// nothing below this line cares which one is fitted.
+#if OLED_MODEL == OLED_SH1106_I2C
+  // Original 1.3" SH1106, hardware I2C on D21/D22.
+  U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
+#elif OLED_MODEL == OLED_SSD1309_I2C
+  // Waveshare 2.42" SSD1309 with its jumper moved to I2C. Same two wires
+  // as the 1.3", so this is a drop-in swap.
+  #if OLED_SSD1309_VARIANT == 2
+    U8G2_SSD1309_128X64_NONAME2_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
+  #else
+    U8G2_SSD1309_128X64_NONAME0_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
+  #endif
+#elif OLED_MODEL == OLED_SSD1309_SPI
+  // Waveshare 2.42" SSD1309 in its factory 4-wire SPI mode. Software SPI,
+  // so the pins are free choices and avoid the LED ring and touch pads.
+  #if OLED_SSD1309_VARIANT == 2
+    U8G2_SSD1309_128X64_NONAME2_F_4W_SW_SPI u8g2(U8G2_R0, /* clock=*/ OLED_SPI_CLK, /* data=*/ OLED_SPI_DIN, /* cs=*/ OLED_SPI_CS, /* dc=*/ OLED_SPI_DC, /* reset=*/ OLED_SPI_RST);
+  #else
+    U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, /* clock=*/ OLED_SPI_CLK, /* data=*/ OLED_SPI_DIN, /* cs=*/ OLED_SPI_CS, /* dc=*/ OLED_SPI_DC, /* reset=*/ OLED_SPI_RST);
+  #endif
+#else
+  #error "OLED_MODEL in config.h is not one of OLED_SH1106_I2C / OLED_SSD1309_SPI / OLED_SSD1309_I2C"
+#endif
 
 // LED Ring Array
 CRGB leds[NUM_LEDS];
@@ -573,6 +596,21 @@ void setup() {
   Serial.printf("  Mouse-back pad (GPIO%d): %s, reads %s at rest\n", TOUCH_BACK_PIN,
                 TOUCH_BACK_CONNECTED ? "ENABLED" : "disabled - not read",
                 digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
+  // Which panel is compiled in, and on which wires. A blank screen is the
+  // same symptom for "wrong panel selected" and "wrong pins", so the log
+  // has to say which one the firmware believes is fitted.
+#if OLED_MODEL == OLED_SH1106_I2C
+  Serial.printf("  OLED                  : 1.3\" SH1106, I2C on SDA=GPIO%d SCL=GPIO%d\n",
+                OLED_SDA, OLED_SCL);
+#elif OLED_MODEL == OLED_SSD1309_I2C
+  Serial.printf("  OLED                  : 2.42\" SSD1309 (variant %d), I2C on SDA=GPIO%d SCL=GPIO%d\n",
+                OLED_SSD1309_VARIANT, OLED_SDA, OLED_SCL);
+#elif OLED_MODEL == OLED_SSD1309_SPI
+  Serial.printf("  OLED                  : 2.42\" SSD1309 (variant %d), SPI CLK=GPIO%d DIN=GPIO%d CS=GPIO%d DC=GPIO%d RST=GPIO%d\n",
+                OLED_SSD1309_VARIANT, OLED_SPI_CLK, OLED_SPI_DIN, OLED_SPI_CS, OLED_SPI_DC, OLED_SPI_RST);
+#endif
+  Serial.println("  (blank screen? try OLED_SSD1309_VARIANT 0 <-> 2 in");
+  Serial.println("   config.h BEFORE suspecting the wiring)");
   Serial.println("  (a pad showing 'disabled' can never trigger - set its");
   Serial.println("   *_CONNECTED flag in config.h to true once it is wired)");
   Serial.println("----------------------------------------------------");

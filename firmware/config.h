@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-31-r28"
+#define FIRMWARE_VERSION "2026-07-31-r29"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -92,18 +92,69 @@
 // unrestricted on a 3A supply while still capping a runaway frame.
 #define LED_MAX_MILLIAMPS  1500
 
-// OLED Display (I2C)
-#define OLED_SDA         21   // I2C Data Pin
-#define OLED_SCL         22   // I2C Clock Pin
+// ==========================================
+// OLED Display
+// ==========================================
+// Two physical displays are supported. Pick ONE with OLED_MODEL below.
+// BOTH panels are 128x64 pixels, so every screen layout, font, margin and
+// scroll speed in the sketch is unchanged - the 2.42" is simply a bigger
+// piece of glass showing the same picture, readable across a room instead
+// of at arm's length.
+//
+//   OLED_SH1106_I2C   the original 1.3" module. 4 wires, D21/D22.
+//   OLED_SSD1309_SPI  the Waveshare 2.42" module AS IT SHIPS (4-wire SPI).
+//                     7 wires, but nothing to solder on the module itself.
+//   OLED_SSD1309_I2C  the Waveshare 2.42" module AFTER its SPI/I2C jumper
+//                     has been moved to I2C. Then it wires up exactly like
+//                     the 1.3" did - 4 wires, D21/D22 - and frees the five
+//                     SPI pins for the future amp/wish-pad.
+//
+// Check the SPI/I2C jumper printed on the back of the Waveshare board and
+// set this to match it. Getting this wrong shows a blank screen and
+// nothing else - it cannot damage anything.
+#define OLED_SH1106_I2C   0
+#define OLED_SSD1309_SPI  1
+#define OLED_SSD1309_I2C  2
+
+#define OLED_MODEL       OLED_SSD1309_SPI
+
+// SSD1309 panels ship with one of two init sequences. If the 2.42" comes
+// up blank, garbled, or shifted sideways by a few pixels, change this 0
+// to a 2 and reflash - that is the whole fix, and it is the FIRST thing
+// to try before suspecting the wiring.
+#define OLED_SSD1309_VARIANT  0
+
+// I2C pins - used by OLED_SH1106_I2C and OLED_SSD1309_I2C only.
+#define OLED_SDA         21   // I2C Data Pin  (module pin marked SDA / DIN)
+#define OLED_SCL         22   // I2C Clock Pin (module pin marked SCL / CLK)
+
+// SPI pins - used by OLED_SSD1309_SPI only.
+// Deliberately NOT the ESP32's hardware-SPI pins: those are GPIO18 (taken
+// by the LED ring) and GPIO23 (taken by the mouse-back pad). Software SPI
+// runs on any pins, and a 128x64 mono panel does not need the speed - a
+// full-screen update costs ~8ms against a ~40ms frame.
+// GPIO12/15/2 are avoided throughout this build (boot strapping pins).
+#define OLED_SPI_CLK     14   // module pin CLK
+#define OLED_SPI_DIN     13   // module pin DIN
+#define OLED_SPI_CS       5   // module pin CS
+#define OLED_SPI_DC      17   // module pin DC
+#define OLED_SPI_RST     16   // module pin RST
 
 // DFPlayer Mini MP3 Player
 #define DFPLAYER_RX      25   // Connect to DFPlayer TX
 #define DFPLAYER_TX      26   // Connect to DFPlayer RX (via 1k resistor)
 
-// I2S Microphone (INMP441)
-#define I2S_MIC_WS       32   // I2S Word Select / LRC
-#define I2S_MIC_SCK      33   // I2S Serial Clock / BCLK
-#define I2S_MIC_SD       34   // I2S Serial Data / DATA
+// I2S Microphone (INMP441) - RESERVED, NOT YET USED BY ANY CODE.
+// These three numbers are a plan, not a driver: nothing in the sketch
+// reads them, so wiring the mic up today changes nothing and proves
+// nothing. They are kept here so the pins stay reserved and are not
+// handed out to something else.
+// The INMP441 has SIX pads: VDD -> 3V3, GND -> GND, plus L/R -> GND
+// (L/R selects which stereo half it speaks on; tied to GND = left, which
+// is what the ESP32 side will expect).
+#define I2S_MIC_WS       32   // module pad WS  (Word Select / LRC)
+#define I2S_MIC_SCK      33   // module pad SCK (Serial Clock / BCLK)
+#define I2S_MIC_SD       34   // module pad SD  (Serial Data) - input-only pin, correct for a mic
 
 // ==========================================
 // Software & Timing Configurations
