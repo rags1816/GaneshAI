@@ -134,11 +134,17 @@
 // runs on any pins, and a 128x64 mono panel does not need the speed - a
 // full-screen update costs ~8ms against a ~40ms frame.
 // GPIO12/15/2 are avoided throughout this build (boot strapping pins).
-#define OLED_SPI_CLK     14   // module pin CLK
-#define OLED_SPI_DIN     13   // module pin DIN
-#define OLED_SPI_CS       5   // module pin CS
-#define OLED_SPI_DC      17   // module pin DC
-#define OLED_SPI_RST     16   // module pin RST
+//
+// WATCH THE BOARD LABELS: GPIO16 and GPIO17 are NOT printed "D16"/"D17" on
+// a DevKit. They are printed "RX2" and "TX2" - the board shows their
+// Serial-2 role, not their number. There is no conflict with the DFPlayer,
+// which also uses Serial 2: the ESP32 can route a UART to any pins, and
+// Serial2 is pointed at GPIO25/26 below, leaving these two free.
+#define OLED_SPI_CLK     14   // module pin CLK -> board pin D14
+#define OLED_SPI_DIN     13   // module pin DIN -> board pin D13
+#define OLED_SPI_CS       5   // module pin CS  -> board pin D5
+#define OLED_SPI_DC      17   // module pin DC  -> board pin printed TX2
+#define OLED_SPI_RST     16   // module pin RST -> board pin printed RX2
 
 // DFPlayer Mini MP3 Player
 #define DFPLAYER_RX      25   // Connect to DFPlayer TX
