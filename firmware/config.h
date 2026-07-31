@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-30-r26"
+#define FIRMWARE_VERSION "2026-07-31-r27"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -74,6 +74,20 @@
 // far past what the board's regulator and USB path can deliver, which
 // browns out the chip into a reboot loop.
 #define LED_CONNECTED    false
+
+// Hard current budget for the ring, in milliamps at 5V. FastLED enforces
+// this by scaling brightness down automatically whenever the frame it is
+// about to draw would exceed it - so the ring simply renders dimmer
+// instead of browning out its supply. This makes a modest supply safe
+// rather than merely hopeful.
+//
+// Sizing it:
+//   HW-131 / MB102 breadboard supply (AMS1117 linear)  -> 450
+//   dedicated 5V 2A switching adapter                  -> 1500
+//   24 WS2812B at full white, unrestricted             -> ~1400 (do not)
+// Leave headroom: linear regulators shed the difference as heat, so
+// running one near its ceiling makes it hot and unreliable.
+#define LED_MAX_MILLIAMPS  450
 
 // OLED Display (I2C)
 #define OLED_SDA         21   // I2C Data Pin

@@ -413,6 +413,12 @@ void setup() {
   if (LED_CONNECTED) {
     Serial.println("DEBUG: Initializing FastLED...");
     FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+    // Enforce the supply's current budget BEFORE any show(). FastLED
+    // scales brightness down on the fly whenever a frame would exceed
+    // this, so an undersized supply produces a dimmer ring rather than a
+    // sagging rail. Without it, a bright frame on a modest supply browns
+    // out - which is exactly what took the board down once already.
+    FastLED.setMaxPowerInVoltsAndMilliamps(5, LED_MAX_MILLIAMPS);
     FastLED.setBrightness(currentBrightness);
     fill_solid(leds, NUM_LEDS, CRGB(0, 242, 254));
     FastLED.show();
@@ -561,8 +567,9 @@ void setup() {
   Serial.printf("  Feet pad (GPIO%d)     : %s, reads %s at rest\n", TOUCH_FEET_PIN,
                 TOUCH_FEET_CONNECTED ? "ENABLED" : "disabled - not read",
                 digitalRead(TOUCH_FEET_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
-  Serial.printf("  LED ring (GPIO%d)     : %s\n", LED_PIN,
-                LED_CONNECTED ? "ENABLED" : "disabled - FastLED not initialised");
+  Serial.printf("  LED ring (GPIO%d)     : %s (budget %dmA @5V)\n", LED_PIN,
+                LED_CONNECTED ? "ENABLED" : "disabled - FastLED not initialised",
+                LED_MAX_MILLIAMPS);
   Serial.printf("  Mouse-back pad (GPIO%d): %s, reads %s at rest\n", TOUCH_BACK_PIN,
                 TOUCH_BACK_CONNECTED ? "ENABLED" : "disabled - not read",
                 digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH <- unexpected" : "LOW (normal idle)");
