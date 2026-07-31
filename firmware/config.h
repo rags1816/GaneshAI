@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-07-31-r29"
+#define FIRMWARE_VERSION "2026-07-31-r30"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -133,15 +133,23 @@
 // by the LED ring) and GPIO23 (taken by the mouse-back pad). Software SPI
 // runs on any pins, and a 128x64 mono panel does not need the speed - a
 // full-screen update costs ~8ms against a ~40ms frame.
-// GPIO12/15/2 are avoided throughout this build (boot strapping pins).
+//
+// All five are on the DevKit's RIGHT-HAND column, on purpose. The obvious
+// choices were D13 and D14, but on a 30-pin DevKit that column ends
+// "...D27, D14, D12, D13, GND, VIN" - so D12 sits BETWEEN them. GPIO12 is
+// the strapping pin that picks the flash voltage at reset: a wire pulling
+// it high hangs the chip before setup() runs, with no serial and no
+// display, looking exactly like a dead board. This build has already lost
+// a day to that once. Keeping D12's neighbours empty means a miscounted
+// hole cannot reproduce it.
 //
 // WATCH THE BOARD LABELS: GPIO16 and GPIO17 are NOT printed "D16"/"D17" on
 // a DevKit. They are printed "RX2" and "TX2" - the board shows their
 // Serial-2 role, not their number. There is no conflict with the DFPlayer,
 // which also uses Serial 2: the ESP32 can route a UART to any pins, and
 // Serial2 is pointed at GPIO25/26 below, leaving these two free.
-#define OLED_SPI_CLK     14   // module pin CLK -> board pin D14
-#define OLED_SPI_DIN     13   // module pin DIN -> board pin D13
+#define OLED_SPI_CLK     22   // module pin CLK -> board pin D22
+#define OLED_SPI_DIN      4   // module pin DIN -> board pin D4
 #define OLED_SPI_CS       5   // module pin CS  -> board pin D5
 #define OLED_SPI_DC      17   // module pin DC  -> board pin printed TX2
 #define OLED_SPI_RST     16   // module pin RST -> board pin printed RX2
