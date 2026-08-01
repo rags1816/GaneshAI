@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-01-r32"
+#define FIRMWARE_VERSION "2026-08-01-r33"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -73,7 +73,7 @@
 // supply, never the ESP32 board's 5V pin: 24 WS2812B pixels can pull ~1.4A,
 // far past what the board's regulator and USB path can deliver, which
 // browns out the chip into a reboot loop.
-#define LED_CONNECTED    false
+#define LED_CONNECTED    true
 
 // Hard current budget for the ring, in milliamps at 5V. FastLED enforces
 // this by scaling brightness down automatically whenever the frame it is
@@ -116,7 +116,7 @@
 #define OLED_SSD1309_SPI  1
 #define OLED_SSD1309_I2C  2
 
-#define OLED_MODEL       OLED_SSD1309_SPI
+#define OLED_MODEL       OLED_SH1106_I2C
 
 // SSD1309 panels ship with one of two init sequences. If the 2.42" comes
 // up blank, garbled, or shifted sideways by a few pixels, change this 0
