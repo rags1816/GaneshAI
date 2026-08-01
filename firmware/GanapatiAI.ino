@@ -239,6 +239,17 @@ int ambientBlessingIdx = 0;
 #define MIN_BLESSING_DISPLAY_MS 2000
 bool scrollPassComplete = false;
 
+// Diagnostics counters/flags exposed via /api/pins and /api/test?oled=1.
+// The touch counters count ACCEPTED touches (past settle + debounce), i.e.
+// exactly the ones that print a TOUCH: line - so the browser can verify a
+// pad without a serial cable. oledTestUntil, while in the future, makes
+// drawOLED paint a solid white test card regardless of state - the most
+// visible thing a marginal panel can show, and drawn even in STANDBY when
+// the screen is normally off.
+uint32_t feetTouchCount = 0;
+uint32_t backTouchCount = 0;
+unsigned long oledTestUntil = 0;
+
 // ==========================================
 // Text Database
 // ==========================================
@@ -403,7 +414,13 @@ void setup() {
   u8g2.drawStr(5, 20, "Ganapati AI 2026");
   u8g2.drawStr(5, 35, "Voice Init...");
   u8g2.sendBuffer();
-  Serial.println("DEBUG: OLED Display initialized successfully.");
+  // Deliberately NOT "initialized successfully": on SPI the ESP32 only ever
+  // writes to the panel - there is no reply line - so this code cannot tell
+  // whether a display is attached at all. An earlier message here claimed
+  // success and sent debugging down the wrong road.
+  Serial.println("DEBUG: OLED init + first frame SENT. SPI is write-only: this proves");
+  Serial.println("DEBUG:   nothing about the panel - only your eyes can. If the screen is");
+  Serial.println("DEBUG:   dark, browse to /api/test?oled=1 to force a solid-white test card.");
 
   // If the previous run crashed, hold that fact on-screen (and on Serial)
   // for ~30s so it's actually catchable before the boot proceeds further.
@@ -737,8 +754,42 @@ void handleWebRoutes() {
   // of normal operation - safe to leave in, it does nothing unless called.
   //   /api/test?track=N     -> stop current playback, play mp3-folder track N
   //   /api/test?filecount=1 -> total file count DFPlayer sees on the SD card
+  // Live pin health, readable from any phone/laptop on the network - no
+  // serial cable needed. Reports each sensor pin's level RIGHT NOW plus
+  // how many accepted touches since boot. The intermittent-wire test:
+  // hold a finger on a pad and refresh - its level must show 1. Refresh
+  // again after letting go - back to 0, and count went up by 1.
+  server.on("/api/pins", HTTP_GET, []() {
+    char json[300];
+    snprintf(json, sizeof(json),
+      "{\"firmware\":\"%s\",\"state\":\"%s\",\"uptime_s\":%lu,"
+      "\"feet\":{\"gpio\":%d,\"enabled\":%s,\"level\":%d,\"touches\":%lu},"
+      "\"back\":{\"gpio\":%d,\"enabled\":%s,\"level\":%d,\"touches\":%lu},"
+      "\"pir\":{\"gpio\":%d,\"enabled\":%s,\"level\":%d}}",
+      FIRMWARE_VERSION, stateName(currentState), (unsigned long)(millis() / 1000),
+      TOUCH_FEET_PIN, TOUCH_FEET_CONNECTED ? "true" : "false",
+      digitalRead(TOUCH_FEET_PIN), (unsigned long)feetTouchCount,
+      TOUCH_BACK_PIN, TOUCH_BACK_CONNECTED ? "true" : "false",
+      digitalRead(TOUCH_BACK_PIN), (unsigned long)backTouchCount,
+      PIR_PIN, PIR_CONNECTED ? "true" : "false", digitalRead(PIR_PIN));
+    server.send(200, "application/json", json);
+  });
+
   server.on("/api/test", HTTP_GET, []() {
     char msg[64];
+    if (server.hasArg("oled")) {
+      if (server.arg("oled").toInt() != 0) {
+        oledTestUntil = millis() + 10000;
+        Serial.println("OLED TEST: solid-white card for 10s (via /api/test?oled=1)");
+        server.send(200, "text/plain",
+          "OLED test card ON for 10 seconds - the screen should be SOLID WHITE "
+          "with 'DISPLAY WORKS' in black. Still dark = panel/wiring, not firmware.");
+      } else {
+        oledTestUntil = 1; // in the past -> cleanup on next drawOLED pass
+        server.send(200, "text/plain", "OLED test card off.");
+      }
+      return;
+    }
     if (server.hasArg("track")) {
       int n = server.arg("track").toInt();
       myDFPlayer.stop();
@@ -897,12 +948,14 @@ void checkSensors() {
       // properly landed on its pin - set its _CONNECTED flag back to false
       // rather than working around it.
       Serial.printf("TOUCH: feet pad pressed (GPIO%d) while %s\n", TOUCH_FEET_PIN, stateName(currentState));
+      feetTouchCount++;
     }
   } else if (backEdge && backStable) {
     if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
       backTouched = true;
       lastTouchTrigger = now;
       Serial.printf("TOUCH: mouse-back pad pressed (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
+      backTouchCount++;
     }
   }
 
@@ -1484,6 +1537,25 @@ void animateLeds() {
 // OLED Text Drawing & Scrolling (U8g2)
 // ==========================================
 void drawOLED() {
+  // Hardware test card (/api/test?oled=1) outranks everything, including
+  // the states where the screen is normally off - its whole job is to
+  // answer "is this panel alive?" with the most visible image possible.
+  if (oledTestUntil != 0) {
+    if (millis() < oledTestUntil) {
+      u8g2.clearBuffer();
+      u8g2.drawBox(0, 0, 128, 64);          // solid white, edge to edge
+      u8g2.setDrawColor(0);
+      u8g2.setFont(u8g2_font_6x10_tf);
+      u8g2.drawStr(19, 36, "DISPLAY WORKS");
+      u8g2.setDrawColor(1);
+      u8g2.sendBuffer();
+      return;
+    }
+    oledTestUntil = 0;                       // test over - blank once, resume
+    u8g2.clearBuffer();
+    u8g2.sendBuffer();
+  }
+
   if (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) return;
 
   unsigned long now = millis();
