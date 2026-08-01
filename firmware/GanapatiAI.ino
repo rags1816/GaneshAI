@@ -1235,6 +1235,13 @@ void setSystemState(SystemState newState, unsigned long duration) {
       FastLED.clear();
       FastLED.show();
     }
+    // Blank the panel BEFORE sleeping it. setPowerSave(1) alone leaves the
+    // last-drawn image latched on some panels, so closing the temple froze
+    // whatever text happened to be mid-scroll on screen (reported on
+    // hardware). An explicit empty frame makes "asleep" also mean "blank"
+    // on every panel, regardless of how it implements power-save.
+    u8g2.clearBuffer();
+    u8g2.sendBuffer();
     u8g2.setPowerSave(1);
   } else {
     u8g2.setPowerSave(0); 
