@@ -99,6 +99,16 @@ bool motionDetected = false;
 bool feetTouched = false;
 bool backTouched = false;
 
+// Bell-first wake (agreed design): the touch that WAKES the temple - from
+// STANDBY or TEMPLE_CLOSED - rings the bell, and the mantra starts once
+// the bell has had time to sound. Touches while already awake keep the
+// old behaviour and start their mantra immediately. Non-blocking (no
+// delay()) so the web server and sensors stay live during the bell.
+// 0 = nothing pending, 1 = feet pad's mantra, 2 = mouse-back's mantra.
+int pendingWakeMantra = 0;
+unsigned long pendingWakeAt = 0;
+#define WAKE_BELL_LEAD_MS 2500
+
 // Per-pad debounce state for the edge-triggered touch handling in
 // checkSensors(). "Stable" is the level a pad has actually held for
 // TOUCH_SETTLE_MS; brief bounces from a rough solder joint never reach it.
@@ -1015,15 +1025,31 @@ void updateStateMachine() {
     ambientBlessingIdx++;
   }
 
+  // A wake-touch's bell has finished sounding - start the mantra it
+  // promised. Runs before the switch so it fires regardless of what
+  // state the bell interval ended in.
+  if (pendingWakeMantra != 0 && now >= pendingWakeAt) {
+    int pad = pendingWakeMantra;
+    pendingWakeMantra = 0;
+    if (pad == 2) triggerMantra();
+    else          triggerFeetMantra();
+  }
+
   switch (currentState) {
-    
+
     case STATE_STANDBY:
-      if (backTouched) {
-        backTouched = false;
-        triggerMantra();
-      } else if (feetTouched) {
-        feetTouched = false;
-        triggerFeetMantra();
+      if (backTouched || feetTouched) {
+        // Waking touch: bell now, mantra when the bell has rung
+        // (WAKE_BELL_LEAD_MS). A second touch during the bell is ignored
+        // rather than queued twice.
+        if (pendingWakeMantra == 0) {
+          pendingWakeMantra = backTouched ? 2 : 1;
+          pendingWakeAt = now + WAKE_BELL_LEAD_MS;
+          myDFPlayer.playMp3Folder(BELL_TRACK);
+          Serial.printf("WAKE: bell first (%s pad), mantra in %dms\n",
+                        backTouched ? "mouse-back" : "feet", WAKE_BELL_LEAD_MS);
+        }
+        backTouched = feetTouched = false;
       } else if (motionDetected) {
         motionDetected = false;
         myDFPlayer.playMp3Folder(BELL_TRACK);
@@ -1171,13 +1197,17 @@ void updateStateMachine() {
     case STATE_TEMPLE_CLOSED:
       // Deliberately only a touch wakes the closed temple - not PIR
       // (motionDetected is ignored here on purpose, matching the web
-      // dashboard's TEMPLE_CLOSED design).
-      if (backTouched) {
-        backTouched = false;
-        triggerMantra();
-      } else if (feetTouched) {
-        feetTouched = false;
-        triggerFeetMantra();
+      // dashboard's TEMPLE_CLOSED design). Same bell-first wake as
+      // STANDBY: this is also a waking touch.
+      if (backTouched || feetTouched) {
+        if (pendingWakeMantra == 0) {
+          pendingWakeMantra = backTouched ? 2 : 1;
+          pendingWakeAt = now + WAKE_BELL_LEAD_MS;
+          myDFPlayer.playMp3Folder(BELL_TRACK);
+          Serial.printf("WAKE: bell first (%s pad), mantra in %dms\n",
+                        backTouched ? "mouse-back" : "feet", WAKE_BELL_LEAD_MS);
+        }
+        backTouched = feetTouched = false;
       }
       break;
   }
