@@ -14,6 +14,7 @@
 #define FASTLED_ESP32_HAS_UART 0
 #include <FastLED.h>
 #include <DFRobotDFPlayerMini.h>
+#include <esp_task_wdt.h>
 #include "config.h"
 #include "web_dashboard.h"
 #include "puja_page.h"
@@ -641,12 +642,37 @@ void setup() {
   Serial.println("  (a pad showing 'disabled' can never trigger - set its");
   Serial.println("   *_CONNECTED flag in config.h to true once it is wired)");
   Serial.println("----------------------------------------------------");
+
+  // Watchdog - started HERE, deliberately after boot is fully done, not at
+  // the top of setup(). The DFPlayer retry loop above (5 attempts, each
+  // observed on hardware taking up to ~2.2s to time out) plus a slow Wi-Fi
+  // connect can legitimately take longer than any single runtime operation
+  // ever should - starting the watchdog before that would risk a false
+  // reboot-loop on the exact "no DFPlayer attached" boots this project has
+  // had all day. 8000ms comfortably clears the longest known deliberate
+  // block once running (900ms, the bell-before-mantra delay in
+  // openTempleFromClosed()) with better than 8x margin, while still
+  // recovering in seconds rather than needing someone to notice a hung,
+  // unattended device and power-cycle it by hand - the actual failure
+  // mode reported on hardware tonight (Serial AND the dashboard both went
+  // silent together, consistent with loop() itself stalling, cause not
+  // yet found). This does not fix that unknown cause - it makes a hang
+  // survivable until it is found.
+  esp_task_wdt_config_t twdt_config = {
+    .timeout_ms = 8000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_init(&twdt_config);
+  esp_task_wdt_add(NULL);
+  Serial.println("WATCHDOG: armed, 8000ms - a hung loop() now self-recovers via reboot.");
 }
 
 // ==========================================
 // Main Loop
 // ==========================================
 void loop() {
+  esp_task_wdt_reset();
   lastStage = 1;
   server.handleClient();
   lastStage = 2;
