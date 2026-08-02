@@ -110,6 +110,18 @@ bool motionDetected = false;
 bool wifiStationMode = false;
 unsigned long lastWifiCheck = 0;
 #define WIFI_CHECK_INTERVAL_MS 15000
+
+// Free-heap logging - a data point this firmware has never collected.
+// server.arg() and several offering/prayer parameters use the Arduino
+// String class, which is a known, well-documented source of gradual
+// heap fragmentation over long ESP32 uptimes (unlike tonight's specific
+// hang, this is a MULTI-DAY concern - the exact failure mode a 10-15 day
+// unattended festival run would actually hit). This does not fix
+// anything by itself - it makes the trend visible in the Serial log, so
+// a slow decline over the festival's run is something that can be SEEN
+// happening rather than only inferred after a crash with no evidence.
+unsigned long lastHeapLog = 0;
+#define HEAP_LOG_INTERVAL_MS 60000
 bool feetTouched = false;
 bool backTouched = false;
 
@@ -355,6 +367,7 @@ const char* oledAmbientLoopText =
 void handleWebRoutes();
 void checkSensors();
 void checkWiFiHealth();
+void checkHeapHealth();
 void updateStateMachine();
 void animateLeds();
 void drawOLED();
@@ -691,6 +704,7 @@ void loop() {
   lastStage = 1;
   server.handleClient();
   checkWiFiHealth();
+  checkHeapHealth();
   lastStage = 2;
   checkSensors();
   lastStage = 3;
@@ -915,6 +929,18 @@ void checkWiFiHealth() {
     Serial.println("WIFI: connection lost - attempting reconnect...");
     WiFi.reconnect();
   }
+}
+
+// Logs free heap once a minute - see lastHeapLog's comment. A healthy,
+// stable value across days is reassuring; a steady downward trend is
+// exactly the early warning a String-fragmentation problem gives before
+// it becomes a crash with no diagnostic trail.
+void checkHeapHealth() {
+  unsigned long now = millis();
+  if (now - lastHeapLog < HEAP_LOG_INTERVAL_MS) return;
+  lastHeapLog = now;
+  Serial.printf("HEAP: %lu bytes free, %lu min-ever-free (uptime %lus)\n",
+                (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), now / 1000);
 }
 
 // ==========================================
