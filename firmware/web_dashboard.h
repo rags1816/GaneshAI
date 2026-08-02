@@ -635,6 +635,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <div class="status-card">
                 <div class="status-label">System State</div>
                 <div id="state-val" class="status-val">STANDBY</div>
+                <div id="device-offline-badge" style="display:none; margin-top:6px; font-size:11px; font-weight:700; letter-spacing:0.05em; color:#ff4b4b; background:rgba(255,75,75,0.12); border:1px solid #ff4b4b; border-radius:4px; padding:3px 8px;">&#9888; DEVICE OFFLINE - showing last known state</div>
             </div>
             <div class="status-card">
                 <div class="status-label">Blessings Today</div>
@@ -3562,8 +3563,27 @@ var QRCode;
         // status display (updateUI + control values) - it does not replay
         // audio/LED side effects locally, since /api/state doesn't say which
         // track is playing.
+        // Consecutive poll failures before showing "DEVICE OFFLINE". 1 is too
+        // trigger-happy (a single dropped Wi-Fi packet every couple of
+        // minutes is normal); 3 x 2s = 6s of total silence is a genuine
+        // disconnect, not noise - tonight's actual debugging problem was
+        // the OPPOSITE of a false alarm: the empty catch() below gave NO
+        // indication at all, ever, no matter how long the device was gone,
+        // while the blessing text kept visually scrolling on its own
+        // animation - looking alive while showing data that could be
+        // minutes stale.
+        let devicePollFailures = 0;
+        const DEVICE_OFFLINE_THRESHOLD = 3;
+
+        function setDeviceOfflineBadge(offline) {
+            const badge = document.getElementById('device-offline-badge');
+            if (badge) badge.style.display = offline ? 'block' : 'none';
+        }
+
         function pollDeviceState() {
             fetch('/api/state').then(r => r.json()).then(data => {
+                devicePollFailures = 0;
+                setDeviceOfflineBadge(false);
                 const prevState = state;
                 const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "AARTI_MODE");
                 const nowIdle = (data.state === "STANDBY" || data.state === "AMBIENT" || data.state === "TEMPLE_CLOSED");
@@ -3658,7 +3678,10 @@ var QRCode;
                 }
 
                 updateUI();
-            }).catch(() => {});
+            }).catch(() => {
+                devicePollFailures++;
+                if (devicePollFailures >= DEVICE_OFFLINE_THRESHOLD) setDeviceOfflineBadge(true);
+            });
         }
         if (isPhysicalESP) {
             pollDeviceState();
