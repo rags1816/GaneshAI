@@ -7,29 +7,30 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-01-r33"
+#define FIRMWARE_VERSION "2026-08-01-r34"
 
 // ==========================================
 // Hardware Pin Definitions
 // ==========================================
 
 // Sensors
-// PIR moved 13 -> 19. GPIO13 doubles as JTAG MTCK, and after the sensor
-// and wiring were both replaced the pin STILL showed ~55Hz noise (i.e.
-// mains hum on an undriven line) - even when forced high. GPIO19 is a
-// plain bidirectional GPIO with no strapping, JTAG, or flash role and
-// nothing else on this build uses it. REWIRE the AM312's OUT lead to
-// D19; VIN and GND stay where they are.
+// PIR moved 13 -> 19. GPIO13 doubles as JTAG MTCK and stayed noisy even
+// after the sensor and wiring were replaced. GPIO19 is a plain
+// bidirectional GPIO with no strapping, JTAG, or flash role and nothing
+// else on this build uses it.
 #define PIR_PIN          19   // AM312 Motion Sensor Pin (was 13 = JTAG MTCK)
 
-// DISABLED. On both GPIO13 and a fresh GPIO19 the line measured only
-// 27-40% duty - i.e. the AM312 is not driving the pin at all (an undriven
-// wire picking up mains hum), which no pin choice or firmware change can
-// fix. The temple is fully functional without it: STANDBY -> AMBIENT still
-// happens via the dashboard's "Trigger PIR" button (/api/control?action=pir,
-// deliberately independent of this flag) or any touch on the pads. Set back
-// to true only after the sensor is confirmed to actually output a signal.
-#define PIR_CONNECTED    false
+// ENABLED - the sensor was never faulty. Every earlier "dead PIR" reading
+// (on GPIO13 AND on a fresh GPIO19, ~27-40% floating duty each time) was
+// this specific compact AM312 module being wired in the WRONG PIN ORDER.
+// Unlike the larger HC-SR501-style PIR boards, this module's own
+// silkscreen reads, left to right on the back with the dome up:
+//   GND - OUT - VIN
+// not the VIN/GND/OUT order assumed earlier. OUT (middle pin) -> D19 was
+// always right; GND and VIN just needed to land on the correct outer
+// pins. Confirmed working on SensorBench once wired to the silkscreen:
+// clean 0%-quiet idle, 100%-HELD-HIGH on motion, clean pulse counts.
+#define PIR_CONNECTED    true
 
 // Touch pads (TP223 modules). Feet was originally GPIO12 (MTDI /
 // VDD_SDIO strapping pin) - with the sensor unplugged that pin floats,
