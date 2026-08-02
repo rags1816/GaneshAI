@@ -97,6 +97,19 @@ const char* stateName(SystemState s) {
 unsigned long lastMotionTrigger = 0;
 unsigned long lastTouchTrigger = 0;
 bool motionDetected = false;
+
+// Runtime Wi-Fi health check. Set true only if setup() actually connected
+// in station mode (never for the AP fallback - that path is left alone
+// deliberately, to avoid flip-flopping between AP and station on a device
+// that already gave up on the home network once). Nothing in this
+// firmware previously re-checked Wi-Fi after boot - a drop at any point
+// in a 10-15 day unattended run (weak signal, router hiccup, DHCP lease
+// issue - all ordinary events) meant permanent disconnection until
+// someone found and power-cycled the device. checkWiFiHealth() below
+// closes that gap.
+bool wifiStationMode = false;
+unsigned long lastWifiCheck = 0;
+#define WIFI_CHECK_INTERVAL_MS 15000
 bool feetTouched = false;
 bool backTouched = false;
 
@@ -341,6 +354,7 @@ const char* oledAmbientLoopText =
 // ==========================================
 void handleWebRoutes();
 void checkSensors();
+void checkWiFiHealth();
 void updateStateMachine();
 void animateLeds();
 void drawOLED();
@@ -548,6 +562,7 @@ void setup() {
   IPAddress myIP;
   if (WiFi.status() == WL_CONNECTED) {
     myIP = WiFi.localIP();
+    wifiStationMode = true;
     Serial.println("\nWi-Fi Connected!");
     Serial.print("IP Address: ");
     Serial.println(myIP);
@@ -675,6 +690,7 @@ void loop() {
   esp_task_wdt_reset();
   lastStage = 1;
   server.handleClient();
+  checkWiFiHealth();
   lastStage = 2;
   checkSensors();
   lastStage = 3;
@@ -878,6 +894,27 @@ void handleWebRoutes() {
     }
     server.send(200, "text/plain", "OK");
   });
+}
+
+// ==========================================
+// Wi-Fi Health Check
+// ==========================================
+// Runs at most once every WIFI_CHECK_INTERVAL_MS - checking WiFi.status()
+// every single loop() pass would be wasteful and isn't needed; a dropped
+// connection sitting undetected for up to 15s is a non-issue against the
+// alternative (permanently undetected until manual power-cycle). Only
+// acts if this device connected in station mode at boot - the AP
+// fallback path is left alone on purpose, see wifiStationMode's comment.
+void checkWiFiHealth() {
+  if (!wifiStationMode) return;
+  unsigned long now = millis();
+  if (now - lastWifiCheck < WIFI_CHECK_INTERVAL_MS) return;
+  lastWifiCheck = now;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WIFI: connection lost - attempting reconnect...");
+    WiFi.reconnect();
+  }
 }
 
 // ==========================================
