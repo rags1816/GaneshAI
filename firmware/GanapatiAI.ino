@@ -1013,7 +1013,16 @@ void checkSensors() {
   // motion/heat/light changes over a few minutes, which kept resetting the
   // 60s countdown and left AMBIENT stuck forever, never reaching Aarti at
   // all. Only an actual touch (feet/mouse-back) counts as "someone's here."
-  if (pirEnabled && currentState == STATE_STANDBY) {
+  // Also gated on pendingWakeMantra == 0 (r32's bell-first-wake): a touch
+  // sets pendingWakeMantra and leaves currentState at STANDBY for the
+  // ~2.5s WAKE_BELL_LEAD_MS window until the promised mantra actually
+  // starts. Real PIR motion landing in that window was setting
+  // motionDetected here, which the STANDBY case then acted on BEFORE the
+  // pending mantra fired - a second bell plus setSystemState(AMBIENT),
+  // which the pending mantra then fired on top of regardless (it runs
+  // unconditional on state, by design) - bell rings twice, state left
+  // confused between AMBIENT and whichever mantra actually started.
+  if (pirEnabled && currentState == STATE_STANDBY && pendingWakeMantra == 0) {
     if (pirConfirmed && (now - lastMotionTrigger > MOTION_DEBOUNCE)) {
       motionDetected = true;
       lastMotionTrigger = now;
