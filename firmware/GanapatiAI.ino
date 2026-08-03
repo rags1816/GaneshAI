@@ -1129,6 +1129,12 @@ void updateStateMachine() {
   if (pendingWakeMantra != 0 && now >= pendingWakeAt) {
     int pad = pendingWakeMantra;
     pendingWakeMantra = 0;
+    // Previously silent - the WAKE: line at arm-time was the only trace
+    // of this mechanism in the log, so there was no way to tell from
+    // Serial alone whether the bell fired but the promised mantra never
+    // did. This closes that gap.
+    Serial.printf("WAKE: bell finished, starting %s mantra now (state was %s)\n",
+                  pad == 2 ? "mouse-back" : "feet", stateName(currentState));
     if (pad == 2) triggerMantra();
     else          triggerFeetMantra();
   }
