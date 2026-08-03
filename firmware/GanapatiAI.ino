@@ -1196,6 +1196,8 @@ void updateStateMachine() {
       // Only PIR (from STANDBY) or a fresh touch wakes things up again;
       // AMBIENT is no longer the automatic landing state after a mantra.
       if (now - stateTimer > stateDuration) {
+        Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
+                      now - stateTimer, stateDuration);
         myDFPlayer.stop();
         setSystemState(STATE_STANDBY);
       }
@@ -1267,6 +1269,8 @@ void updateStateMachine() {
           }
         } else {
           // One whole mantra done, nobody touched again - go back to sleep.
+          Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
+                        now - stateTimer, stateDuration);
           myDFPlayer.stop();
           setSystemState(STATE_STANDBY);
         }
@@ -1582,6 +1586,15 @@ void openTempleFromClosed() {
 }
 
 void stopAudioAndStandby() {
+  // Was completely silent - if a stray /api/control?action=stop ever
+  // arrives from anywhere (a stale browser tab still running its own
+  // local timers, a second dashboard session, anything hitting that URL)
+  // it would force STANDBY with zero trace in the log, indistinguishable
+  // from a genuine unexplained state revert. Reported on hardware: a
+  // touch's mantra started correctly, then state was back at STANDBY
+  // within under a second, with no error anywhere - this is exactly what
+  // an untraced external stop would look like.
+  Serial.printf("STOP: stopAudioAndStandby() called (state was %s)\n", stateName(currentState));
   myDFPlayer.stop();
   setSystemState(STATE_STANDBY);
 }
