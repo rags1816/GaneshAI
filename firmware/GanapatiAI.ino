@@ -1137,6 +1137,20 @@ void updateStateMachine() {
                   pad == 2 ? "mouse-back" : "feet", stateName(currentState));
     if (pad == 2) triggerMantra();
     else          triggerFeetMantra();
+    // ROOT CAUSE of "bell rings, mantra never audibly starts": triggerMantra()/
+    // triggerFeetMantra() contain delay(50) and then call setSystemState(),
+    // which sets stateTimer via its OWN fresh millis() call - ending up
+    // slightly AHEAD of the `now` snapshot taken at the top of this
+    // function, before that delay ran. Execution falls straight through
+    // into the switch() below on the SAME stale `now`, and the new
+    // state's very own "has the duration elapsed?" check computes
+    // now - stateTimer with now < stateTimer - unsigned subtraction, so
+    // instead of going negative it wraps to just under 2^32 (confirmed on
+    // hardware: 4294967245 = 4294967295 - 50, the exact 50ms of that
+    // delay). That's far past any real duration, so the freshly-created
+    // mantra state is destroyed on the very same pass it was created.
+    // Refreshing `now` here closes the gap the stale snapshot left open.
+    now = millis();
   }
 
   switch (currentState) {
@@ -1169,9 +1183,19 @@ void updateStateMachine() {
       if (backTouched) {
         backTouched = false;
         triggerMantra();
+        now = millis(); // see the matching comment on the pending-wake
+                         // mechanism above - same stale-now-after-a-
+                         // delay()-inside-trigger hazard applies here too,
+                         // and this exact path was NOT the one caught on
+                         // hardware yet: a touch from AMBIENT would fall
+                         // through to the stateDuration check below on a
+                         // stale `now`, underflow, and spuriously trigger
+                         // triggerAartiThenClose() the instant the mantra
+                         // it just started was created.
       } else if (feetTouched) {
         feetTouched = false;
         triggerFeetMantra();
+        now = millis(); // see above
       }
 
       if (now - stateTimer > stateDuration) {
