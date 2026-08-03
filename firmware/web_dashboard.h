@@ -2122,18 +2122,17 @@ var QRCode;
             
             if (scrollTimer) clearInterval(scrollTimer);
 
-            if (state === "FEET_ACTIVE") {
-                // Blessing mode: static, wrapped, centered, and GOLD!
-                scroller.style.whiteSpace = 'normal';
-                scroller.style.textAlign = 'center';
-                scroller.style.color = '#ffd700'; // Gold
-                scroller.style.textShadow = '0 0 6px rgba(255, 215, 0, 0.4)';
-                scroller.style.transform = 'none';
-                scroller.style.position = 'relative';
-                scroller.style.width = '100%';
-                scroller.style.fontSize = '8px'; // Slightly smaller to fit personalized content
-                scroller.style.lineHeight = '1.1';
-            } else {
+            // FEET_ACTIVE used to render as a static, wrapped, gold block -
+            // no scroll animation at all, unlike every other state. The
+            // physical OLED does not make this distinction: it scrolls
+            // identically for both pads. That mismatch was reported on
+            // hardware as "dashboard stays stationary on a feet touch, but
+            // the real display scrolls immediately" - a real, confirmed,
+            // reproducible difference, not a sync failure in how data
+            // reaches the dashboard. Folding FEET_ACTIVE into the same
+            // scrolling path as everything else below matches the physical
+            // device exactly instead of special-casing one pad.
+            {
                 // Normal rolling mode: cyan, scrolling, single line
                 scroller.style.whiteSpace = 'nowrap';
                 scroller.style.color = '#00f2fe'; // Cyan
@@ -2156,7 +2155,7 @@ var QRCode;
                             // On a physical device, pollDeviceState() is the one that updates
                             // scroller text (from the firmware's own scrollText), so picking
                             // independently here would show different text than the display.
-                            if (!isPhysicalESP && (state === "AMBIENT" || state === "MANTRA_ACTIVE")) {
+                            if (!isPhysicalESP && (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE")) {
                                 const nextBlessing = combinedBlessings[currentBlessingIndex];
                                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
                                 const nextText = `   [BLESSING] ${nextBlessing}   `;
