@@ -795,8 +795,12 @@ void handleWebRoutes() {
       openTempleFromClosed();
     } else if (action == "pir") {
       // Dashboard's "Simulate PIR Detection" button, remote-triggered -
-      // mirrors exactly what a real motion detection does in checkSensors().
+      // mirrors exactly what a real motion detection does in checkSensors(),
+      // including the stop()+delay(50) settle gap - see the matching fix
+      // there for why.
       if (currentState == STATE_STANDBY) {
+        myDFPlayer.stop();
+        delay(50);
         myDFPlayer.playMp3Folder(BELL_TRACK);
         setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
@@ -1170,6 +1174,15 @@ void updateStateMachine() {
         backTouched = feetTouched = false;
       } else if (motionDetected) {
         motionDetected = false;
+        // Every OTHER trigger in this file (both touch pads, Aarti,
+        // offerings) calls stop()+delay(50) before playMp3Folder() -
+        // some DFPlayer Mini clones drop a command sent without that
+        // settle gap. This was the one exception. Reported on hardware:
+        // PIR correctly woke the temple (state, display, dashboard all
+        // moved to AMBIENT) but the bell itself never sounded - matches
+        // exactly what a dropped play command looks like.
+        myDFPlayer.stop();
+        delay(50);
         myDFPlayer.playMp3Folder(BELL_TRACK);
         setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
