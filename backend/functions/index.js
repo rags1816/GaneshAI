@@ -76,6 +76,10 @@ const LANGUAGE_CONFIG = {
     claudeInstruction: "Reply entirely in Sindhi, from start to finish, never switching to English.",
     voice: {languageCode: "sd-IN", name: "sd-IN-Standard-B", ssmlGender: "MALE"},
   },
+  fa: {
+    claudeInstruction: "Reply entirely in Persian/Farsi (Persian script), from start to finish, never switching to English.",
+    voice: {languageCode: "fa-IR", name: "fa-IR-Wavenet-B", ssmlGender: "MALE"},
+  },
 };
 
 // Slower and a touch deeper than Google's default (1.0 rate, 0 pitch) -
