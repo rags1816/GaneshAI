@@ -20,6 +20,15 @@
  *   Wish pad : TP223, VCC->3.3V, GND->GND, I-O->D4
  *   Mic      : VDD->3.3V, GND->GND, L/R->GND, WS->D32, SCK->D33, SD->D34
  *
+ * Clap detection (new): a real loud clap measured on this exact rig
+ * peaked around 120000-131000 on this sketch's scaling, against a quiet
+ * -room floor of ~0 - see CLAP_THRESHOLD below. That's ONE data point
+ * from one room, so treat the thresholds as a starting guess to tune
+ * against your real room, not a finished value. Each clap toggles a
+ * simulated open/closed state and the LED ring visibly reflects it
+ * (rainbow when "open", off when "closed") - proving clap -> state ->
+ * light works end to end before this logic moves to the main board.
+ *
  * Serial Monitor at 115200.
  */
 
@@ -49,6 +58,16 @@ bool micReady = false;
 int32_t micBuf[256];
 int32_t micPeakSinceReport = 0;
 
+// ---- Clap detection ----
+// Starting guess from one real clap on this rig (quiet ~0, clap ~120k-131k).
+// Tune these two against your actual room once you're watching it live.
+#define CLAP_THRESHOLD     25000  // a frame louder than this counts as "loud"
+#define CLAP_REARM_LEVEL   6000   // must drop back below this before the next clap can fire
+#define CLAP_REFRACTORY_MS 400    // minimum gap between two separate claps
+bool clapArmed = true;
+uint32_t lastClapMs = 0;
+bool templeOpen = false;   // simulated state for this bench test only
+
 uint32_t lastReport = 0;
 #define REPORT_MS          1000
 
@@ -63,8 +82,9 @@ void setup() {
   Serial.println("=========================================================");
   Serial.println(" ExpansionBench - LED ring + Wish pad + Mic bring-up test");
   Serial.println("=========================================================");
-  Serial.println(" LED ring : should be cycling through rainbow colors now.");
-  Serial.println("            No cycling = check DI/resistor/power wiring.");
+  Serial.println(" LED ring : off to start (\"closed\"). Clap once to \"open\" -");
+  Serial.println("            ring starts cycling rainbow colors. Clap again");
+  Serial.println("            to \"close\" - ring goes dark. Same clap, toggles.");
   Serial.println(" Wish pad : tap it, watch the pulse counter increment.");
   Serial.println(" Mic      : talk or clap near it, watch the peak level");
   Serial.println("            jump well above the quiet-room baseline.");
@@ -90,12 +110,15 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
-  // --- LED: slow rainbow sweep. Purely visual proof of wiring - just look at it. ---
-  if (now - lastLedStepMs >= 30) {
-    lastLedStepMs = now;
-    fill_rainbow(leds, NUM_LEDS, ledHue, 8);
-    FastLED.show();
-    ledHue++;
+  // --- LED: rainbow sweep while "open", dark while "closed". The clap
+  // detector below is what flips templeOpen. ---
+  if (templeOpen) {
+    if (now - lastLedStepMs >= 30) {
+      lastLedStepMs = now;
+      fill_rainbow(leds, NUM_LEDS, ledHue, 8);
+      FastLED.show();
+      ledHue++;
+    }
   }
 
   // --- Wish pad: same debounced-edge pattern as SensorBench's touch pads ---
@@ -109,21 +132,43 @@ void loop() {
     }
   }
 
-  // --- Mic: read whatever's arrived, track the loudest sample since last report ---
+  // --- Mic: read whatever's arrived this pass, and act on it immediately
+  // for clap detection (a clap is a ~50-200ms transient - waiting for the
+  // once-a-second report would blur or miss it entirely). ---
   if (micReady) {
     size_t bytesRead = I2S.readBytes((char *)micBuf, sizeof(micBuf));
     size_t samples = bytesRead / sizeof(int32_t);
+    int32_t frameLoudest = 0;
     for (size_t i = 0; i < samples; i++) {
       int32_t scaled = micBuf[i] >> 14;  // 32-bit raw sample -> a human-readable range
       int32_t mag = abs(scaled);
-      if (mag > micPeakSinceReport) micPeakSinceReport = mag;
+      if (mag > frameLoudest) frameLoudest = mag;
+    }
+    if (frameLoudest > micPeakSinceReport) micPeakSinceReport = frameLoudest;
+
+    // Arm-on-quiet, fire-on-loud: stops one clap's decay tail (or a
+    // sustained loud noise) from registering as several claps in a row.
+    if (clapArmed && frameLoudest > CLAP_THRESHOLD && (now - lastClapMs) > CLAP_REFRACTORY_MS) {
+      clapArmed = false;
+      lastClapMs = now;
+      templeOpen = !templeOpen;
+      if (!templeOpen) {
+        fill_solid(leds, NUM_LEDS, CRGB::Black);
+        FastLED.show();
+      }
+      Serial.printf(">>> CLAP DETECTED (peak %ld) - temple now %s\n",
+                    (long)frameLoudest, templeOpen ? "OPEN" : "CLOSED");
+    }
+    if (!clapArmed && frameLoudest < CLAP_REARM_LEVEL) {
+      clapArmed = true;
     }
   }
 
   if (now - lastReport >= REPORT_MS) {
     lastReport = now;
-    Serial.printf("[%6lus] Wish pad pulses:%-4lu | Mic peak:%-6ld %s\n",
-                  (unsigned long)(now / 1000), (unsigned long)wishPulses,
+    Serial.printf("[%6lus] Temple:%-6s | Wish pad pulses:%-4lu | Mic peak:%-6ld %s\n",
+                  (unsigned long)(now / 1000), templeOpen ? "OPEN" : "CLOSED",
+                  (unsigned long)wishPulses,
                   (long)micPeakSinceReport, micReady ? "" : "(mic not initialized)");
     micPeakSinceReport = 0;
   }
