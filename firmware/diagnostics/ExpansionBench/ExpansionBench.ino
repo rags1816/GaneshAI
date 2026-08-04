@@ -1,0 +1,130 @@
+/*
+ * ExpansionBench - standalone bring-up test for the LED ring, wish pad,
+ * and mic, all together on a SEPARATE ESP32 (not the main Ganesha board).
+ *
+ * Same idea as SensorBench: prove each part works on its own, with
+ * nothing else running, before any of it touches the main firmware.
+ *
+ * Uses the modern ESP_I2S.h library for the mic, not the legacy
+ * driver/i2s.h - see diagnostics/I2SWiFiTest, which found the legacy
+ * driver crashes when combined with WiFi on this exact board. This
+ * sketch has no WiFi so that crash can't happen here either way, but
+ * the mic code is written the way it'll need to be once it moves to
+ * the main board, which does run WiFi.
+ *
+ * Wiring (same pin numbers as the main board's config.h, so nothing
+ * needs renumbering later):
+ *   LED ring : DI through a 330 ohm resistor -> D18. Ring's own 5V/GND
+ *              from a separate Wago supply, NOT the ESP32. 1000uF cap
+ *              across the ring's own 5V/GND terminals.
+ *   Wish pad : TP223, VCC->3.3V, GND->GND, I-O->D4
+ *   Mic      : VDD->3.3V, GND->GND, L/R->GND, WS->D32, SCK->D33, SD->D34
+ *
+ * Serial Monitor at 115200.
+ */
+
+#include <FastLED.h>
+#include "ESP_I2S.h"
+
+// ---- LED ring ----
+#define LED_PIN            18
+#define NUM_LEDS           24   // matches the real ring - change if yours differs
+#define LED_MAX_MILLIAMPS  1500
+CRGB leds[NUM_LEDS];
+uint8_t ledHue = 0;
+uint32_t lastLedStepMs = 0;
+
+// ---- Wish pad (TP223, momentary mode) ----
+#define WISH_PIN           4
+bool wishRaw = false, wishStable = false;
+uint32_t wishChangedAt = 0, wishPulses = 0;
+#define TOUCH_SETTLE_MS    60   // same settle time the main firmware uses
+
+// ---- Mic (I2S, e.g. INMP441) ----
+#define MIC_SCK_PIN        33
+#define MIC_WS_PIN         32
+#define MIC_SD_PIN         34
+I2SClass I2S;
+bool micReady = false;
+int32_t micBuf[256];
+int32_t micPeakSinceReport = 0;
+
+uint32_t lastReport = 0;
+#define REPORT_MS          1000
+
+void setup();
+void loop();
+
+void setup() {
+  Serial.begin(115200);
+  delay(400);
+
+  Serial.println();
+  Serial.println("=========================================================");
+  Serial.println(" ExpansionBench - LED ring + Wish pad + Mic bring-up test");
+  Serial.println("=========================================================");
+  Serial.println(" LED ring : should be cycling through rainbow colors now.");
+  Serial.println("            No cycling = check DI/resistor/power wiring.");
+  Serial.println(" Wish pad : tap it, watch the pulse counter increment.");
+  Serial.println(" Mic      : talk or clap near it, watch the peak level");
+  Serial.println("            jump well above the quiet-room baseline.");
+  Serial.println("---------------------------------------------------------");
+  Serial.println();
+
+  // LED ring
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, LED_MAX_MILLIAMPS);
+  FastLED.setBrightness(80);
+  FastLED.clear();
+  FastLED.show();
+
+  // Wish pad
+  pinMode(WISH_PIN, INPUT);
+
+  // Mic
+  I2S.setPins(MIC_SCK_PIN, MIC_WS_PIN, -1, MIC_SD_PIN);
+  micReady = I2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT);
+  Serial.println(micReady ? "MIC: I2S bus initialized." : "MIC: FAILED to initialize I2S bus - check wiring.");
+}
+
+void loop() {
+  uint32_t now = millis();
+
+  // --- LED: slow rainbow sweep. Purely visual proof of wiring - just look at it. ---
+  if (now - lastLedStepMs >= 30) {
+    lastLedStepMs = now;
+    fill_rainbow(leds, NUM_LEDS, ledHue, 8);
+    FastLED.show();
+    ledHue++;
+  }
+
+  // --- Wish pad: same debounced-edge pattern as SensorBench's touch pads ---
+  bool raw = (digitalRead(WISH_PIN) == HIGH);
+  if (raw != wishRaw) { wishRaw = raw; wishChangedAt = now; }
+  if (now - wishChangedAt >= TOUCH_SETTLE_MS && wishStable != wishRaw) {
+    wishStable = wishRaw;
+    if (wishStable) {
+      wishPulses++;
+      Serial.printf(">>> WISH PAD PRESSED (total %lu)\n", (unsigned long)wishPulses);
+    }
+  }
+
+  // --- Mic: read whatever's arrived, track the loudest sample since last report ---
+  if (micReady) {
+    size_t bytesRead = I2S.readBytes((char *)micBuf, sizeof(micBuf));
+    size_t samples = bytesRead / sizeof(int32_t);
+    for (size_t i = 0; i < samples; i++) {
+      int32_t scaled = micBuf[i] >> 14;  // 32-bit raw sample -> a human-readable range
+      int32_t mag = abs(scaled);
+      if (mag > micPeakSinceReport) micPeakSinceReport = mag;
+    }
+  }
+
+  if (now - lastReport >= REPORT_MS) {
+    lastReport = now;
+    Serial.printf("[%6lus] Wish pad pulses:%-4lu | Mic peak:%-6ld %s\n",
+                  (unsigned long)(now / 1000), (unsigned long)wishPulses,
+                  (long)micPeakSinceReport, micReady ? "" : "(mic not initialized)");
+    micPeakSinceReport = 0;
+  }
+}
