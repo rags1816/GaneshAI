@@ -60,6 +60,10 @@ const LANGUAGE_CONFIG = {
     claudeInstruction: "Reply entirely in Telugu (Telugu script), from start to finish, never switching to English.",
     voice: {languageCode: "te-IN", name: "te-IN-Standard-B", ssmlGender: "MALE"},
   },
+  ml: {
+    claudeInstruction: "Reply entirely in Malayalam (Malayalam script), from start to finish, never switching to English.",
+    voice: {languageCode: "ml-IN", name: "ml-IN-Wavenet-B", ssmlGender: "MALE"},
+  },
   pa: {
     claudeInstruction: "Reply entirely in Punjabi (Gurmukhi script), from start to finish, never switching to English.",
     voice: {languageCode: "pa-IN", name: "pa-IN-Wavenet-B", ssmlGender: "MALE"},
