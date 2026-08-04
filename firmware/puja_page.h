@@ -337,7 +337,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 .then(res => { if (!res.ok) throw new Error('primary write status ' + res.status); })
                 .catch(err => {
                     console.warn("Primary relay (keyvalue.immanuel.co) write failed, trying fallback (kvdb.io):", err);
-                    return fetch(RELAY_FALLBACK_URL, { method: 'POST', body: encodedVal })
+                    return fetch(RELAY_FALLBACK_URL, { method: 'PUT', body: encodedVal })
                         .then(res => { if (!res.ok) throw new Error('fallback write status ' + res.status); });
                 });
         }
