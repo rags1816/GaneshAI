@@ -1,0 +1,12 @@
+{
+  "name": "ganapatiai-functions",
+  "description": "Backend for GanapatiAI's AI-generated blessing feature - holds the Claude and Google Text-to-Speech API keys so they never have to live on the ESP32.",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^6.0.1"
+  },
+  "private": true
+}
