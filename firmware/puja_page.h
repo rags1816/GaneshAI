@@ -299,6 +299,49 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
         }
 
+        // Offering queue cloud relay - tries the primary free service
+        // first; if it's down (e.g. HTTP 503), falls back to a second
+        // free service automatically. Needed because devotees can be
+        // outside the home Wi-Fi entirely (family in the UK away from
+        // home, or in India), so this can't just be a local ESP32 call -
+        // it has to work over the open internet from anywhere.
+        const RELAY_APP_KEY = "sxnoamwe";
+        const RELAY_ITEM_KEY = "ganesha_queue";
+        const RELAY_PRIMARY_READ_URL = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}`;
+        const RELAY_PRIMARY_WRITE_URL = (val) => `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}/${val}`;
+        const RELAY_FALLBACK_URL = `https://kvdb.io/9Vif1fNa3c128daX5AFe9S/${RELAY_ITEM_KEY}`;
+
+        function relayReadQueue() {
+            return fetch(`${RELAY_PRIMARY_READ_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('primary read status ' + res.status); return res.json(); })
+                .then(b64data => {
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        return JSON.parse(base64UrlDecode(b64data));
+                    }
+                    return [];
+                })
+                .catch(err => {
+                    console.warn("Primary relay (keyvalue.immanuel.co) read failed, trying fallback (kvdb.io):", err);
+                    return fetch(`${RELAY_FALLBACK_URL}?_t=${Date.now()}`)
+                        .then(res => (res.ok ? res.text() : ""))
+                        .then(text => {
+                            if (!text || text.trim() === "" || text === "[]") return [];
+                            return JSON.parse(base64UrlDecode(text));
+                        });
+                });
+        }
+
+        function relayWriteQueue(queueArray) {
+            const encodedVal = base64UrlEncode(JSON.stringify(queueArray));
+            return fetch(RELAY_PRIMARY_WRITE_URL(encodedVal), { method: 'POST' })
+                .then(res => { if (!res.ok) throw new Error('primary write status ' + res.status); })
+                .catch(err => {
+                    console.warn("Primary relay (keyvalue.immanuel.co) write failed, trying fallback (kvdb.io):", err);
+                    return fetch(RELAY_FALLBACK_URL, { method: 'POST', body: encodedVal })
+                        .then(res => { if (!res.ok) throw new Error('fallback write status ' + res.status); });
+                });
+        }
+
         function updateWordCount() {
             const text = document.getElementById('wish-input').value;
             // Trim whitespace and split into words
@@ -366,56 +409,31 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
 
-            // 2. Wireless Sync to Network Relay (keyvalue.immanuel.co) for multi-device sync
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try {
-                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
-                        } catch (e) {
-                            console.warn("Error decoding online queue, resetting:", e);
-                        }
-                    }
+            // 2. Wireless Sync to Network Relay for multi-device sync
+            // (tries keyvalue.immanuel.co first, falls back to kvdb.io if
+            // that's down - see relayReadQueue()/relayWriteQueue() above)
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
-                    
+
                     // Safety check: Cap queue size at 5 items to fit IIS 1024-character path limit
                     if (onlineQueue.length >= 5) {
                         alert("Bappa is currently receiving many offerings. Please wait a few moments for the Priest to present them, then try again!");
                         submitBtn.disabled = false;
                         return;
                     }
-                    
+
                     onlineQueue.push(newRequest);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    
-                    return fetch(writeUrl, { method: 'POST' })
-                        .then(() => {
-                            // Transition to success screen on success
-                            document.getElementById('puja-form').style.display = 'none';
-                            document.getElementById('success-card').style.display = 'block';
-                        });
+                    return relayWriteQueue(onlineQueue).then(() => {
+                        // Transition to success screen on success
+                        document.getElementById('puja-form').style.display = 'none';
+                        document.getElementById('success-card').style.display = 'block';
+                    });
                 })
                 .catch(err => {
-                    console.error("Relay sync error, seeding key:", err);
-                    const encodedVal = base64UrlEncode(JSON.stringify([newRequest]));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    fetch(writeUrl, { method: 'POST' })
-                        .then(() => {
-                            document.getElementById('puja-form').style.display = 'none';
-                            document.getElementById('success-card').style.display = 'block';
-                        })
-                        .catch(e => {
-                            console.error("Relay backup override failed:", e);
-                            submitBtn.disabled = false;
-                            alert("Network sync failed. Please check your internet connection and try again.");
-                        });
+                    console.error("Relay sync failed on both primary and fallback services:", err);
+                    submitBtn.disabled = false;
+                    alert("Network sync failed. Please check your internet connection and try again.");
                 });
         }
 

@@ -2476,6 +2476,50 @@ var QRCode;
             return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
         }
 
+        // Offering queue cloud relay - tries the primary free service
+        // first; if it's down (e.g. HTTP 503), falls back to a second
+        // free service automatically. Needed because devotees can submit
+        // from outside the home Wi-Fi entirely (family in the UK away
+        // from home, or in India), so this can't just be a local ESP32
+        // call - it has to work over the open internet from anywhere.
+        // Same relay pair as puja_page.h's submitPuja().
+        const RELAY_APP_KEY = "sxnoamwe";
+        const RELAY_ITEM_KEY = "ganesha_queue";
+        const RELAY_PRIMARY_READ_URL = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}`;
+        const RELAY_PRIMARY_WRITE_URL = (val) => `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}/${val}`;
+        const RELAY_FALLBACK_URL = `https://kvdb.io/9Vif1fNa3c128daX5AFe9S/${RELAY_ITEM_KEY}`;
+
+        function relayReadQueue() {
+            return fetch(`${RELAY_PRIMARY_READ_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('primary read status ' + res.status); return res.json(); })
+                .then(b64data => {
+                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
+                        return JSON.parse(base64UrlDecode(b64data));
+                    }
+                    return [];
+                })
+                .catch(err => {
+                    console.warn("Primary relay (keyvalue.immanuel.co) read failed, trying fallback (kvdb.io):", err);
+                    return fetch(`${RELAY_FALLBACK_URL}?_t=${Date.now()}`)
+                        .then(res => (res.ok ? res.text() : ""))
+                        .then(text => {
+                            if (!text || text.trim() === "" || text === "[]") return [];
+                            return JSON.parse(base64UrlDecode(text));
+                        });
+                });
+        }
+
+        function relayWriteQueue(queueArray) {
+            const encodedVal = base64UrlEncode(JSON.stringify(queueArray));
+            return fetch(RELAY_PRIMARY_WRITE_URL(encodedVal), { method: 'POST' })
+                .then(res => { if (!res.ok) throw new Error('primary write status ' + res.status); })
+                .catch(err => {
+                    console.warn("Primary relay (keyvalue.immanuel.co) write failed, trying fallback (kvdb.io):", err);
+                    return fetch(RELAY_FALLBACK_URL, { method: 'POST', body: encodedVal })
+                        .then(res => { if (!res.ok) throw new Error('fallback write status ' + res.status); });
+                });
+        }
+
         // Personalized Blessing Formatter
         function formatPersonalizedBlessing(name, offeringName, wishText) {
             const offeringNames = {
@@ -2965,21 +3009,11 @@ var QRCode;
 
             // Best-effort background sync so other devices/tabs see it too -
             // same relay pattern used by approveQueueItem()/rejectQueueItem().
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     onlineQueue.push(newRequest);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .catch(err => console.warn("Background relay sync failed for new offering (still added locally):", err));
 
@@ -3297,23 +3331,10 @@ var QRCode;
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             
             // Fetch from online relay to sync mobile phone submissions
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try {
-                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
-                        } catch (e) {
-                            console.warn("Error decoding online queue, resetting:", e);
-                        }
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
-                    
+
                     // Deduplicate items based on ID
                     const mergedQueue = [...onlineQueue];
                     localQueue.forEach(l => {
@@ -3452,25 +3473,15 @@ var QRCode;
             // removed the item from the relay and re-rendered, which is
             // exactly the reported bug: approving a devotee's real
             // submission "just cleared the queue" with no bell/display.
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
                     if (!item && indexOnline !== -1) {
                         applyApprovedOffering(onlineQueue[indexOnline]);
                     }
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for approve (item still removed locally):", err));
@@ -3485,37 +3496,23 @@ var QRCode;
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             renderQueue();
 
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for reject (item still removed locally):", err));
         }
 
         function clearAllQueue() {
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
             localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             renderQueue();
 
-            const encodedVal = base64UrlEncode(JSON.stringify([]));
-            const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-            fetch(writeUrl, { method: 'POST' })
+            relayWriteQueue([])
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for clear (queue still cleared locally):", err));
         }
