@@ -274,6 +274,21 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- 4. Reply language - only matters if a personal wish is written above -->
+            <div class="form-group">
+                <label for="lang-select">Bappa's Reply Language</label>
+                <select id="lang-select" class="select-input">
+                    <option value="en" selected>English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="mr">Marathi</option>
+                    <option value="ta">Tamil</option>
+                    <option value="te">Telugu</option>
+                    <option value="pa">Punjabi</option>
+                    <option value="gu">Gujarati</option>
+                    <option value="ml">Malayalam</option>
+                </select>
+            </div>
+
             <button id="submit-btn" class="btn-submit" onclick="submitPuja()">✨ Send Offering to Bappa ✨</button>
         </div>
 
@@ -348,11 +363,13 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const offeringSelect = document.getElementById('offering-select');
             const wishInput = document.getElementById('wish-input');
             const standardWishSelect = document.getElementById('standard-wish-select');
+            const langSelect = document.getElementById('lang-select');
 
             const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const offering = offeringSelect.value;
             const wishText = wishInput.value.trim();
             const standardWish = standardWishSelect.value;
+            const lang = langSelect.value;
 
             // Double check word count validation
             const words = wishText.split(/\s+/).filter(w => w.length > 0);
@@ -361,8 +378,10 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 return;
             }
 
-            // Construct final prayer text representation (fallback if the
-            // AI blessing call below doesn't run or fails)
+            // Construct final prayer text representation (used immediately;
+            // the AI blessing below, if it arrives in time, replaces this
+            // with a nicer personalized reply - but the offering itself
+            // never waits on that call, see the comment below on why)
             let prayerText = "";
             if (wishText !== "" && standardWish !== "") {
                 prayerText = `${wishText} (Blessing: ${standardWish})`;
@@ -383,33 +402,78 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
 
+            // Save and relay the offering RIGHT NOW, unconditionally. The
+            // AI blessing call is a real network round trip to two
+            // external services and can occasionally be slow (a cold
+            // Cloud Function start) - a phone browser getting backgrounded
+            // or paused while waiting on that was losing offerings
+            // entirely. Now the offering is guaranteed recorded first;
+            // the AI reply (if it arrives) is a best-effort enhancement
+            // layered on afterward, not a gate the submission waits on.
+            proceedWithOffering(newRequest, submitBtn);
+
             if (wishText !== "") {
-                fetch(GENERATE_BLESSING_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, offering: offering, prayer: wishText })
-                })
-                    .then(res => {
-                        if (!res.ok) throw new Error('blessing generation status ' + res.status);
-                        const blessingText = decodeURIComponent(res.headers.get('X-Blessing-Text') || '');
-                        return res.blob().then(audioBlob => ({ blessingText, audioBlob }));
-                    })
-                    .then(({ blessingText, audioBlob }) => {
-                        if (blessingText) newRequest.prayer = blessingText;
-                        // Play Bappa's spoken reply right here on the
-                        // devotee's own phone - the temple's own speaker
-                        // doesn't have this hardware yet, this is the
-                        // immediate feedback in the meantime.
-                        const audioEl = new Audio(URL.createObjectURL(audioBlob));
-                        audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
-                    })
-                    .catch(err => {
-                        console.warn('AI blessing generation failed, using the typed wish as-is:', err);
-                    })
-                    .finally(() => proceedWithOffering(newRequest, submitBtn));
-            } else {
-                proceedWithOffering(newRequest, submitBtn);
+                requestAiBlessing(name, offering, wishText, lang, newRequest.id);
             }
+        }
+
+        // Best-effort: plays the spoken reply and upgrades the already-
+        // submitted offering's text with the AI-personalized version, if
+        // and when this finishes. Never blocks or delays the offering
+        // itself (see submitPuja() above).
+        function requestAiBlessing(name, offering, wishText, lang, requestId) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+            fetch(GENERATE_BLESSING_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, offering: offering, prayer: wishText, lang: lang }),
+                signal: controller.signal
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error('blessing generation status ' + res.status);
+                    const blessingText = decodeURIComponent(res.headers.get('X-Blessing-Text') || '');
+                    return res.blob().then(audioBlob => ({ blessingText, audioBlob }));
+                })
+                .then(({ blessingText, audioBlob }) => {
+                    // Play Bappa's spoken reply right here on the
+                    // devotee's own phone - the temple's own speaker
+                    // doesn't have this hardware yet, this is the
+                    // immediate feedback in the meantime.
+                    const audioEl = new Audio(URL.createObjectURL(audioBlob));
+                    audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
+
+                    if (blessingText) upgradeOfferingText(requestId, blessingText);
+                })
+                .catch(err => {
+                    console.warn('AI blessing generation failed or timed out, offering already submitted with the typed wish as-is:', err);
+                })
+                .finally(() => clearTimeout(timeoutId));
+        }
+
+        // Swaps the raw typed wish for the AI-personalized reply on an
+        // offering that's already been submitted and relayed - both in
+        // this browser's local queue and the shared online one, so the
+        // priest sees the nicer version whenever it's ready.
+        function upgradeOfferingText(requestId, blessingText) {
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            const localItem = localQueue.find(item => item.id === requestId);
+            if (localItem) {
+                localItem.prayer = blessingText;
+                localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+                localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+            }
+
+            relayReadQueue()
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) return;
+                    const onlineItem = onlineQueue.find(item => item.id === requestId);
+                    if (!onlineItem) return;
+                    onlineItem.prayer = blessingText;
+                    return relayWriteQueue(onlineQueue);
+                })
+                .catch(err => console.warn('Could not upgrade relayed offering text with AI reply:', err));
         }
 
         function proceedWithOffering(newRequest, submitBtn) {
