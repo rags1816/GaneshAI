@@ -102,6 +102,14 @@ exports.generateBlessing = onRequest(
       const prayer = (req.body.prayer || "").toString().slice(0, MAX_PRAYER_CHARS);
       const langKey = (req.body.lang || "en").toString();
       const langConfig = LANGUAGE_CONFIG[langKey] || LANGUAGE_CONFIG.en;
+      // Voice can be requested separately from the text language - e.g.
+      // text stays in English but is read in an Indian-accented voice.
+      // Untested combination: TTS voices generally expect the phonemes of
+      // their own language, so English text read by e.g. a Hindi voice
+      // may come out garbled rather than just "accented" - worth a real
+      // listen before relying on it.
+      const voiceLangKey = (req.body.voiceLang || langKey).toString();
+      const voiceConfig = LANGUAGE_CONFIG[voiceLangKey] || langConfig;
 
       if (!prayer.trim()) {
         res.status(400).send("prayer text is required");
@@ -119,7 +127,7 @@ exports.generateBlessing = onRequest(
 
       let audioBuffer;
       try {
-        audioBuffer = await synthesizeSpeech(blessingText, langConfig);
+        audioBuffer = await synthesizeSpeech(blessingText, voiceConfig);
       } catch (err) {
         console.error("Google TTS call failed:", err);
         res.status(502).send(`Blessing generation failed (voice): ${err.message}`);

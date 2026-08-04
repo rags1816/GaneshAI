@@ -336,6 +336,13 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             }
         }
 
+        // AI blessing backend (see backend/functions/index.js) - only
+        // called when there's an actual personal wish to respond to; a
+        // dropdown-only submission (offering + standard blessing, no free
+        // text) has nothing for Claude to personalize, so it's skipped
+        // entirely for those and the standard wording is used as-is.
+        const GENERATE_BLESSING_URL = 'https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing';
+
         function submitPuja() {
             const nameInput = document.getElementById('name-input');
             const offeringSelect = document.getElementById('offering-select');
@@ -354,7 +361,8 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 return;
             }
 
-            // Construct final prayer text representation
+            // Construct final prayer text representation (fallback if the
+            // AI blessing call below doesn't run or fails)
             let prayerText = "";
             if (wishText !== "" && standardWish !== "") {
                 prayerText = `${wishText} (Blessing: ${standardWish})`;
@@ -372,19 +380,46 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 prayer: prayerText
             };
 
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+
+            if (wishText !== "") {
+                fetch(GENERATE_BLESSING_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, offering: offering, prayer: wishText })
+                })
+                    .then(res => {
+                        if (!res.ok) throw new Error('blessing generation status ' + res.status);
+                        const blessingText = decodeURIComponent(res.headers.get('X-Blessing-Text') || '');
+                        return res.blob().then(audioBlob => ({ blessingText, audioBlob }));
+                    })
+                    .then(({ blessingText, audioBlob }) => {
+                        if (blessingText) newRequest.prayer = blessingText;
+                        // Play Bappa's spoken reply right here on the
+                        // devotee's own phone - the temple's own speaker
+                        // doesn't have this hardware yet, this is the
+                        // immediate feedback in the meantime.
+                        const audioEl = new Audio(URL.createObjectURL(audioBlob));
+                        audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
+                    })
+                    .catch(err => {
+                        console.warn('AI blessing generation failed, using the typed wish as-is:', err);
+                    })
+                    .finally(() => proceedWithOffering(newRequest, submitBtn));
+            } else {
+                proceedWithOffering(newRequest, submitBtn);
+            }
+        }
+
+        function proceedWithOffering(newRequest, submitBtn) {
             // 1. Read, append, and save back to shared localStorage namespace (same-device tab test)
             let queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             queue.push(newRequest);
             localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
 
-            // Disable button during network call
-            const submitBtn = document.getElementById('submit-btn');
-            submitBtn.disabled = true;
-
             // 2. Wireless Sync to Network Relay for multi-device sync
-            // (tries keyvalue.immanuel.co first, falls back to kvdb.io if
-            // that's down - see relayReadQueue()/relayWriteQueue() above)
             relayReadQueue()
                 .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
