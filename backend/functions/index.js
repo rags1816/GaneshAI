@@ -30,28 +30,43 @@ const OFFERING_NAMES = {
 const MAX_PRAYER_CHARS = 300;
 const MAX_NAME_CHARS = 60;
 
-// Per-language Claude instruction + matching Google TTS voice. "en" (the
-// en-IN-Wavenet-B voice) is the only one confirmed working by a real test
-// so far - hi/ta/mr follow Google's usual <lang>-IN-Wavenet-<letter>
-// naming pattern but haven't been tested against the live API yet
-// (this environment can't reach it), so treat them as a first guess to
-// verify the same way en-IN was just proven.
+// Per-language Claude instruction + matching Google TTS voice. Real-test
+// status so far: en, hi, mr confirmed working. ta partially worked (drifted
+// into English partway through) - the stronger "entirely in ... from start
+// to finish, never switching to English" wording below is the fix for
+// that, not yet re-verified. te/pa follow the same naming pattern as the
+// confirmed ones but are untested. sd is a guess Google likely doesn't
+// even support - included because it costs nothing to try, but expect it
+// may fail differently (a "voice not found"/"language not supported"
+// error rather than a wrong-voice-name error).
 const LANGUAGE_CONFIG = {
   en: {
-    claudeInstruction: "Reply in English.",
+    claudeInstruction: "Reply entirely in English, from start to finish.",
     voice: {languageCode: "en-IN", name: "en-IN-Wavenet-B", ssmlGender: "MALE"},
   },
   hi: {
-    claudeInstruction: "Reply in Hindi, written in Devanagari script.",
+    claudeInstruction: "Reply entirely in Hindi (Devanagari script), from start to finish, never switching to English.",
     voice: {languageCode: "hi-IN", name: "hi-IN-Wavenet-B", ssmlGender: "MALE"},
   },
   ta: {
-    claudeInstruction: "Reply in Tamil, written in Tamil script.",
+    claudeInstruction: "Reply entirely in Tamil (Tamil script), from start to finish, never switching to English.",
     voice: {languageCode: "ta-IN", name: "ta-IN-Wavenet-B", ssmlGender: "MALE"},
   },
   mr: {
-    claudeInstruction: "Reply in Marathi, written in Devanagari script.",
+    claudeInstruction: "Reply entirely in Marathi (Devanagari script), from start to finish, never switching to English.",
     voice: {languageCode: "mr-IN", name: "mr-IN-Wavenet-B", ssmlGender: "MALE"},
+  },
+  te: {
+    claudeInstruction: "Reply entirely in Telugu (Telugu script), from start to finish, never switching to English.",
+    voice: {languageCode: "te-IN", name: "te-IN-Standard-B", ssmlGender: "MALE"},
+  },
+  pa: {
+    claudeInstruction: "Reply entirely in Punjabi (Gurmukhi script), from start to finish, never switching to English.",
+    voice: {languageCode: "pa-IN", name: "pa-IN-Wavenet-B", ssmlGender: "MALE"},
+  },
+  sd: {
+    claudeInstruction: "Reply entirely in Sindhi, from start to finish, never switching to English.",
+    voice: {languageCode: "sd-IN", name: "sd-IN-Standard-B", ssmlGender: "MALE"},
   },
 };
 
@@ -107,11 +122,12 @@ exports.generateBlessing = onRequest(
 );
 
 async function askClaudeForBlessing(name, offeringText, prayer, langConfig) {
-  const prompt = `You are Lord Ganesha, speaking warmly and directly to a devotee ` +
-    `named ${name}, who has offered ${offeringText} and prayed: "${prayer}". ` +
-    `Reply with a short, warm blessing that responds to their specific prayer, ` +
-    `as if spoken aloud to them. Under 40 words. Plain spoken text only - no ` +
-    `stage directions, no quotation marks, no markdown. ${langConfig.claudeInstruction}`;
+  const prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
+    `and directly to a devotee named ${name}, who has offered ${offeringText} and ` +
+    `prayed: "${prayer}". Reply with a short, warm blessing that responds to their ` +
+    `specific prayer, as if spoken aloud to them. Under 40 words. Plain spoken text ` +
+    `only - no stage directions, no quotation marks, no markdown. Remember: ` +
+    `${langConfig.claudeInstruction}`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
