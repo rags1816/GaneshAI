@@ -412,23 +412,27 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // layered on afterward, not a gate the submission waits on.
             proceedWithOffering(newRequest, submitBtn);
 
-            if (wishText !== "") {
-                requestAiBlessing(name, offering, wishText, lang, newRequest.id);
-            }
+            // Called even with an empty wish box - many devotees pray
+            // silently rather than writing their wish down, and still
+            // deserve a real (if generic) personalized-sounding blessing
+            // rather than just the flat dropdown text. The backend
+            // branches its prompt on whether prayer/standardWish are
+            // present - see askClaudeForBlessing() in index.js.
+            requestAiBlessing(name, offering, wishText, standardWish, lang, newRequest.id);
         }
 
         // Best-effort: plays the spoken reply and upgrades the already-
         // submitted offering's text with the AI-personalized version, if
         // and when this finishes. Never blocks or delays the offering
         // itself (see submitPuja() above).
-        function requestAiBlessing(name, offering, wishText, lang, requestId) {
+        function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
             fetch(GENERATE_BLESSING_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, offering: offering, prayer: wishText, lang: lang }),
+                body: JSON.stringify({ name: name, offering: offering, prayer: wishText, standardWish: standardWish, lang: lang }),
                 signal: controller.signal
             })
                 .then(res => {

@@ -100,6 +100,7 @@ exports.generateBlessing = onRequest(
       const offeringKey = (req.body.offering || "").toString();
       const offeringText = OFFERING_NAMES[offeringKey] || "an offering";
       const prayer = (req.body.prayer || "").toString().slice(0, MAX_PRAYER_CHARS);
+      const standardWish = (req.body.standardWish || "").toString().slice(0, 60);
       const langKey = (req.body.lang || "en").toString();
       const langConfig = LANGUAGE_CONFIG[langKey] || LANGUAGE_CONFIG.en;
       // Voice can be requested separately from the text language - e.g.
@@ -111,14 +112,14 @@ exports.generateBlessing = onRequest(
       const voiceLangKey = (req.body.voiceLang || langKey).toString();
       const voiceConfig = LANGUAGE_CONFIG[voiceLangKey] || langConfig;
 
-      if (!prayer.trim()) {
-        res.status(400).send("prayer text is required");
-        return;
-      }
+      // No typed wish is a real, deliberate case, not an error - many
+      // devotees pray silently rather than writing their wish down.
+      // askClaudeForBlessing() branches its prompt based on whether
+      // prayer is empty.
 
       let blessingText;
       try {
-        blessingText = await askClaudeForBlessing(name, offeringText, prayer, langConfig);
+        blessingText = await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig);
       } catch (err) {
         console.error("Claude call failed:", err);
         res.status(502).send(`Blessing generation failed (Claude): ${err.message}`);
@@ -141,12 +142,25 @@ exports.generateBlessing = onRequest(
     },
 );
 
-async function askClaudeForBlessing(name, offeringText, prayer, langConfig) {
+async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig) {
+  let situationText;
+  if (prayer.trim()) {
+    situationText = `who has offered ${offeringText} and prayed: "${prayer}". Reply with ` +
+      `a short, warm blessing that responds to their specific prayer, as if spoken aloud to them.`;
+  } else if (standardWish.trim()) {
+    situationText = `who has offered ${offeringText} and silently asked, in their heart, ` +
+      `for blessings related to "${standardWish}" without writing it down. Reply with a ` +
+      `short, warm blessing that responds to that, as if spoken aloud to them.`;
+  } else {
+    situationText = `who has offered ${offeringText} and come with a wish held silently ` +
+      `in their heart, not written down. Reply with a short, warm, generic blessing that ` +
+      `acknowledges their unspoken prayer and blesses them regardless of what they silently ` +
+      `wish for, as if spoken aloud to them.`;
+  }
+
   const prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
-    `and directly to a devotee named ${name}, who has offered ${offeringText} and ` +
-    `prayed: "${prayer}". Reply with a short, warm blessing that responds to their ` +
-    `specific prayer, as if spoken aloud to them. Under 40 words. Plain spoken text ` +
-    `only - no stage directions, no quotation marks, no markdown. Remember: ` +
+    `and directly to a devotee named ${name}, ${situationText} Under 40 words. Plain ` +
+    `spoken text only - no stage directions, no quotation marks, no markdown. Remember: ` +
     `${langConfig.claudeInstruction}`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
