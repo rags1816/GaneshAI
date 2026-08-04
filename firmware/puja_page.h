@@ -289,57 +289,30 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     </div>
 
     <script>
-        // Helpers for Base64URL encoding/decoding (bypasses IIS special character path restrictions)
-        function base64UrlEncode(str) {
-            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-        }
-        function base64UrlDecode(str) {
-            let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-            while (b64.length % 4) b64 += '=';
-            return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        }
-
-        // Offering queue cloud relay - tries the primary free service
-        // first; if it's down (e.g. HTTP 503), falls back to a second
-        // free service automatically. Needed because devotees can be
-        // outside the home Wi-Fi entirely (family in the UK away from
-        // home, or in India), so this can't just be a local ESP32 call -
-        // it has to work over the open internet from anywhere.
-        const RELAY_APP_KEY = "sxnoamwe";
-        const RELAY_ITEM_KEY = "ganesha_queue";
-        const RELAY_PRIMARY_READ_URL = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}`;
-        const RELAY_PRIMARY_WRITE_URL = (val) => `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${RELAY_APP_KEY}/${RELAY_ITEM_KEY}/${val}`;
-        const RELAY_FALLBACK_URL = `https://kvdb.io/9Vif1fNa3c128daX5AFe9S/${RELAY_ITEM_KEY}`;
+        // Offering queue cloud relay - Firebase Realtime Database, chosen
+        // after two ad-hoc free key-value services (keyvalue.immanuel.co,
+        // kvdb.io) both turned out to block/reject real browser writes for
+        // undocumented reasons. Firebase is built and documented for
+        // exactly this - phones and dashboards syncing live data directly
+        // from the browser - and is needed because devotees can submit
+        // from outside the home Wi-Fi entirely (family in the UK away
+        // from home, or in India), so this can't just be a local ESP32
+        // call. Firebase's REST API takes/returns plain JSON directly, so
+        // no base64 encoding workaround is needed here either.
+        const RELAY_QUEUE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/ganesha_queue.json';
 
         function relayReadQueue() {
-            return fetch(`${RELAY_PRIMARY_READ_URL}?_t=${Date.now()}`)
-                .then(res => { if (!res.ok) throw new Error('primary read status ' + res.status); return res.json(); })
-                .then(b64data => {
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        return JSON.parse(base64UrlDecode(b64data));
-                    }
-                    return [];
-                })
-                .catch(err => {
-                    console.warn("Primary relay (keyvalue.immanuel.co) read failed, trying fallback (kvdb.io):", err);
-                    return fetch(`${RELAY_FALLBACK_URL}?_t=${Date.now()}`)
-                        .then(res => (res.ok ? res.text() : ""))
-                        .then(text => {
-                            if (!text || text.trim() === "" || text === "[]") return [];
-                            return JSON.parse(base64UrlDecode(text));
-                        });
-                });
+            return fetch(`${RELAY_QUEUE_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('read status ' + res.status); return res.json(); })
+                .then(data => (Array.isArray(data) ? data : []));
         }
 
         function relayWriteQueue(queueArray) {
-            const encodedVal = base64UrlEncode(JSON.stringify(queueArray));
-            return fetch(RELAY_PRIMARY_WRITE_URL(encodedVal), { method: 'POST' })
-                .then(res => { if (!res.ok) throw new Error('primary write status ' + res.status); })
-                .catch(err => {
-                    console.warn("Primary relay (keyvalue.immanuel.co) write failed, trying fallback (kvdb.io):", err);
-                    return fetch(RELAY_FALLBACK_URL, { method: 'PUT', body: encodedVal })
-                        .then(res => { if (!res.ok) throw new Error('fallback write status ' + res.status); });
-                });
+            return fetch(RELAY_QUEUE_URL, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queueArray)
+            }).then(res => { if (!res.ok) throw new Error('write status ' + res.status); });
         }
 
         function updateWordCount() {
@@ -431,7 +404,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     });
                 })
                 .catch(err => {
-                    console.error("Relay sync failed on both primary and fallback services:", err);
+                    console.error("Relay sync failed:", err);
                     submitBtn.disabled = false;
                     alert("Network sync failed. Please check your internet connection and try again.");
                 });
