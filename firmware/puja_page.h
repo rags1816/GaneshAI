@@ -364,39 +364,83 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', ta: 'ta-IN',
             te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN'
         };
+        const SPEECH_TIMEOUT_MS = 15000;
+
+        // Tracks the in-progress recognition session, if any, so a second
+        // tap on the button can stop it early instead of only ever
+        // waiting for the 15s cap or a natural pause.
+        let activeRecognition = null;
+        let speechCountdownInterval = null;
+        let speechHardStopTimeout = null;
 
         function startSpeechInput() {
+            const micBtn = document.getElementById('speak-btn');
+
+            // Second tap while listening = stop now, don't wait for the timeout
+            if (activeRecognition) {
+                activeRecognition.stop();
+                return;
+            }
+
             const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognitionCtor) {
                 alert("Voice input isn't supported on this browser - please type your wish instead.");
                 return;
             }
 
-            const micBtn = document.getElementById('speak-btn');
             const langSelect = document.getElementById('lang-select');
             const wishInput = document.getElementById('wish-input');
 
             const recognition = new SpeechRecognitionCtor();
             recognition.lang = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
-            recognition.interimResults = false;
+            // Both true so the wish box fills in live as you speak, rather
+            // than staying blank until you're completely finished - the
+            // "no way to see the text" gap from the first version.
+            recognition.interimResults = true;
+            recognition.continuous = true;
             recognition.maxAlternatives = 1;
 
-            micBtn.disabled = true;
-            micBtn.innerText = '🎤 Listening...';
+            let secondsLeft = SPEECH_TIMEOUT_MS / 1000;
+            micBtn.innerText = `🎤 Listening... ${secondsLeft}s (tap to stop)`;
 
             recognition.onresult = (event) => {
-                wishInput.value = event.results[0][0].transcript;
-                updateWordCount();
+                // Rebuild the full transcript from every result seen so far
+                // this session (interim results can still change until
+                // they settle, so this always reflects the latest guess).
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                wishInput.value = transcript;
+                updateWordCount(); // same 20-word limit/warning as typing
             };
             recognition.onerror = (event) => {
                 console.warn('Speech recognition error:', event.error);
-                alert("Couldn't catch that clearly - please try again or type your wish.");
+                // "aborted" is what firing our own .stop() looks like -
+                // expected, not a real failure, so don't alarm the devotee.
+                if (event.error !== 'aborted') {
+                    alert("Couldn't catch that clearly - please try again or type your wish.");
+                }
             };
             recognition.onend = () => {
-                micBtn.disabled = false;
+                clearInterval(speechCountdownInterval);
+                clearTimeout(speechHardStopTimeout);
+                activeRecognition = null;
                 micBtn.innerText = '🎤 Speak your wish';
             };
 
+            speechCountdownInterval = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft > 0) {
+                    micBtn.innerText = `🎤 Listening... ${secondsLeft}s (tap to stop)`;
+                }
+            }, 1000);
+
+            // Hard cap - Chrome's own silence-detection can sometimes run
+            // long with background noise, so don't rely on that alone.
+            speechHardStopTimeout = setTimeout(() => recognition.stop(), SPEECH_TIMEOUT_MS);
+
+            activeRecognition = recognition;
             recognition.start();
         }
 
