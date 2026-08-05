@@ -720,13 +720,19 @@ void loop() {
 // Web Server API Routes
 // ==========================================
 void handleWebRoutes() {
+  // Both pages change with nearly every firmware update tonight, and
+  // phone browsers were caching stale copies (missing the latest
+  // features) even after a fresh reflash - explicitly forbidding caching
+  // means a reload always gets the version actually running right now.
   server.on("/", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send_P(200, "text/html", INDEX_HTML);
   });
 
   // Devotee-facing offering submission page - the QR code on the admin
   // dashboard links here so devotees can submit from their own phones.
   server.on("/puja", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send_P(200, "text/html", PUJA_HTML);
   });
 
