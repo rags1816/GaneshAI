@@ -265,16 +265,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 </select>
             </div>
 
-            <!-- 3. Free Text wish/prayer -->
-            <div class="form-group">
-                <label for="wish-input">Personal Prayer Wish (Max 20 words)</label>
-                <textarea id="wish-input" class="text-input" placeholder="Write your personal prayer here..." oninput="updateWordCount()"></textarea>
-                <div class="count-row">
-                    <span id="word-count-lbl" class="counter-lbl">0 / 20 words</span>
-                </div>
-            </div>
-
-            <!-- 4. Reply language - only matters if a personal wish is written above -->
+            <!-- 3. Reply language - picked first, so it's ready for the mic below -->
             <div class="form-group">
                 <label for="lang-select">Bappa's Reply Language</label>
                 <select id="lang-select" class="select-input">
@@ -287,6 +278,16 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="gu">Gujarati</option>
                     <option value="ml">Malayalam</option>
                 </select>
+            </div>
+
+            <!-- 4. Free Text wish/prayer - type it, or tap the mic to speak it -->
+            <div class="form-group">
+                <label for="wish-input">Personal Prayer Wish (Max 20 words)</label>
+                <textarea id="wish-input" class="text-input" placeholder="Write your personal prayer here, or tap the mic to speak it..." oninput="updateWordCount()"></textarea>
+                <div class="count-row">
+                    <span id="word-count-lbl" class="counter-lbl">0 / 20 words</span>
+                    <button type="button" id="speak-btn" class="btn-back" style="margin-top:0;" onclick="startSpeechInput()">🎤 Speak your wish</button>
+                </div>
             </div>
 
             <button id="submit-btn" class="btn-submit" onclick="submitPuja()">✨ Send Offering to Bappa ✨</button>
@@ -349,6 +350,54 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 submitBtn.disabled = false;
                 return true;
             }
+        }
+
+        // Speech-to-text for devotees who'd rather speak their wish than
+        // type it - runs entirely in the phone's own browser (free, no
+        // extra backend or cost), using whichever language is currently
+        // picked in the reply-language dropdown so the transcription
+        // matches what's actually being spoken. Support varies by
+        // browser: solid on Chrome/Edge (Android and desktop), weak or
+        // missing on Safari/iPhone - falls back to a clear message
+        // telling the devotee to type instead rather than failing silently.
+        const SPEECH_LANG_MAP = {
+            en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', ta: 'ta-IN',
+            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN'
+        };
+
+        function startSpeechInput() {
+            const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognitionCtor) {
+                alert("Voice input isn't supported on this browser - please type your wish instead.");
+                return;
+            }
+
+            const micBtn = document.getElementById('speak-btn');
+            const langSelect = document.getElementById('lang-select');
+            const wishInput = document.getElementById('wish-input');
+
+            const recognition = new SpeechRecognitionCtor();
+            recognition.lang = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            micBtn.disabled = true;
+            micBtn.innerText = '🎤 Listening...';
+
+            recognition.onresult = (event) => {
+                wishInput.value = event.results[0][0].transcript;
+                updateWordCount();
+            };
+            recognition.onerror = (event) => {
+                console.warn('Speech recognition error:', event.error);
+                alert("Couldn't catch that clearly - please try again or type your wish.");
+            };
+            recognition.onend = () => {
+                micBtn.disabled = false;
+                micBtn.innerText = '🎤 Speak your wish';
+            };
+
+            recognition.start();
         }
 
         // AI blessing backend (see backend/functions/index.js) - only
