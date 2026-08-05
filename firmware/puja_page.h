@@ -288,6 +288,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <span id="word-count-lbl" class="counter-lbl">0 / 20 words</span>
                     <button type="button" id="speak-btn" class="btn-back" style="margin-top:0;" onclick="startSpeechInput()">🎤 Speak your wish</button>
                 </div>
+                <!-- TEMPORARY diagnostic log while tracking down the speak-your-wish
+                     bug on real devices - shows exactly which speech recognition
+                     events fire, since there's no way to see the phone's own
+                     browser console remotely. Remove once resolved. -->
+                <pre id="speech-debug-log" style="background:#0a0f1a; color:#8892b0; padding:8px; font-size:11px; max-height:120px; overflow-y:auto; white-space:pre-wrap; border-radius:6px; margin-top:6px;"></pre>
             </div>
 
             <button id="submit-btn" class="btn-submit" onclick="submitPuja()">✨ Send Offering to Bappa ✨</button>
@@ -375,6 +380,17 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         let lastSpeechBtnTapMs = 0;
 
+        // TEMPORARY diagnostic logger - writes straight to the on-page
+        // <pre id="speech-debug-log"> so real-device failures can be seen
+        // without a phone's browser console. Remove once resolved.
+        function speechDebugLog(msg) {
+            const el = document.getElementById('speech-debug-log');
+            if (!el) return;
+            const t = new Date().toLocaleTimeString();
+            el.textContent += t + ' - ' + msg + '\n';
+            el.scrollTop = el.scrollHeight;
+        }
+
         function startSpeechInput() {
             // Guard against mobile "ghost click" double-firing (a real
             // pattern found tonight: tapping to stop appeared to
@@ -382,7 +398,9 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // browsers fire a button's click handler twice in very quick
             // succession from a single physical tap.
             const nowTap = Date.now();
+            speechDebugLog('Button tapped');
             if (nowTap - lastSpeechBtnTapMs < 400) {
+                speechDebugLog('Ignored - debounce (< 400ms since last tap)');
                 return;
             }
             lastSpeechBtnTapMs = nowTap;
@@ -393,7 +411,8 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // Force the button back to normal here too, not only in onend -
             // some Android builds don't reliably fire onend after .stop().
             if (activeRecognition) {
-                try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); }
+                speechDebugLog('Was already listening - stopping now');
+                try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); speechDebugLog('stop() threw: ' + e.message); }
                 clearInterval(speechCountdownInterval);
                 clearTimeout(speechHardStopTimeout);
                 activeRecognition = null;
@@ -409,9 +428,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
             const langSelect = document.getElementById('lang-select');
             const wishInput = document.getElementById('wish-input');
+            speechDebugLog('lang-select found: ' + !!langSelect + ', wish-input found: ' + !!wishInput);
 
             const recognition = new SpeechRecognitionCtor();
             recognition.lang = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
+            speechDebugLog('Starting - recognition.lang = ' + recognition.lang);
             // interimResults stays on so the wish box fills in live as you
             // speak. continuous is deliberately OFF: real-device testing
             // (Android Chrome) found continuous mode silently never fires
@@ -427,19 +448,30 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             let secondsLeft = SPEECH_TIMEOUT_MS / 1000;
             micBtn.innerText = `🎤 Listening... ${secondsLeft}s (tap to stop)`;
 
+            recognition.onstart = () => speechDebugLog('onstart fired');
+            recognition.onaudiostart = () => speechDebugLog('onaudiostart fired (mic audio flowing)');
+            recognition.onsoundstart = () => speechDebugLog('onsoundstart fired');
+            recognition.onspeechstart = () => speechDebugLog('onspeechstart fired');
+            recognition.onspeechend = () => speechDebugLog('onspeechend fired');
             recognition.onresult = (event) => {
-                // Rebuild the full transcript from every result seen so far
-                // this session (interim results can still change until
-                // they settle, so this always reflects the latest guess).
-                let transcript = '';
-                for (let i = 0; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
+                try {
+                    // Rebuild the full transcript from every result seen so far
+                    // this session (interim results can still change until
+                    // they settle, so this always reflects the latest guess).
+                    let transcript = '';
+                    for (let i = 0; i < event.results.length; i++) {
+                        transcript += event.results[i][0].transcript;
+                    }
+                    speechDebugLog('onresult fired: "' + transcript + '"');
+                    wishInput.value = transcript;
+                    updateWordCount(); // same 20-word limit/warning as typing
+                } catch (e) {
+                    speechDebugLog('onresult handler THREW: ' + e.message);
                 }
-                wishInput.value = transcript;
-                updateWordCount(); // same 20-word limit/warning as typing
             };
             recognition.onerror = (event) => {
                 console.warn('Speech recognition error:', event.error);
+                speechDebugLog('onerror fired: ' + event.error);
                 // "aborted" is what firing our own .stop() looks like -
                 // expected, not a real failure, so don't alarm the devotee.
                 // TEMPORARY: showing the raw error code in the alert itself
@@ -451,6 +483,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 }
             };
             recognition.onend = () => {
+                speechDebugLog('onend fired');
                 clearInterval(speechCountdownInterval);
                 clearTimeout(speechHardStopTimeout);
                 activeRecognition = null;
