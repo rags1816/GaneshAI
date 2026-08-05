@@ -429,8 +429,12 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 console.warn('Speech recognition error:', event.error);
                 // "aborted" is what firing our own .stop() looks like -
                 // expected, not a real failure, so don't alarm the devotee.
+                // TEMPORARY: showing the raw error code in the alert itself
+                // while diagnosing real-device failures, since there's no
+                // way to see the phone's browser console otherwise - revert
+                // to the plain friendly message once this is solved.
                 if (event.error !== 'aborted') {
-                    alert("Couldn't catch that clearly - please try again or type your wish.");
+                    alert("Couldn't catch that clearly (error: " + event.error + ") - please try again or type your wish.");
                 }
             };
             recognition.onend = () => {
