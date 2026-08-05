@@ -3503,24 +3503,29 @@ var QRCode;
         renderQueue();
         // Render the static song library list (item 3)
         renderSongLibrary();
-        // Devotee QR Code - only meaningful on the physical device, since
-        // /puja only exists on the ESP32's own web server (the standalone
-        // simulator has no real device for it to point to).
-        if (isPhysicalESP) {
-            const pujaUrl = window.location.origin + '/puja';
-            new QRCode(document.getElementById('qr-code-container'), {
-                text: pujaUrl,
-                width: 160,
-                height: 160,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.M
-            });
-            document.getElementById('qr-code-status').innerText = pujaUrl;
-        } else {
-            document.getElementById('qr-code-container').innerText = '(only available on the physical device)';
-            document.getElementById('qr-code-container').style.cssText = 'padding: 20px; color: #888; font-size: 10px;';
-        }
+        // Devotee QR Code - points to the puja page on Firebase Hosting
+        // (a fixed HTTPS address), not the ESP32's own web server. Moved
+        // there because Chrome's SpeechRecognition API (the speak-your-
+        // wish mic button) refuses to run at all on a plain-HTTP address
+        // like the ESP32's local IP, regardless of mic permission - this
+        // is a hard browser security rule, not something fixable in the
+        // page's own code. Fixed address also means the QR code never
+        // goes stale when the ESP32's local IP changes on reboot, and
+        // works for devotees outside the home Wi-Fi entirely, since the
+        // puja page only ever talked to Firebase and the AI backend
+        // anyway, never really needing the ESP32 itself. Shown
+        // regardless of isPhysicalESP now, since it no longer depends on
+        // a real device being present.
+        const pujaUrl = 'https://ganapatiai.web.app/puja';
+        new QRCode(document.getElementById('qr-code-container'), {
+            text: pujaUrl,
+            width: 160,
+            height: 160,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+        document.getElementById('qr-code-status').innerText = pujaUrl;
         // Poll online database queue every 4 seconds
         setInterval(renderQueue, 4000);
         // Start in Standby
