@@ -72,6 +72,23 @@ CRGB leds[NUM_LEDS];
 #define dfSerial Serial2
 DFRobotDFPlayerMini myDFPlayer;
 
+// Set true only if myDFPlayer.begin() actually succeeds at boot (see
+// setup()). Real crash found tonight: every myDFPlayer.stop()/
+// playMp3Folder() call went straight through unconditionally, and the
+// DFPlayer library's sendStack() has an unbounded `while (_isSending)`
+// wait for the module's ACK with no timeout of its own - if the module
+// isn't responding (unplugged, not detected at boot, wiring fault),
+// that call hangs forever, and the only thing that ever stops it is the
+// ESP32's own 8s hardware watchdog forcibly panicking and rebooting the
+// whole board. These wrapper functions below are the fix: skip the call
+// entirely when the DFPlayer was never confirmed present, the same way
+// PIR_CONNECTED/TOUCH_*_CONNECTED already gate other optional hardware.
+bool dfPlayerReady = false;
+void dfStop() { if (dfPlayerReady) myDFPlayer.stop(); }
+void dfPlay(int track) { if (dfPlayerReady) myDFPlayer.playMp3Folder(track); }
+void dfSetVolume(int v) { if (dfPlayerReady) myDFPlayer.volume(v); }
+int dfReadFileCounts() { return dfPlayerReady ? myDFPlayer.readFileCounts() : 0; }
+
 // System States
 SystemState currentState = STATE_STANDBY;
 unsigned long stateTimer = 0;
@@ -525,7 +542,6 @@ void setup() {
   u8g2.drawStr(5, 60, "Audio Board: Connecting...");
   u8g2.sendBuffer();
 
-  bool dfReady = false;
   int retries = 0;
   while (retries < 5) {
     Serial.print("STEP 5: begin() attempt ");
@@ -533,7 +549,7 @@ void setup() {
     Serial.println(" of 5 - calling now (if this is the LAST line you ever see, begin() itself is hanging)...");
 
     if (myDFPlayer.begin(dfSerial)) {
-      dfReady = true;
+      dfPlayerReady = true;
       Serial.println("STEP 5: DFPlayer responded - begin() returned true.");
       break;
     }
@@ -542,11 +558,11 @@ void setup() {
     delay(500);
     retries++;
   }
-  if (!dfReady) {
+  if (!dfPlayerReady) {
     Serial.println("STEP 5: DFPlayer NOT detected after 5 attempts - continuing WITHOUT audio so the rest of the device still works.");
   }
 
-  if (dfReady) {
+  if (dfPlayerReady) {
     myDFPlayer.volume(currentVolume);
     u8g2.drawStr(5, 60, "Audio Board: OK           ");
   } else {
@@ -614,7 +630,7 @@ void setup() {
 
   // 8. Play Startup Sound
   Serial.println("STEP 8: Playing startup sound...");
-  if (dfReady) {
+  if (dfPlayerReady) {
     myDFPlayer.playMp3Folder(BELL_TRACK);
     Serial.println("STEP 8: Startup sound played!");
   } else {
@@ -805,9 +821,9 @@ void handleWebRoutes() {
       // including the stop()+delay(50) settle gap - see the matching fix
       // there for why.
       if (currentState == STATE_STANDBY) {
-        myDFPlayer.stop();
+        dfStop();
         delay(50);
-        myDFPlayer.playMp3Folder(BELL_TRACK);
+        dfPlay(BELL_TRACK);
         setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
     } else if (action == "stop") {
@@ -868,14 +884,14 @@ void handleWebRoutes() {
     }
     if (server.hasArg("track")) {
       int n = server.arg("track").toInt();
-      myDFPlayer.stop();
+      dfStop();
       delay(50);
-      myDFPlayer.playMp3Folder(n);
+      dfPlay(n);
       snprintf(msg, sizeof(msg), "Playing mp3 folder track %d", n);
       Serial.println(msg);
       server.send(200, "text/plain", msg);
     } else if (server.hasArg("filecount")) {
-      int count = myDFPlayer.readFileCounts();
+      int count = dfReadFileCounts();
       snprintf(msg, sizeof(msg), "Total files on SD card: %d", count);
       Serial.println(msg);
       server.send(200, "text/plain", msg);
@@ -898,7 +914,7 @@ void handleWebRoutes() {
   server.on("/api/audio", HTTP_GET, []() {
     if (server.hasArg("volume")) {
       currentVolume = server.arg("volume").toInt();
-      myDFPlayer.volume(currentVolume);
+      dfSetVolume(currentVolume);
     }
     server.send(200, "text/plain", "OK");
   });
@@ -1173,7 +1189,7 @@ void updateStateMachine() {
         if (pendingWakeMantra == 0) {
           pendingWakeMantra = backTouched ? 2 : 1;
           pendingWakeAt = now + WAKE_BELL_LEAD_MS;
-          myDFPlayer.playMp3Folder(BELL_TRACK);
+          dfPlay(BELL_TRACK);
           Serial.printf("WAKE: bell first (%s pad), mantra in %dms\n",
                         backTouched ? "mouse-back" : "feet", WAKE_BELL_LEAD_MS);
         }
@@ -1187,9 +1203,9 @@ void updateStateMachine() {
         // PIR correctly woke the temple (state, display, dashboard all
         // moved to AMBIENT) but the bell itself never sounded - matches
         // exactly what a dropped play command looks like.
-        myDFPlayer.stop();
+        dfStop();
         delay(50);
-        myDFPlayer.playMp3Folder(BELL_TRACK);
+        dfPlay(BELL_TRACK);
         setSystemState(STATE_AMBIENT, AMBIENT_TIMEOUT);
       }
       break;
@@ -1241,7 +1257,7 @@ void updateStateMachine() {
       if (now - stateTimer > stateDuration) {
         Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
                       now - stateTimer, stateDuration);
-        myDFPlayer.stop();
+        dfStop();
         setSystemState(STATE_STANDBY);
       }
       break;
@@ -1295,9 +1311,9 @@ void updateStateMachine() {
                         offeringInterrupted ? "true" : "false", currentPlayingTrack, stateName(offeringPausedState));
           if (offeringInterrupted) {
             offeringInterrupted = false;
-            myDFPlayer.stop();
+            dfStop();
             delay(100); // was 50ms - some DFPlayer Mini clones drop a command sent too soon after stop()
-            myDFPlayer.playMp3Folder(currentPlayingTrack);
+            dfPlay(currentPlayingTrack);
             // Resuming into Aarti specifically: restore its fixed display
             // text, since it was overwritten by the offering's "[OFFERING]
             // ..." line and (unlike Ambient/Mantra/Feet) Aarti doesn't
@@ -1307,14 +1323,14 @@ void updateStateMachine() {
             }
             setSystemState(offeringPausedState, offeringPausedDurationMs);
           } else {
-            myDFPlayer.stop();
+            dfStop();
             setSystemState(STATE_STANDBY);
           }
         } else {
           // One whole mantra done, nobody touched again - go back to sleep.
           Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
                         now - stateTimer, stateDuration);
-          myDFPlayer.stop();
+          dfStop();
           setSystemState(STATE_STANDBY);
         }
       }
@@ -1335,7 +1351,7 @@ void updateStateMachine() {
       }
 
       if (now - stateTimer > stateDuration) {
-        myDFPlayer.stop();
+        dfStop();
         if (aartiThenClose) {
           aartiThenClose = false;
           setSystemState(STATE_TEMPLE_CLOSED);
@@ -1354,7 +1370,7 @@ void updateStateMachine() {
         if (pendingWakeMantra == 0) {
           pendingWakeMantra = backTouched ? 2 : 1;
           pendingWakeAt = now + WAKE_BELL_LEAD_MS;
-          myDFPlayer.playMp3Folder(BELL_TRACK);
+          dfPlay(BELL_TRACK);
           Serial.printf("WAKE: bell first (%s pad), mantra in %dms\n",
                         backTouched ? "mouse-back" : "feet", WAKE_BELL_LEAD_MS);
         }
@@ -1414,7 +1430,7 @@ void triggerMantra() {
   offeringInterrupted = false;
 
   // Stop whatever is playing before starting the next track
-  myDFPlayer.stop();
+  dfStop();
   delay(50);
 
   // Lock screen display timer (12 seconds) - same pattern as Feet Touch:
@@ -1442,7 +1458,7 @@ void triggerMantra() {
 
   setSystemState(STATE_MANTRA_ACTIVE, duration);
   currentPlayingTrack = dfTrack;
-  myDFPlayer.playMp3Folder(dfTrack);
+  dfPlay(dfTrack);
 
   mouseStep = (mouseStep + 1) % NUM_TRACKS;
 }
@@ -1455,7 +1471,7 @@ void triggerFeetMantra() {
   offeringInterrupted = false;
 
   // Stop whatever is playing before starting the next track
-  myDFPlayer.stop();
+  dfStop();
   delay(50);
   
   // Lock screen display timer (12 seconds)
@@ -1480,7 +1496,7 @@ void triggerFeetMantra() {
   
   setSystemState(STATE_FEET_ACTIVE, duration);
   currentPlayingTrack = dfTrack;
-  myDFPlayer.playMp3Folder(dfTrack);
+  dfPlay(dfTrack);
 
   feetStep = (feetStep + 1) % NUM_TRACKS;
 }
@@ -1526,10 +1542,10 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
   }
   Serial.printf("OFFERING: approved while state=%s, offeringInterrupted=%s, pausedTrack=%d, fullDurationMs=%lu\n",
                 stateName(currentState), offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedDurationMs);
-  myDFPlayer.stop();
+  dfStop();
   offeringDisplayActive = true;
   delay(50);
-  myDFPlayer.playMp3Folder(BELL_TRACK);
+  dfPlay(BELL_TRACK);
 
   feetDisplayTimer = millis();
   feetDisplayLocked = true;
@@ -1563,7 +1579,7 @@ void triggerAarti() {
   // ?action=close route, or directly via ?action=aarti (dashboard button or
   // manual test) - in every case this just needs to start the physical
   // chant and reflect AARTI_MODE back via /api/state.
-  myDFPlayer.stop();
+  dfStop();
   delay(50);
 
   feetDisplayLocked = false;
@@ -1571,7 +1587,7 @@ void triggerAarti() {
 
   setSystemState(STATE_AARTI, AARTI_DURATION);
   currentPlayingTrack = AARTI_TRACK;
-  myDFPlayer.playMp3Folder(AARTI_TRACK);
+  dfPlay(AARTI_TRACK);
 }
 
 // Aarti that ends in STATE_TEMPLE_CLOSED once it finishes, instead of
@@ -1610,14 +1626,14 @@ void openTempleFromClosed() {
   offeringDisplayActive = false;
   offeringInterrupted = false;
 
-  myDFPlayer.stop();
+  dfStop();
   delay(50);
-  myDFPlayer.playMp3Folder(BELL_TRACK);
+  dfPlay(BELL_TRACK);
   delay(900); // let the bell ring out before the mantra starts
 
-  myDFPlayer.stop();
+  dfStop();
   delay(50);
-  myDFPlayer.playMp3Folder(mantraTracks[0].dfTrack);
+  dfPlay(mantraTracks[0].dfTrack);
   currentPlayingTrack = mantraTracks[0].dfTrack;
 
   blessingCounter++;
@@ -1638,7 +1654,7 @@ void stopAudioAndStandby() {
   // within under a second, with no error anywhere - this is exactly what
   // an untraced external stop would look like.
   Serial.printf("STOP: stopAudioAndStandby() called (state was %s)\n", stateName(currentState));
-  myDFPlayer.stop();
+  dfStop();
   setSystemState(STATE_STANDBY);
 }
 
