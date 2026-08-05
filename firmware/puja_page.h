@@ -373,7 +373,20 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         let speechCountdownInterval = null;
         let speechHardStopTimeout = null;
 
+        let lastSpeechBtnTapMs = 0;
+
         function startSpeechInput() {
+            // Guard against mobile "ghost click" double-firing (a real
+            // pattern found tonight: tapping to stop appeared to
+            // immediately start a new session again) - some Android
+            // browsers fire a button's click handler twice in very quick
+            // succession from a single physical tap.
+            const nowTap = Date.now();
+            if (nowTap - lastSpeechBtnTapMs < 400) {
+                return;
+            }
+            lastSpeechBtnTapMs = nowTap;
+
             const micBtn = document.getElementById('speak-btn');
 
             // Second tap while listening = stop now, don't wait for the timeout.

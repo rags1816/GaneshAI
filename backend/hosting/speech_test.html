@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speech Recognition Isolation Test</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px; font-size: 16px;">
+<h2>Minimal Speech Recognition Test</h2>
+<p>No countdown, no language switching, no other page logic - just the raw browser API, to find out if it works here at all.</p>
+<button id="btn" style="font-size: 20px; padding: 12px 20px;">🎤 Tap to talk</button>
+<p><b>Status:</b> <span id="status">idle</span></p>
+<p><b>Result:</b></p>
+<pre id="result" style="background:#eee; padding:10px; min-height: 60px; white-space: pre-wrap;"></pre>
+<p><b>Log:</b></p>
+<pre id="log" style="background:#f7f7f7; padding:10px; min-height: 150px; white-space: pre-wrap; font-size: 12px;"></pre>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg) {
+    logEl.textContent += new Date().toLocaleTimeString() + ' - ' + msg + '\n';
+}
+
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+log('SpeechRecognition available: ' + !!SpeechRecognitionCtor);
+log('Secure context (isSecureContext): ' + window.isSecureContext);
+log('Page URL: ' + window.location.href);
+
+document.getElementById('btn').onclick = function() {
+    if (!SpeechRecognitionCtor) {
+        log('No SpeechRecognition constructor at all on this browser.');
+        return;
+    }
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    document.getElementById('status').textContent = 'starting...';
+    log('Calling recognition.start()');
+
+    recognition.onstart = () => {
+        document.getElementById('status').textContent = 'listening (onstart fired)';
+        log('onstart fired');
+    };
+    recognition.onaudiostart = () => log('onaudiostart fired (mic audio is flowing)');
+    recognition.onsoundstart = () => log('onsoundstart fired (some sound detected)');
+    recognition.onspeechstart = () => log('onspeechstart fired (speech detected)');
+    recognition.onspeechend = () => log('onspeechend fired');
+    recognition.onsoundend = () => log('onsoundend fired');
+    recognition.onaudioend = () => log('onaudioend fired');
+    recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+        }
+        document.getElementById('result').textContent = transcript;
+        log('onresult fired: "' + transcript + '"');
+    };
+    recognition.onerror = (event) => {
+        document.getElementById('status').textContent = 'ERROR: ' + event.error;
+        log('onerror fired: ' + event.error);
+    };
+    recognition.onend = () => {
+        document.getElementById('status').textContent = 'idle (onend fired)';
+        log('onend fired');
+    };
+
+    try {
+        recognition.start();
+    } catch (e) {
+        log('recognition.start() THREW: ' + e.message);
+    }
+};
+</script>
+</body>
+</html>
