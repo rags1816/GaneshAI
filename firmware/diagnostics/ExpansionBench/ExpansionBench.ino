@@ -102,6 +102,18 @@ uint32_t lastDisplayUpdate = 0;
 void setup();
 void loop();
 void updateDisplay();
+void toggleTemple();
+
+// Flips templeOpen and, if now closed, forces the ring dark immediately
+// rather than waiting for the next loop() pass to notice - shared by
+// both the clap detector and (temporarily) the wish pad below.
+void toggleTemple() {
+  templeOpen = !templeOpen;
+  if (!templeOpen) {
+    fill_solid(leds, NUM_LEDS, CRGB::Black);
+    FastLED.show();
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -163,7 +175,12 @@ void loop() {
     }
   }
 
-  // --- Wish pad: same debounced-edge pattern as SensorBench's touch pads ---
+  // --- Wish pad: same debounced-edge pattern as SensorBench's touch pads.
+  // TEMPORARY: also toggles the temple open/closed, same as a clap - the
+  // wish pad is proven reliable, so this isolates whether the LED's
+  // open/close reaction itself works correctly, independent of the
+  // mic (which is separately unresolved right now). Remove this once
+  // the mic is sorted and clap is the only trigger again. ---
   bool raw = (digitalRead(WISH_PIN) == HIGH);
   if (raw != wishRaw) { wishRaw = raw; wishChangedAt = now; }
   if (now - wishChangedAt >= TOUCH_SETTLE_MS && wishStable != wishRaw) {
@@ -171,6 +188,8 @@ void loop() {
     if (wishStable) {
       wishPulses++;
       Serial.printf(">>> WISH PAD PRESSED (total %lu)\n", (unsigned long)wishPulses);
+      toggleTemple();
+      Serial.printf(">>> WISH PAD toggled temple - now %s\n", templeOpen ? "OPEN" : "CLOSED");
     }
   }
 
@@ -200,11 +219,7 @@ void loop() {
     if (clapArmed && frameLoudest > CLAP_THRESHOLD && (now - lastClapMs) > CLAP_REFRACTORY_MS) {
       clapArmed = false;
       lastClapMs = now;
-      templeOpen = !templeOpen;
-      if (!templeOpen) {
-        fill_solid(leds, NUM_LEDS, CRGB::Black);
-        FastLED.show();
-      }
+      toggleTemple();
       Serial.printf(">>> CLAP DETECTED (peak %ld) - temple now %s\n",
                     (long)frameLoudest, templeOpen ? "OPEN" : "CLOSED");
     }
