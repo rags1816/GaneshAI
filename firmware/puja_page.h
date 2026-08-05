@@ -376,9 +376,15 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         function startSpeechInput() {
             const micBtn = document.getElementById('speak-btn');
 
-            // Second tap while listening = stop now, don't wait for the timeout
+            // Second tap while listening = stop now, don't wait for the timeout.
+            // Force the button back to normal here too, not only in onend -
+            // some Android builds don't reliably fire onend after .stop().
             if (activeRecognition) {
-                activeRecognition.stop();
+                try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); }
+                clearInterval(speechCountdownInterval);
+                clearTimeout(speechHardStopTimeout);
+                activeRecognition = null;
+                micBtn.innerText = '🎤 Speak your wish';
                 return;
             }
 
@@ -393,11 +399,16 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
             const recognition = new SpeechRecognitionCtor();
             recognition.lang = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
-            // Both true so the wish box fills in live as you speak, rather
-            // than staying blank until you're completely finished - the
-            // "no way to see the text" gap from the first version.
+            // interimResults stays on so the wish box fills in live as you
+            // speak. continuous is deliberately OFF: real-device testing
+            // (Android Chrome) found continuous mode silently never fires
+            // onresult at all and .stop() doesn't reliably work either -
+            // a known reliability gap in that specific mode across some
+            // browser/OS builds. Plain single-utterance mode (auto-stops
+            // on a natural pause) is far more broadly supported; the 15s
+            // timeout and tap-to-stop below still apply as a safety net.
             recognition.interimResults = true;
-            recognition.continuous = true;
+            recognition.continuous = false;
             recognition.maxAlternatives = 1;
 
             let secondsLeft = SPEECH_TIMEOUT_MS / 1000;
@@ -441,7 +452,16 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             speechHardStopTimeout = setTimeout(() => recognition.stop(), SPEECH_TIMEOUT_MS);
 
             activeRecognition = recognition;
-            recognition.start();
+            try {
+                recognition.start();
+            } catch (e) {
+                console.warn('recognition.start() threw:', e);
+                clearInterval(speechCountdownInterval);
+                clearTimeout(speechHardStopTimeout);
+                activeRecognition = null;
+                micBtn.innerText = '🎤 Speak your wish';
+                alert("Couldn't start listening - please try again or type your wish.");
+            }
         }
 
         // AI blessing backend (see backend/functions/index.js) - only
