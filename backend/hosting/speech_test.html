@@ -8,6 +8,13 @@
 <body style="font-family: sans-serif; padding: 20px; font-size: 16px;">
 <h2>Minimal Speech Recognition Test</h2>
 <p>No countdown, no language switching, no other page logic - just the raw browser API, to find out if it works here at all.</p>
+<p><b>Language:</b>
+<select id="lang-choice">
+<option value="en-US">en-US</option>
+<option value="en-IN" selected>en-IN (what the real puja page uses)</option>
+<option value="en-GB">en-GB</option>
+</select>
+</p>
 <button id="btn" style="font-size: 20px; padding: 12px 20px;">🎤 Tap to talk</button>
 <p><b>Status:</b> <span id="status">idle</span></p>
 <p><b>Result:</b></p>
@@ -32,7 +39,8 @@ document.getElementById('btn').onclick = function() {
         return;
     }
     const recognition = new SpeechRecognitionCtor();
-    recognition.lang = 'en-US';
+    recognition.lang = document.getElementById('lang-choice').value;
+    log('Using recognition.lang = ' + recognition.lang);
     recognition.interimResults = true;
     recognition.continuous = false;
     recognition.maxAlternatives = 1;
