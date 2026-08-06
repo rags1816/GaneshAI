@@ -337,24 +337,24 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         }
 
         function updateWordCount() {
-            const text = document.getElementById('wish-input').value;
+            const wishInput = document.getElementById('wish-input');
             // Trim whitespace and split into words
-            const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-            const count = words.length;
-            const label = document.getElementById('word-count-lbl');
-            const submitBtn = document.getElementById('submit-btn');
+            let words = wishInput.value.trim().split(/\s+/).filter(w => w.length > 0);
 
-            label.innerText = `${count} / 20 words`;
-
-            if (count > 20) {
-                label.style.color = '#ff4b4b';
-                submitBtn.disabled = true;
-                return false;
-            } else {
-                label.style.color = '#8892b0';
-                submitBtn.disabled = false;
-                return true;
+            // Truncate rather than block submission - a devotee going a
+            // few words over (easy now that speech input listens the full
+            // 15s instead of cutting off early) shouldn't be stuck unable
+            // to submit at all. Claude still writes a good blessing from a
+            // slightly-trimmed wish either way.
+            if (words.length > 20) {
+                words = words.slice(0, 20);
+                wishInput.value = words.join(' ');
             }
+
+            const label = document.getElementById('word-count-lbl');
+            label.innerText = `${words.length} / 20 words`;
+            label.style.color = '#8892b0';
+            document.getElementById('submit-btn').disabled = false;
         }
 
         // Speech-to-text for devotees who'd rather speak their wish than
