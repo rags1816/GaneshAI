@@ -170,6 +170,9 @@ unsigned long pendingWakeAt = 0;
 bool feetLastRead = false, feetStable = false;
 bool backLastRead = false, backStable = false;
 unsigned long feetChangedAt = 0, backChangedAt = 0;
+bool wishPadLastRead = false, wishPadStable = false;
+unsigned long wishPadChangedAt = 0;
+unsigned long lastWishPadTrigger = 0;
 
 // Advances one pad's debounce. Returns true only on the reading a pad's
 // stable level actually CHANGES, so callers see one event per real
@@ -267,6 +270,7 @@ bool displayEnabled = true;
 bool ledEnabled = true;
 bool touchFeetEnabled = true;
 bool touchBackEnabled = true;
+bool wishPadEnabled = true;
 
 // LED "opening" transition - a brief bloom played by animateLeds() right
 // after waking from closed/standby into any active state, before settling
@@ -428,6 +432,7 @@ void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
 void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang);
+void triggerWishPadBlessing();
 void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
@@ -849,12 +854,12 @@ void handleWebRoutes() {
     unsigned long stateElapsed = millis() - stateTimer;
     if (stateElapsed > stateDuration) stateElapsed = stateDuration;
 
-    char json[800];
+    char json[850];
     int n = snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
       stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
       pirEnabled ? "true" : "false", displayEnabled ? "true" : "false", ledEnabled ? "true" : "false",
-      touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false",
+      touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false", wishPadEnabled ? "true" : "false",
       selectedLang, selectedTheme, currentPlayingTrack,
       stateElapsed, stateDuration);
 
@@ -1028,6 +1033,9 @@ void handleWebRoutes() {
     if (server.hasArg("touchBack")) {
       touchBackEnabled = (server.arg("touchBack").toInt() == 1);
     }
+    if (server.hasArg("wishPad")) {
+      wishPadEnabled = (server.arg("wishPad").toInt() == 1);
+    }
     server.send(200, "text/plain", "OK");
   });
 }
@@ -1187,6 +1195,19 @@ void checkSensors() {
       Serial.printf("TOUCH: mouse-back pad pressed (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
       backTouchCount++;
     }
+  }
+
+  // Wish pad: deliberately self-contained, NOT wired into feetTouched/
+  // backTouched or the wake/resume state-machine logic those feed - a
+  // silent prayer touch shouldn't need to understand mantra playback
+  // state at all. Own debounce state, own trigger, calls
+  // triggerWishPadBlessing() directly (see below).
+  bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
+  bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
+  if (wishPadEdge && wishPadStable && now - lastWishPadTrigger > TOUCH_DEBOUNCE) {
+    lastWishPadTrigger = now;
+    Serial.printf("TOUCH: wish pad pressed (GPIO%d) while %s\n", WISH_PAD_PIN, stateName(currentState));
+    triggerWishPadBlessing();
   }
 
   // A pad stuck HIGH for a long stretch is almost always a wiring/solder
@@ -1706,29 +1727,26 @@ bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
 // CA on-device - but means a network-level attacker on the same Wi-Fi
 // could in principle substitute the audio. Low stakes for a home
 // devotional altar; revisit if that ever changes.
-void speakBlessingOnAmp(const String &text, const String &lang) {
-  if (!ampReady) {
-    Serial.println("AMP: not initialized, skipping spoken blessing");
-    return;
-  }
-  if (text.length() == 0) return;
-
+// Shared by speakBlessingOnAmp() and speakGenericBlessingOnAmp() below -
+// both just POST a JSON body to a Cloud Function and stream whatever WAV
+// audio comes back straight to the I2S amp, never buffering the whole
+// clip in RAM; only the URL and body actually differ between them.
+void postAndStreamAudioToAmp(const String &url, const String &jsonBody) {
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(10000);
 
   HTTPClient https;
   https.setTimeout(10000);
-  if (!https.begin(client, "https://us-central1-ganapatiai.cloudfunctions.net/synthesizeAudio")) {
+  if (!https.begin(client, url)) {
     Serial.println("AMP: https.begin() failed");
     return;
   }
   https.addHeader("Content-Type", "application/json");
 
-  String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
-  int code = https.POST(body);
+  int code = https.POST(jsonBody);
   if (code != 200) {
-    Serial.printf("AMP: synthesizeAudio returned HTTP %d\n", code);
+    Serial.printf("AMP: backend returned HTTP %d\n", code);
     https.end();
     return;
   }
@@ -1765,6 +1783,36 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
 
   https.end();
   Serial.printf("AMP: playback finished, %d bytes played\n", bytesPlayed);
+}
+
+// Speaks text that's ALREADY been decided (a blessing already shown/heard
+// by the devotee's phone, read back out of the priest queue) - calls the
+// lightweight TTS-only synthesizeAudio endpoint, no Claude call.
+void speakBlessingOnAmp(const String &text, const String &lang) {
+  if (!ampReady) {
+    Serial.println("AMP: not initialized, skipping spoken blessing");
+    return;
+  }
+  if (text.length() == 0) return;
+
+  String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
+  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/synthesizeAudio", body);
+}
+
+// Fired by the wish pad (see triggerWishPadBlessing() below) - a devotee
+// touched it in silent prayer, with no offering and no typed/spoken wish
+// at all, so there's no text yet to speak. Calls the FULL generateBlessing
+// endpoint (Claude + TTS) with touchOnly:true, so Bappa writes a fresh
+// blessing on the spot - never the same words twice, since it's a real
+// LLM call each time rather than a fixed recorded phrase.
+void speakGenericBlessingOnAmp(const String &lang) {
+  if (!ampReady) {
+    Serial.println("AMP: not initialized, skipping spoken blessing");
+    return;
+  }
+
+  String body = "{\"name\":\"a devotee\",\"offering\":\"\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":true}";
+  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body);
 }
 
 // Two real crashes found on hardware tonight (both watchdog panics) came
@@ -1807,6 +1855,40 @@ void speakBlessingOnAmpAsync(const String &text, const String &lang) {
   BlessingTaskParams *params = new BlessingTaskParams{text, lang};
   blessingTaskActive = true;
   BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 1);
+  if (created != pdPASS) {
+    Serial.println("AMP: failed to create blessing playback task");
+    delete params;
+    blessingTaskActive = false;
+  }
+}
+
+// Same background-task pattern as speakBlessingOnAmpAsync() above, for
+// the wish pad's fresh-each-time generic blessing. Shares
+// blessingTaskActive with it deliberately - both ultimately write to the
+// same single ampI2S instance, so a wish-pad touch and a priest approval
+// landing at the same moment must never play concurrently.
+struct GenericBlessingTaskParams {
+  String lang;
+};
+
+void speakGenericBlessingTaskFn(void *pvParameters) {
+  GenericBlessingTaskParams *params = (GenericBlessingTaskParams *)pvParameters;
+  speakGenericBlessingOnAmp(params->lang);
+  delete params;
+  blessingTaskActive = false;
+  vTaskDelete(NULL);
+}
+
+void speakGenericBlessingOnAmpAsync(const String &lang) {
+  if (blessingTaskActive) {
+    Serial.println("AMP: a blessing is already playing, skipping this one");
+    return;
+  }
+  if (!ampReady) return;
+
+  GenericBlessingTaskParams *params = new GenericBlessingTaskParams{lang};
+  blessingTaskActive = true;
+  BaseType_t created = xTaskCreatePinnedToCore(speakGenericBlessingTaskFn, "wishPadBlessing", 8192, params, 1, NULL, 1);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
     delete params;
@@ -1893,6 +1975,40 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
   // watchdog-panic crashes on hardware tonight both traced back to this
   // running inline on the same task as loop()/server.handleClient().
   speakBlessingOnAmpAsync(prayer, lang);
+}
+
+// Fired by a touch on the physical wish pad (see checkSensors()) - the
+// way one would touch a deity's feet in silent prayer: no name, no
+// offering, no typed/spoken wish. Deliberately lighter-weight than
+// triggerPersonalizedOffering() - a brief generic acknowledgment on the
+// OLED rather than a 12s personalized display, since there's no specific
+// text to show. Reuses the SAME interrupt/resume mechanism (offeringDisplayActive
+// etc.) so a wish-pad touch mid-mantra pauses and resumes exactly like an
+// offering approval does.
+void triggerWishPadBlessing() {
+  offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI);
+  if (offeringInterrupted) {
+    offeringPausedState = currentState;
+    offeringPausedDurationMs = stateDuration;
+  }
+  Serial.printf("WISH PAD: touched while state=%s, offeringInterrupted=%s\n",
+                stateName(currentState), offeringInterrupted ? "true" : "false");
+  dfStop();
+  offeringDisplayActive = true;
+  delay(50);
+  dfPlay(BELL_TRACK);
+
+  feetDisplayTimer = millis();
+  feetDisplayLocked = true;
+  strlcpy(scrollText, "   \xF0\x9F\x99\x8F Your silent prayer is heard...   ", sizeof(scrollText));
+  feetDisplayLockMs = 600000UL; // cleared by updateStateMachine() when the display genuinely finishes, same as an offering
+
+  setSystemState(STATE_FEET_ACTIVE, 6000);
+
+  // English default - the wish pad has no language picker of its own
+  // (unlike puja.html's dropdown); worth wiring to the dashboard's
+  // language setting later if that turns out to matter in practice.
+  speakGenericBlessingOnAmpAsync("en");
 }
 
 void triggerAarti() {

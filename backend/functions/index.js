@@ -140,6 +140,12 @@ exports.generateBlessing = onRequest(
       const offeringText = OFFERING_NAMES[offeringKey] || "an offering";
       const prayer = (req.body.prayer || "").toString().slice(0, MAX_PRAYER_CHARS);
       const standardWish = (req.body.standardWish || "").toString().slice(0, 60);
+      // Set by the physical wish pad (see triggerWishPadBlessing() in
+      // GanapatiAI.ino) - a devotee touching it at the altar, with no
+      // offering and no typed/spoken wish at all, the way one would touch
+      // a deity's feet in silent prayer. Distinct from the puja.html
+      // "silent wish" case, which still has a real offering attached.
+      const touchOnly = req.body.touchOnly === true;
       const langKey = (req.body.lang || "en").toString();
       const langConfig = LANGUAGE_CONFIG[langKey] || LANGUAGE_CONFIG.en;
       // Voice can be requested separately from the text language - e.g.
@@ -158,7 +164,7 @@ exports.generateBlessing = onRequest(
 
       let blessingText;
       try {
-        blessingText = await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig);
+        blessingText = await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly);
       } catch (err) {
         console.error("Claude call failed:", err);
         res.status(502).send(`Blessing generation failed (Claude): ${err.message}`);
@@ -181,9 +187,15 @@ exports.generateBlessing = onRequest(
     },
 );
 
-async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig) {
+async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
   let situationText;
-  if (prayer.trim()) {
+  if (touchOnly) {
+    situationText = `who has come before you at the altar and gently touched the wish pad - ` +
+      `the way one would touch a deity's feet - offering no words, only a silent prayer held ` +
+      `in their heart. Reply with a short, warm blessing that acknowledges their silent prayer ` +
+      `is heard and accepted, blessing them regardless of what they silently wish for, as if ` +
+      `spoken aloud to them.`;
+  } else if (prayer.trim()) {
     situationText = `who has offered ${offeringText} and prayed: "${prayer}". Reply with ` +
       `a short, warm blessing that responds to their specific prayer, as if spoken aloud to them.`;
   } else if (standardWish.trim()) {

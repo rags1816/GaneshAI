@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-05-r70"
+#define FIRMWARE_VERSION "2026-08-05-r71"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -56,6 +56,19 @@
 // the phantom touches ever did.
 #define TOUCH_FEET_CONNECTED   true
 #define TOUCH_BACK_CONNECTED   true
+
+// Wish Pad (TP223) - a devotee touching this at the altar, the way one
+// would touch a deity's feet, triggers a fresh Claude-generated blessing
+// spoken through the amp (see triggerWishPadBlessing() in GanapatiAI.ino)
+// - no offering, no typed/spoken wish, just a silent prayer acknowledged
+// aloud. GPIO4 reclaimed from the OLED_SPI_DIN reservation (genuinely
+// unused - this build runs OLED_SH1106_I2C, not the SPI variant).
+// FALSE by default like every other not-yet-wired sensor in this file -
+// an unwired pin floats and fires phantom touches, which reads as "the
+// pad is dead" and costs more time than the phantom touches would.
+// Set TRUE once the TP223's OUT lead is actually wired to D4.
+#define WISH_PAD_PIN        4
+#define WISH_PAD_CONNECTED  false
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

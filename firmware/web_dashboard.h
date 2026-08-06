@@ -867,10 +867,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             </label>
         </div>
 
-        <div class="toggle-container" style="margin-bottom: 5px;">
+        <div class="toggle-container">
             <span style="font-size: 12px; color: #a8b2d1;">Mouse-Back Touch Pad</span>
             <label class="switch">
                 <input type="checkbox" id="touch-back-toggle" checked onchange="toggleComponent('touchBack')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container" style="margin-bottom: 5px;">
+            <span style="font-size: 12px; color: #a8b2d1;">Wish Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="wish-pad-toggle" checked onchange="toggleComponent('wishPad')">
                 <span class="slider-toggle"></span>
             </label>
         </div>
@@ -3333,7 +3341,8 @@ var QRCode;
         // identical apart from the checkbox id / query param name.
         const COMPONENT_TOGGLE_IDS = {
             display: 'display-toggle', led: 'led-toggle',
-            touchFeet: 'touch-feet-toggle', touchBack: 'touch-back-toggle'
+            touchFeet: 'touch-feet-toggle', touchBack: 'touch-back-toggle',
+            wishPad: 'wish-pad-toggle'
         };
         function toggleComponent(name) {
             const checked = document.getElementById(COMPONENT_TOGGLE_IDS[name]).checked;
@@ -3694,10 +3703,12 @@ var QRCode;
                 const ledToggle = document.getElementById('led-toggle');
                 const touchFeetToggle = document.getElementById('touch-feet-toggle');
                 const touchBackToggle = document.getElementById('touch-back-toggle');
+                const wishPadToggle = document.getElementById('wish-pad-toggle');
                 if (displayToggle && typeof data.displayEnabled === 'boolean') displayToggle.checked = data.displayEnabled;
                 if (ledToggle && typeof data.ledEnabled === 'boolean') ledToggle.checked = data.ledEnabled;
                 if (touchFeetToggle && typeof data.touchFeetEnabled === 'boolean') touchFeetToggle.checked = data.touchFeetEnabled;
                 if (touchBackToggle && typeof data.touchBackEnabled === 'boolean') touchBackToggle.checked = data.touchBackEnabled;
+                if (wishPadToggle && typeof data.wishPadEnabled === 'boolean') wishPadToggle.checked = data.wishPadEnabled;
 
                 // The real device already left playback on its own (its
                 // onboard AMBIENT timeout is 30s, well ahead of this
