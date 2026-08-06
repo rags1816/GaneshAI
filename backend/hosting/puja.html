@@ -270,10 +270,13 @@
                 </select>
             </div>
 
-            <!-- 3. Reply language - picked first, so it's ready for the mic below -->
+            <!-- 3. Reply language - picked first, so it's ready for the mic below.
+                 Auto-detected from the wish's script if typed before this is
+                 touched (see detectScriptLanguage() below) - a manual choice
+                 here always wins over the auto-detect from then on. -->
             <div class="form-group">
                 <label for="lang-select">Bappa's Reply Language</label>
-                <select id="lang-select" class="select-input">
+                <select id="lang-select" class="select-input" onchange="langManuallySet = true;">
                     <option value="en" selected>English</option>
                     <option value="hi">Hindi</option>
                     <option value="mr">Marathi</option>
@@ -288,7 +291,7 @@
             <!-- 4. Free Text wish/prayer - type it, or tap the mic to speak it -->
             <div class="form-group">
                 <label for="wish-input">Personal Prayer Wish (Max 20 words)</label>
-                <textarea id="wish-input" class="text-input" placeholder="Write your personal prayer here, or tap the mic to speak it..." oninput="updateWordCount()"></textarea>
+                <textarea id="wish-input" class="text-input" placeholder="Write your personal prayer here, or tap the mic to speak it..." oninput="updateWordCount(); autoDetectLanguage();"></textarea>
                 <div class="count-row">
                     <span id="word-count-lbl" class="counter-lbl">0 / 20 words</span>
                     <button type="button" id="speak-btn" class="btn-back" style="margin-top:0;" onclick="startSpeechInput()">🎤 Speak your wish</button>
@@ -389,6 +392,41 @@
             document.getElementById('submit-btn').disabled = false;
         }
 
+        // Auto-detects the reply language from the wish's own script, so a
+        // devotee who types/speaks in (say) Tamil doesn't also have to
+        // remember to switch the dropdown away from its English default.
+        // A manual dropdown choice always wins from then on - this only
+        // ever acts before langManuallySet becomes true.
+        let langManuallySet = false;
+        const SCRIPT_RANGES = [
+            // Devanagari covers both Hindi and Marathi - can't tell them
+            // apart from script alone, so this defaults to the more
+            // common of the two; a devotee who meant Marathi can still
+            // pick it manually, which then sticks (see langManuallySet).
+            { lang: 'hi', re: /[ऀ-ॿ]/ },
+            { lang: 'ta', re: /[஀-௿]/ },
+            { lang: 'te', re: /[ఀ-౿]/ },
+            { lang: 'gu', re: /[઀-૿]/ },
+            { lang: 'pa', re: /[਀-੿]/ },
+            { lang: 'ml', re: /[ഀ-ൿ]/ }
+        ];
+
+        function detectScriptLanguage(text) {
+            for (const { lang, re } of SCRIPT_RANGES) {
+                if (re.test(text)) return lang;
+            }
+            return null;
+        }
+
+        function autoDetectLanguage() {
+            if (langManuallySet) return;
+            const wishInput = document.getElementById('wish-input');
+            const detected = detectScriptLanguage(wishInput.value);
+            if (!detected) return;
+            const langSelect = document.getElementById('lang-select');
+            if (langSelect.value !== detected) langSelect.value = detected;
+        }
+
         // Speech-to-text for devotees who'd rather speak their wish than
         // type it - runs entirely in the phone's own browser (free, no
         // extra backend or cost), using whichever language is currently
@@ -446,6 +484,7 @@
                     }
                     wishInput.value = (speechAccumulatedText + sessionTranscript).trim();
                     updateWordCount(); // same 20-word limit/warning as typing
+                    autoDetectLanguage();
                 } catch (e) {
                     console.warn('onresult handler threw:', e);
                 }

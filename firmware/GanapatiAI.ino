@@ -268,6 +268,17 @@ bool ledEnabled = true;
 bool touchFeetEnabled = true;
 bool touchBackEnabled = true;
 
+// LED "opening" transition - a brief bloom played by animateLeds() right
+// after waking from closed/standby into any active state, before settling
+// into that state's normal pattern. Set by setSystemState() on the actual
+// state-change edge (old state was closed/standby, new state isn't); 0
+// means no transition is currently playing. The "closing" transition
+// (temple going TO closed/standby) is played synchronously by
+// playLedClosingSweep() instead, since it's a one-off fade rather than
+// something that needs to keep animating through later frames.
+unsigned long ledOpeningTransitionStart = 0;
+#define LED_OPENING_TRANSITION_MS 1200
+
 // Language Settings: 0 = English, 1 = Marathi/Sanskrit, 2 = Tamil
 int selectedLang = 1; 
 // Theme of the Day: 0 = Tue (Ganesha), 1 = Mon (Shiva), 2 = Wed (Wisdom), 3 = Thu (Guru), 4 = Fri (Shakti), 5 = Sat (Discipline), 6 = Sun (Sun)
@@ -411,6 +422,7 @@ void checkWiFiHealth();
 void checkHeapHealth();
 void updateStateMachine();
 void animateLeds();
+void playLedClosingSweep();
 void drawOLED();
 void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
@@ -1466,10 +1478,29 @@ void updateStateMachine() {
   motionDetected = feetTouched = backTouched = false;
 }
 
+// Fades whatever's currently showing on the ring down to black over
+// ~800ms, rather than the abrupt cut to black setSystemState() used to do
+// on every close - played once, synchronously, right before that cut.
+// Cheap (24 CRGB = 72 bytes on the stack) and short enough not to be a
+// concern under the watchdog.
+void playLedClosingSweep() {
+  CRGB original[NUM_LEDS];
+  memcpy(original, leds, sizeof(original));
+  for (int step = 20; step >= 0; step--) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      leds[i] = original[i];
+      leds[i].nscale8((uint8_t)(step * 255 / 20));
+    }
+    FastLED.show();
+    delay(40);
+  }
+}
+
 // ==========================================
 // State Handlers
 // ==========================================
 void setSystemState(SystemState newState, unsigned long duration) {
+  SystemState oldState = currentState;
   currentState = newState;
   stateTimer = millis();
   stateDuration = duration;
@@ -1479,10 +1510,21 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // THIS text has had its own chance to fully scroll across the screen.
   scrollPassComplete = false;
 
+  // LED open/close transitions - detected here since setSystemState() is
+  // the one place that always knows both the old and new state.
+  bool wasClosed = (oldState == STATE_STANDBY || oldState == STATE_TEMPLE_CLOSED);
+  bool nowClosed = (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED);
+  if (wasClosed && !nowClosed && LED_CONNECTED && ledEnabled) {
+    ledOpeningTransitionStart = millis(); // animateLeds() plays the bloom on its next frames
+  }
+
   if (newState == STATE_STANDBY || newState == STATE_TEMPLE_CLOSED) {
     feetDisplayLocked = false;
     currentPlayingTrack = 0;
     if (LED_CONNECTED) {
+      if (!wasClosed && ledEnabled) {
+        playLedClosingSweep(); // fade out whatever was showing, rather than an abrupt cut to black
+      }
       FastLED.clear();
       FastLED.show();
     }
@@ -1953,15 +1995,52 @@ void animateLeds() {
     return;
   }
 
+  // Opening bloom - plays for LED_OPENING_TRANSITION_MS right after
+  // waking from closed/standby (set by setSystemState()), then falls
+  // through to the state's normal pattern below once it's done.
+  if (ledOpeningTransitionStart != 0) {
+    unsigned long elapsed = millis() - ledOpeningTransitionStart;
+    if (elapsed < LED_OPENING_TRANSITION_MS) {
+      float progress = elapsed / (float)LED_OPENING_TRANSITION_MS;
+      uint8_t brightness = (uint8_t)(sinf(progress * PI) * 255); // rises then eases back down
+      CRGB bloom = CRGB(255, 223, 130);
+      bloom.nscale8(brightness);
+      fill_solid(leds, NUM_LEDS, bloom);
+      FastLED.show();
+      return;
+    }
+    ledOpeningTransitionStart = 0; // done - normal per-state rendering resumes below
+  }
+
   // Continuously-growing float, not the wrapping uint8_t hueOffset used
   // elsewhere - these patterns feed it straight into sin(), and a uint8_t
   // wrap would show up as a visible glitch once per cycle.
   static float animHue = 0;
-  animHue += 1.5f;
+
+  if (currentState == STATE_AARTI) {
+    // Dedicated flame palette with a scripted intensity arc over the
+    // chant's known duration, rather than reacting to live audio (true
+    // tempo-matching needs the mic, parked for now) - builds toward a
+    // peak partway through, eases back for the close.
+    float aartiProgress = constrain((millis() - stateTimer) / (float)stateDuration, 0.0f, 1.0f);
+    float intensity = sinf(aartiProgress * PI * 0.9f);
+    animHue += 1.0f + intensity * 2.5f; // faster pulse at the peak, calmer at start/end
+  } else {
+    animHue += 1.5f;
+  }
 
   if (currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI) {
     CRGB c1, c2;
-    switch(selectedTheme) {
+    if (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE) {
+      // Dedicated warm "blessing" palette - a mantra touch should always
+      // feel the same and special, not vary with whatever ambient theme
+      // happens to be selected.
+      c1 = CRGB(255, 140, 0);  // saffron
+      c2 = CRGB(255, 215, 0);  // gold
+    } else if (currentState == STATE_AARTI) {
+      c1 = CRGB(180, 20, 0);   // deep ember red
+      c2 = CRGB(255, 120, 0);  // bright flame orange
+    } else switch(selectedTheme) {
       case 0: c1 = CRGB(128, 0, 32);   c2 = CRGB(255, 215, 0); break;
       case 1: c1 = CRGB(0, 242, 254);  c2 = CRGB(79, 172, 254); break;
       case 2: c1 = CRGB(0, 180, 219);  c2 = CRGB(0, 255, 135); break;
