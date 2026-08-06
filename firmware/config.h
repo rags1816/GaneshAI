@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-05-r60"
+#define FIRMWARE_VERSION "2026-08-05-r61"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -170,6 +170,20 @@
 #define I2S_MIC_WS       32   // module pad WS  (Word Select / LRC)
 #define I2S_MIC_SCK      33   // module pad SCK (Serial Clock / BCLK)
 #define I2S_MIC_SD       34   // module pad SD  (Serial Data) - input-only pin, correct for a mic
+
+// I2S Amp (MAX98357A) - speaks the AI blessing text through the altar's
+// own speaker when a priest approves an offering (see speakBlessingOnAmp()
+// in GanapatiAI.ino). Every other GPIO is already spoken for on this
+// board (DFPlayer on 25/26, touch pads on 23/27, PIR on 19, LED on 18,
+// OLED on 21/22, I2S mic reserved on 32/33/34) - 13 and 14 are the only
+// genuinely free general-purpose pins left, so DIN reclaims one pin from
+// the still-unused mic reservation above (WS/SCK on 32/33 stay reserved
+// for a future working mic; only SD/34 - unusable for an output anyway,
+// being input-only - was never a candidate). CONFIRM these are actually
+// free on your current board before wiring - swap them here if not.
+#define AMP_BCLK_PIN     13   // module pin BCLK
+#define AMP_LRC_PIN      14   // module pin LRC (Word Select)
+#define AMP_DIN_PIN      32   // module pin DIN (reclaimed from the I2S mic reservation)
 
 // ==========================================
 // Software & Timing Configurations

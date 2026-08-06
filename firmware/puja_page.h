@@ -607,7 +607,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 name: name,
                 offering: offering,
-                prayer: prayerText
+                prayer: prayerText,
+                // Carried through to the priest queue so the altar's own
+                // speaker can speak the eventual AI blessing in the same
+                // language the devotee picked, not always English.
+                lang: lang
             };
 
             const submitBtn = document.getElementById('submit-btn');

@@ -15,6 +15,9 @@
 #include <FastLED.h>
 #include <DFRobotDFPlayerMini.h>
 #include <esp_task_wdt.h>
+#include "ESP_I2S.h"
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include "config.h"
 #include "web_dashboard.h"
 #include "puja_page.h"
@@ -88,6 +91,14 @@ void dfStop() { if (dfPlayerReady) myDFPlayer.stop(); }
 void dfPlay(int track) { if (dfPlayerReady) myDFPlayer.playMp3Folder(track); }
 void dfSetVolume(int v) { if (dfPlayerReady) myDFPlayer.volume(v); }
 int dfReadFileCounts() { return dfPlayerReady ? myDFPlayer.readFileCounts() : 0; }
+
+// I2S amp (MAX98357A) - speaks the AI-generated blessing text through the
+// altar's own speaker when a priest approves an offering (see
+// speakBlessingOnAmp() below). Set true only if I2S itself initializes;
+// same "skip entirely rather than hang" pattern as dfPlayerReady above -
+// a missing/faulty amp should never be able to stall the whole device.
+I2SClass ampI2S;
+bool ampReady = false;
 
 // System States
 SystemState currentState = STATE_STANDBY;
@@ -391,7 +402,7 @@ void drawOLED();
 void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
-void triggerPersonalizedOffering(String name, String offeringType, String prayer);
+void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang);
 void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
@@ -570,6 +581,16 @@ void setup() {
   }
   u8g2.sendBuffer();
   delay(800);
+
+  // 5.5 Initialize the I2S amp (MAX98357A) - speaks AI blessings through
+  // the altar's own speaker. Fixed format (16kHz/16-bit/mono) matching
+  // exactly what the backend's Google TTS call always requests - see
+  // speakBlessingOnAmp() and backend/functions/index.js's synthesizeSpeech().
+  Serial.printf("STEP 5.5: Initializing I2S amp (BCLK=GPIO%d, LRC=GPIO%d, DIN=GPIO%d)...\n",
+                AMP_BCLK_PIN, AMP_LRC_PIN, AMP_DIN_PIN);
+  ampI2S.setPins(AMP_BCLK_PIN, AMP_LRC_PIN, AMP_DIN_PIN);
+  ampReady = ampI2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT);
+  Serial.println(ampReady ? "STEP 5.5: Amp I2S bus initialized." : "STEP 5.5: Amp FAILED to initialize - continuing without spoken blessings.");
 
   // 6. Initialize Wi-Fi Connection to Home Router
   Serial.print("Connecting to Wi-Fi: ");
@@ -836,7 +857,8 @@ void handleWebRoutes() {
       String name = server.arg("name");
       String offeringType = server.arg("offering");
       String prayer = server.arg("prayer");
-      triggerPersonalizedOffering(name, offeringType, prayer);
+      String lang = server.hasArg("lang") ? server.arg("lang") : "en";
+      triggerPersonalizedOffering(name, offeringType, prayer, lang);
     }
     server.send(200, "text/plain", "OK");
   });
@@ -1501,12 +1523,154 @@ void triggerFeetMantra() {
   feetStep = (feetStep + 1) % NUM_TRACKS;
 }
 
+// Minimal JSON string escaper - only needs to handle a single text field
+// going into a hand-built JSON body (see speakBlessingOnAmp() below), so a
+// full JSON library isn't worth adding as a new dependency. Multi-byte
+// UTF-8 (Hindi/Tamil/etc. blessing text) needs no special handling here -
+// every continuation byte is >= 0x80 and passes through unescaped, which
+// is exactly what valid JSON expects.
+String jsonEscape(const String &s) {
+  String out;
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if ((uint8_t)c < 0x20) {
+          char buf[8];
+          snprintf(buf, sizeof(buf), "\\u%04x", (uint8_t)c);
+          out += buf;
+        } else {
+          out += c;
+        }
+    }
+  }
+  return out;
+}
+
+// Scans an HTTP response stream for the WAV "data" subchunk marker and
+// consumes it plus its 4-byte length, leaving the stream positioned right
+// at the first raw PCM sample. Scanning for the marker (rather than
+// assuming a fixed 44-byte header) works regardless of exactly how Google
+// TTS formats its WAV header. Bounded by deadlineMs so a stalled/odd
+// response can never hang forever - the same unbounded-wait mistake that
+// caused tonight's earlier DFPlayer crash, not repeated here.
+bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
+  uint8_t window[4] = {0, 0, 0, 0};
+  while (millis() < deadlineMs) {
+    if (!stream->available()) {
+      delay(5);
+      continue;
+    }
+    uint8_t b;
+    if (stream->readBytes(&b, 1) != 1) continue;
+    window[0] = window[1];
+    window[1] = window[2];
+    window[2] = window[3];
+    window[3] = b;
+    if (window[0] == 'd' && window[1] == 'a' && window[2] == 't' && window[3] == 'a') {
+      uint8_t sizeBytes[4];
+      size_t got = 0;
+      while (got < 4 && millis() < deadlineMs) {
+        if (stream->available()) {
+          got += stream->readBytes(sizeBytes + got, 4 - got);
+        } else {
+          delay(5);
+        }
+      }
+      return got == 4;
+    }
+  }
+  return false;
+}
+
+// Fetches spoken-blessing audio for the given (already-decided) text from
+// the backend's synthesizeAudio endpoint and streams it straight to the
+// physical altar speaker over I2S, without ever buffering the whole clip
+// in RAM. Best-effort only: any failure here just means the temple stays
+// silent for this offering - the OLED display (triggered separately by
+// the caller) still shows the text regardless, and every wait in here is
+// bounded so a slow/stalled network can never hang the device.
+//
+// NOTE: client.setInsecure() skips TLS certificate validation. Accepted
+// tradeoff for this project - avoids maintaining Google's rotating root
+// CA on-device - but means a network-level attacker on the same Wi-Fi
+// could in principle substitute the audio. Low stakes for a home
+// devotional altar; revisit if that ever changes.
+void speakBlessingOnAmp(const String &text, const String &lang) {
+  if (!ampReady) {
+    Serial.println("AMP: not initialized, skipping spoken blessing");
+    return;
+  }
+  if (text.length() == 0) return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10000);
+
+  HTTPClient https;
+  https.setTimeout(10000);
+  if (!https.begin(client, "https://us-central1-ganapatiai.cloudfunctions.net/synthesizeAudio")) {
+    Serial.println("AMP: https.begin() failed");
+    return;
+  }
+  https.addHeader("Content-Type", "application/json");
+
+  String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
+  int code = https.POST(body);
+  if (code != 200) {
+    Serial.printf("AMP: synthesizeAudio returned HTTP %d\n", code);
+    https.end();
+    return;
+  }
+
+  WiFiClient *stream = https.getStreamPtr();
+  if (!skipToWavData(stream, millis() + 8000)) {
+    Serial.println("AMP: could not find WAV data chunk, aborting playback");
+    https.end();
+    return;
+  }
+
+  Serial.println("AMP: playing spoken blessing...");
+  uint8_t buf[1024];
+  int bytesPlayed = 0;
+  unsigned long lastDataMs = millis();
+  while (https.connected() || stream->available()) {
+    size_t avail = stream->available();
+    if (avail == 0) {
+      if (millis() - lastDataMs > 8000) {
+        Serial.println("AMP: stream stalled, stopping playback");
+        break;
+      }
+      delay(5);
+      continue;
+    }
+    size_t toRead = avail < sizeof(buf) ? avail : sizeof(buf);
+    int n = stream->readBytes(buf, toRead);
+    if (n <= 0) break;
+    ampI2S.write(buf, n);
+    bytesPlayed += n;
+    lastDataMs = millis();
+    delay(0); // yield even while data keeps flowing, so a long clip can't starve the watchdog
+  }
+
+  https.end();
+  Serial.printf("AMP: playback finished, %d bytes played\n", bytesPlayed);
+}
+
 // Fired when the priest approves a devotee's submission from the Priest
 // Queue (see /api/control?action=offering, wired from approveQueueItem()
 // in web_dashboard.h) - shows their actual name/offering/prayer on the
 // physical OLED for 12s, the same personalized text already shown
-// locally in the browser dashboard when a priest approves an item.
-void triggerPersonalizedOffering(String name, String offeringType, String prayer) {
+// locally in the browser dashboard when a priest approves an item, and
+// speaks it aloud through the altar's own speaker (see
+// speakBlessingOnAmp() above).
+void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang) {
   blessingCounter++;
 
   // If a mantra OR the Aarti chant is actively playing, remember it so it
@@ -1572,6 +1736,16 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
   feetDisplayLockMs = 600000UL; // effectively "until the offering ends"
 
   setSystemState(STATE_FEET_ACTIVE, 12000);
+
+  // Speak the blessing text through the altar's own speaker. This call
+  // blocks for the duration of the network fetch + spoken audio (roughly
+  // 5-10s for a typical ~40-word blessing) - the whole device (OLED
+  // scroll, touch/PIR response, other web requests) is unresponsive for
+  // that window, same as any other synchronous call in this handler.
+  // Acceptable for now since it only happens during the offering's own
+  // already-paused display window, not during normal operation - revisit
+  // with a background task if real-device testing finds it too disruptive.
+  speakBlessingOnAmp(prayer, lang);
 }
 
 void triggerAarti() {

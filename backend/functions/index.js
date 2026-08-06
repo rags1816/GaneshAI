@@ -88,6 +88,45 @@ const LANGUAGE_CONFIG = {
 const SPEAKING_RATE = 0.85;
 const PITCH_SEMITONES = -3.0;
 
+// Lightweight TTS-only endpoint - takes text that's ALREADY been decided
+// (the blessing the devotee already saw/heard on their own phone, read
+// back out of the priest queue) and just synthesizes speech for it, with
+// no Claude call. Used by the ESP32 itself when a priest approves an
+// offering, so the altar's own speaker can speak the SAME blessing the
+// devotee got, rather than generating a second, different one and paying
+// for a Claude call the devotee's phone already made.
+const MAX_BLESSING_CHARS = 500;
+
+exports.synthesizeAudio = onRequest(
+    {secrets: [GOOGLE_TTS_API_KEY], cors: true},
+    async (req, res) => {
+      if (req.method !== "POST") {
+        res.status(405).send("POST only");
+        return;
+      }
+
+      const text = (req.body.text || "").toString().slice(0, MAX_BLESSING_CHARS);
+      if (!text.trim()) {
+        res.status(400).send("text is required");
+        return;
+      }
+      const langKey = (req.body.lang || "en").toString();
+      const langConfig = LANGUAGE_CONFIG[langKey] || LANGUAGE_CONFIG.en;
+
+      let audioBuffer;
+      try {
+        audioBuffer = await synthesizeSpeech(text, langConfig);
+      } catch (err) {
+        console.error("Google TTS call failed:", err);
+        res.status(502).send(`Speech synthesis failed: ${err.message}`);
+        return;
+      }
+
+      res.set("Content-Type", "audio/wav");
+      res.status(200).send(audioBuffer);
+    },
+);
+
 exports.generateBlessing = onRequest(
     {secrets: [ANTHROPIC_API_KEY, GOOGLE_TTS_API_KEY], cors: true},
     async (req, res) => {

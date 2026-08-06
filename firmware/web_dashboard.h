@@ -3418,7 +3418,10 @@ var QRCode;
             // Show the devotee's actual name/offering/prayer on the
             // physical OLED too, not just this browser's local preview.
             if (isPhysicalESP) {
-                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}`;
+                // item.lang is only present on offerings submitted via the
+                // puja.html language dropdown - older items and the
+                // dashboard's own quick-offering panel default to English.
+                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}`;
                 sendESPControl('offering', params);
             }
         }
