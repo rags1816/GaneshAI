@@ -723,14 +723,30 @@ void setup() {
   // silent together, consistent with loop() itself stalling, cause not
   // yet found). This does not fix that unknown cause - it makes a hang
   // survivable until it is found.
+  // REAL BUG FOUND ON HARDWARE: esp_task_wdt_init() below was silently
+  // failing every boot - "TWDT already initialized" - because the
+  // Arduino framework itself already initializes the watchdog before
+  // setup() ever runs, with ITS OWN defaults (confirmed against this
+  // core's sdkconfig: 5000ms timeout, not the 8000ms this code believed
+  // it was setting). So this device has been running on a 5-second
+  // watchdog with idle tasks monitored, the whole time - not the 8s/no-
+  // idle-monitoring config written here. esp_task_wdt_reconfigure() is
+  // the correct call once the TWDT is already running (esp_task_wdt_init()
+  // is only for the very first init) - this is what actually applies the
+  // intended settings. Falls back to init() + add() in case some other
+  // environment genuinely hasn't initialized it yet.
   esp_task_wdt_config_t twdt_config = {
     .timeout_ms = 8000,
     .idle_core_mask = 0,
     .trigger_panic = true,
   };
-  esp_task_wdt_init(&twdt_config);
-  esp_task_wdt_add(NULL);
-  Serial.println("WATCHDOG: armed, 8000ms - a hung loop() now self-recovers via reboot.");
+  esp_err_t wdtErr = esp_task_wdt_reconfigure(&twdt_config);
+  if (wdtErr != ESP_OK) {
+    Serial.printf("WATCHDOG: reconfigure() failed (%d), falling back to init()...\n", wdtErr);
+    esp_task_wdt_init(&twdt_config);
+    esp_task_wdt_add(NULL);
+  }
+  Serial.printf("WATCHDOG: reconfigure() returned %d - now actually 8000ms, idle tasks NOT monitored.\n", wdtErr);
 }
 
 // ==========================================
@@ -1622,7 +1638,14 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
   https.addHeader("Content-Type", "application/json");
 
   String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
+  // Feed the watchdog right before the one call in here that can't be
+  // instrumented with periodic resets of its own (TLS handshake + POST
+  // are a single blocking library call) - buys this task the full 8s
+  // window going into it, on top of the idle-task monitoring now
+  // actually being off (see the watchdog reconfigure fix in setup()).
+  esp_task_wdt_reset();
   int code = https.POST(body);
+  esp_task_wdt_reset();
   if (code != 200) {
     Serial.printf("AMP: synthesizeAudio returned HTTP %d\n", code);
     https.end();
@@ -1660,10 +1683,17 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
     // strong enough one to guarantee the CPU's own idle task actually gets
     // scheduled - continuous TLS decrypt + I2S writes for the several
     // seconds a blessing takes starved it, tripping the IDLE task watchdog
-    // and panic-rebooting the board (confirmed via backtrace decode -
-    // prvIdleTask/esp_vApplicationIdleHook never got to run). delay(1) is
-    // a real vTaskDelay wait, which reliably yields long enough for it to.
+    // and panic-rebooting the board. delay(1) is a real vTaskDelay wait,
+    // which reliably yields. This alone turned out not to be the whole
+    // story - see the watchdog reconfigure fix in setup() for the deeper
+    // cause (idle-task monitoring was never actually turned off like this
+    // code believed) - but keeping the yield here too costs nothing.
     delay(1);
+    // This task (loop()/server.handleClient()) is itself subscribed to
+    // the watchdog independent of idle-task monitoring - a long clip
+    // (several seconds of streaming) needs its own explicit resets so it
+    // can't trip that subscription either.
+    esp_task_wdt_reset();
   }
 
   https.end();
