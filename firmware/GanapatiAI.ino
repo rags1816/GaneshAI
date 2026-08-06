@@ -744,8 +744,16 @@ void setup() {
   if (wdtErr != ESP_OK) {
     Serial.printf("WATCHDOG: reconfigure() failed (%d), falling back to init()...\n", wdtErr);
     esp_task_wdt_init(&twdt_config);
-    esp_task_wdt_add(NULL);
   }
+  // REGRESSION FOUND ON HARDWARE (r64): this call was accidentally left
+  // inside the fallback branch above, so on the normal/successful path
+  // (reconfigure() returning ESP_OK) the main loop task was NEVER
+  // subscribed to the watchdog at all - every esp_task_wdt_reset() call,
+  // including the pre-existing one at the top of loop(), then failed with
+  // "task not found", flooding the log and silently disabling ALL crash
+  // protection (worse than before the r64 fix, not better). Must run on
+  // every path, not just the fallback.
+  esp_task_wdt_add(NULL);
   Serial.printf("WATCHDOG: reconfigure() returned %d - now actually 8000ms, idle tasks NOT monitored.\n", wdtErr);
 }
 
