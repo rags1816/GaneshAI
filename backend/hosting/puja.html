@@ -226,6 +226,14 @@
             <p>Offer prasad & send your prayers to Lord Ganesha</p>
         </header>
 
+        <!-- Shown instead of the form when a priest has turned offerings
+             off from the dashboard (see FESTIVAL_ACTIVE_URL below) - e.g.
+             once the festival itself has ended, so the QR code doesn't
+             keep quietly accepting submissions indefinitely. -->
+        <div id="closed-message" style="display:none; text-align:center; padding:30px 10px;">
+            <p style="font-size:16px; color:var(--text-muted);">🙏 Bappa is not currently accepting offerings through this page. Please check back during puja hours.</p>
+        </div>
+
         <!-- Main Form -->
         <div id="puja-form">
             <!-- 0. Devotee Name -->
@@ -281,11 +289,17 @@
                     <span id="word-count-lbl" class="counter-lbl">0 / 20 words</span>
                     <button type="button" id="speak-btn" class="btn-back" style="margin-top:0;" onclick="startSpeechInput()">🎤 Speak your wish</button>
                 </div>
-                <!-- TEMPORARY diagnostic log while tracking down the speak-your-wish
-                     bug on real devices - shows exactly which speech recognition
-                     events fire, since there's no way to see the phone's own
-                     browser console remotely. Remove once resolved. -->
-                <pre id="speech-debug-log" style="background:#0a0f1a; color:#8892b0; padding:8px; font-size:11px; max-height:120px; overflow-y:auto; white-space:pre-wrap; border-radius:6px; margin-top:6px;"></pre>
+            </div>
+
+            <!-- Off by default - the priest queue is the real ritual: an
+                 offering gets curated and offered, then Bappa's blessing
+                 is heard from the temple itself when it's approved. This
+                 checkbox is only for a devotee who also wants a private,
+                 instant preview on their own phone the moment it's ready,
+                 which happens well before any priest sees it. -->
+            <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="phone-playback-opt-in" style="width:18px; height:18px; margin:0;">
+                <label for="phone-playback-opt-in" style="margin:0; font-size:13px; color:var(--text-muted);">🔊 Also let me hear it on my phone right now</label>
             </div>
 
             <button id="submit-btn" class="btn-submit" onclick="submitPuja()">✨ Send Offering to Bappa ✨</button>
@@ -314,6 +328,27 @@
         // call. Firebase's REST API takes/returns plain JSON directly, so
         // no base64 encoding workaround is needed here either.
         const RELAY_QUEUE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/ganesha_queue.json';
+
+        // Admin on/off switch for this page (toggled from the priest
+        // dashboard) - lets offerings be turned off, e.g. once the
+        // festival has ended, without needing to take the page down or
+        // reissue a new QR code. Missing/null means "on" (unset = the
+        // page behaves exactly as it always has, no action needed to
+        // keep accepting offerings).
+        const FESTIVAL_ACTIVE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/festival_active.json';
+
+        function checkFestivalActive() {
+            fetch(`${FESTIVAL_ACTIVE_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('status ' + res.status); return res.json(); })
+                .then(active => {
+                    if (active === false) {
+                        document.getElementById('puja-form').style.display = 'none';
+                        document.getElementById('closed-message').style.display = 'block';
+                    }
+                })
+                .catch(err => console.warn('Could not check festival_active flag, leaving the form open:', err));
+        }
+        checkFestivalActive();
 
         function relayReadQueue() {
             return fetch(`${RELAY_QUEUE_URL}?_t=${Date.now()}`)
@@ -373,17 +408,6 @@
 
         let lastSpeechBtnTapMs = 0;
 
-        // TEMPORARY diagnostic logger - writes straight to the on-page
-        // <pre id="speech-debug-log"> so real-device failures can be seen
-        // without a phone's browser console. Remove once resolved.
-        function speechDebugLog(msg) {
-            const el = document.getElementById('speech-debug-log');
-            if (!el) return;
-            const t = new Date().toLocaleTimeString();
-            el.textContent += t + ' - ' + msg + '\n';
-            el.scrollTop = el.scrollHeight;
-        }
-
         // Chrome's single-utterance mode (continuous:false) ends the
         // moment it detects ANY pause in speech, not just a pause at the
         // very end - so a natural mid-sentence breath was cutting
@@ -407,11 +431,6 @@
             recognition.continuous = false;
             recognition.maxAlternatives = 1;
 
-            recognition.onstart = () => speechDebugLog('onstart fired');
-            recognition.onaudiostart = () => speechDebugLog('onaudiostart fired (mic audio flowing)');
-            recognition.onsoundstart = () => speechDebugLog('onsoundstart fired');
-            recognition.onspeechstart = () => speechDebugLog('onspeechstart fired');
-            recognition.onspeechend = () => speechDebugLog('onspeechend fired');
             recognition.onresult = (event) => {
                 try {
                     // Rebuild this segment's transcript (interim results can
@@ -421,34 +440,24 @@
                     for (let i = 0; i < event.results.length; i++) {
                         sessionTranscript += event.results[i][0].transcript;
                     }
-                    const combined = (speechAccumulatedText + sessionTranscript).trim();
-                    speechDebugLog('onresult fired: "' + combined + '"');
-                    wishInput.value = combined;
+                    wishInput.value = (speechAccumulatedText + sessionTranscript).trim();
                     updateWordCount(); // same 20-word limit/warning as typing
                 } catch (e) {
-                    speechDebugLog('onresult handler THREW: ' + e.message);
+                    console.warn('onresult handler threw:', e);
                 }
             };
             recognition.onerror = (event) => {
                 console.warn('Speech recognition error:', event.error);
-                speechDebugLog('onerror fired: ' + event.error);
                 // "aborted" = our own .stop() call; "no-speech" = a pause
                 // between segments - both expected and handled by onend's
                 // auto-restart below, not real failures to alarm about.
-                // TEMPORARY: showing the raw error code in the alert itself
-                // while diagnosing real-device failures, since there's no
-                // way to see the phone's browser console otherwise - revert
-                // to the plain friendly message once this is solved.
                 if (event.error !== 'aborted' && event.error !== 'no-speech') {
-                    alert("Couldn't catch that clearly (error: " + event.error + ") - please try again or type your wish.");
+                    alert("Couldn't catch that clearly - please try again or type your wish.");
                 }
             };
             recognition.onend = () => {
-                speechDebugLog('onend fired');
-                if (myToken !== speechSessionToken) {
-                    speechDebugLog('Stale session (superseded by a later tap) - ignoring');
-                    return;
-                }
+                if (myToken !== speechSessionToken) return; // superseded by a later tap
+
                 // Lock in whatever this segment captured before deciding
                 // whether to keep listening for the next one.
                 speechAccumulatedText = wishInput.value.trim();
@@ -462,7 +471,6 @@
                     return;
                 }
 
-                speechDebugLog('Auto-restarting for next segment (up to 15s total)');
                 beginSpeechSession(wishInput, micBtn, myToken);
             };
 
@@ -471,7 +479,6 @@
                 recognition.start();
             } catch (e) {
                 console.warn('recognition.start() threw:', e);
-                speechDebugLog('recognition.start() THREW: ' + e.message);
                 if (myToken !== speechSessionToken) return;
                 clearInterval(speechCountdownInterval);
                 clearTimeout(speechHardStopTimeout);
@@ -490,9 +497,7 @@
             // browsers fire a button's click handler twice in very quick
             // succession from a single physical tap.
             const nowTap = Date.now();
-            speechDebugLog('Button tapped');
             if (nowTap - lastSpeechBtnTapMs < 400) {
-                speechDebugLog('Ignored - debounce (< 400ms since last tap)');
                 return;
             }
             lastSpeechBtnTapMs = nowTap;
@@ -503,10 +508,9 @@
             // Force the button back to normal here too, not only in onend -
             // some Android builds don't reliably fire onend after .stop().
             if (activeRecognition) {
-                speechDebugLog('Was already listening - stopping now');
                 speechStopRequested = true;
                 speechSessionToken++; // invalidate this session's pending onend
-                try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); speechDebugLog('stop() threw: ' + e.message); }
+                try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); }
                 clearInterval(speechCountdownInterval);
                 clearTimeout(speechHardStopTimeout);
                 activeRecognition = null;
@@ -522,10 +526,8 @@
 
             const langSelect = document.getElementById('lang-select');
             const wishInput = document.getElementById('wish-input');
-            speechDebugLog('lang-select found: ' + !!langSelect + ', wish-input found: ' + !!wishInput);
 
             speechLangCode = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
-            speechDebugLog('Starting - recognition.lang = ' + speechLangCode);
             speechAccumulatedText = '';
             speechStopRequested = false;
             speechSecondsLeft = SPEECH_TIMEOUT_MS / 1000;
@@ -571,16 +573,20 @@
 
             const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const offering = offeringSelect.value;
-            const wishText = wishInput.value.trim();
             const standardWish = standardWishSelect.value;
             const lang = langSelect.value;
 
-            // Double check word count validation
-            const words = wishText.split(/\s+/).filter(w => w.length > 0);
+            // updateWordCount() already truncates live as the devotee
+            // types or speaks (see r63) - this is just a defensive
+            // backstop in case it somehow wasn't called (e.g. a paste
+            // that skipped oninput), matching the same truncate-don't-
+            // block behavior rather than surprising them with an alert.
+            let words = wishInput.value.trim().split(/\s+/).filter(w => w.length > 0);
             if (words.length > 20) {
-                alert("Your prayer must be 20 words or less.");
-                return;
+                words = words.slice(0, 20);
+                wishInput.value = words.join(' ');
             }
+            const wishText = wishInput.value.trim();
 
             // Construct final prayer text representation (used immediately;
             // the AI blessing below, if it arrives in time, replaces this
@@ -626,14 +632,20 @@
             // rather than just the flat dropdown text. The backend
             // branches its prompt on whether prayer/standardWish are
             // present - see askClaudeForBlessing() in index.js.
-            requestAiBlessing(name, offering, wishText, standardWish, lang, newRequest.id);
+            const playOnPhone = document.getElementById('phone-playback-opt-in').checked;
+            requestAiBlessing(name, offering, wishText, standardWish, lang, newRequest.id, playOnPhone);
         }
 
-        // Best-effort: plays the spoken reply and upgrades the already-
-        // submitted offering's text with the AI-personalized version, if
-        // and when this finishes. Never blocks or delays the offering
-        // itself (see submitPuja() above).
-        function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId) {
+        // Best-effort: upgrades the already-submitted offering's text with
+        // the AI-personalized version, if and when this finishes, and -
+        // only if the devotee opted in - also plays the spoken reply right
+        // here on their own phone as an instant private preview. Otherwise
+        // the blessing is heard for the first time from the temple's own
+        // speaker once a priest approves it from the queue - that's the
+        // real ritual moment, not a default phone auto-play that would
+        // undercut it. Never blocks or delays the offering itself (see
+        // submitPuja() above).
+        function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId, playOnPhone) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -649,12 +661,10 @@
                     return res.blob().then(audioBlob => ({ blessingText, audioBlob }));
                 })
                 .then(({ blessingText, audioBlob }) => {
-                    // Play Bappa's spoken reply right here on the
-                    // devotee's own phone - the temple's own speaker
-                    // doesn't have this hardware yet, this is the
-                    // immediate feedback in the meantime.
-                    const audioEl = new Audio(URL.createObjectURL(audioBlob));
-                    audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
+                    if (playOnPhone) {
+                        const audioEl = new Audio(URL.createObjectURL(audioBlob));
+                        audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
+                    }
 
                     if (blessingText) upgradeOfferingText(requestId, blessingText);
                 })

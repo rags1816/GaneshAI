@@ -760,6 +760,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                  ~25px+ per side, not a token few pixels. -->
             <div id="qr-code-container" style="display: inline-block; background: #fff; padding: 28px; border-radius: 8px; line-height: 0;"></div>
             <div id="qr-code-status" style="font-size: 10px; color: var(--text-muted); margin-top: 8px;">Devotees scan this to submit their own offering &amp; prayer from their phone.</div>
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255, 215, 0, 0.15); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <button id="festival-toggle-btn" class="btn-back" style="margin-top:0; font-size: 11px; padding: 6px 12px;" onclick="toggleFestivalActive()">Loading...</button>
+            </div>
         </div>
         </details>
 
@@ -3529,6 +3532,58 @@ var QRCode;
             correctLevel: QRCode.CorrectLevel.M
         });
         document.getElementById('qr-code-status').innerText = pujaUrl;
+
+        // Admin on/off switch for the puja page (see checkFestivalActive()
+        // in puja_page.h) - lets offerings be turned off, e.g. once the
+        // festival has ended, without taking the page down or reissuing a
+        // new QR code. Missing/null in Firebase means "on".
+        const FESTIVAL_ACTIVE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/festival_active.json';
+
+        function refreshFestivalToggleBtn(active) {
+            const btn = document.getElementById('festival-toggle-btn');
+            if (active) {
+                btn.innerText = '🟢 Accepting Offerings (tap to close)';
+                btn.style.color = '#4caf50';
+            } else {
+                btn.innerText = '🔴 Offerings Closed (tap to reopen)';
+                btn.style.color = '#ff4b4b';
+            }
+        }
+
+        function fetchFestivalActive() {
+            return fetch(`${FESTIVAL_ACTIVE_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('status ' + res.status); return res.json(); })
+                .then(active => active !== false); // null/missing = on
+        }
+
+        fetchFestivalActive()
+            .then(refreshFestivalToggleBtn)
+            .catch(err => {
+                console.warn('Could not load festival_active state:', err);
+                document.getElementById('festival-toggle-btn').innerText = '⚠️ Status unknown (tap to retry)';
+            });
+
+        function toggleFestivalActive() {
+            const btn = document.getElementById('festival-toggle-btn');
+            btn.disabled = true;
+            fetchFestivalActive()
+                .then(currentlyActive => {
+                    const next = !currentlyActive;
+                    return fetch(FESTIVAL_ACTIVE_URL, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(next)
+                    }).then(res => {
+                        if (!res.ok) throw new Error('write status ' + res.status);
+                        refreshFestivalToggleBtn(next);
+                    });
+                })
+                .catch(err => {
+                    console.warn('Could not toggle festival_active:', err);
+                    alert("Couldn't update the offerings toggle - check your internet connection and try again.");
+                })
+                .finally(() => { btn.disabled = false; });
+        }
         // Poll online database queue every 4 seconds
         setInterval(renderQueue, 4000);
         // Start in Standby
