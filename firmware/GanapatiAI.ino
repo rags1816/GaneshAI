@@ -1646,14 +1646,7 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
   https.addHeader("Content-Type", "application/json");
 
   String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
-  // Feed the watchdog right before the one call in here that can't be
-  // instrumented with periodic resets of its own (TLS handshake + POST
-  // are a single blocking library call) - buys this task the full 8s
-  // window going into it, on top of the idle-task monitoring now
-  // actually being off (see the watchdog reconfigure fix in setup()).
-  esp_task_wdt_reset();
   int code = https.POST(body);
-  esp_task_wdt_reset();
   if (code != 200) {
     Serial.printf("AMP: synthesizeAudio returned HTTP %d\n", code);
     https.end();
@@ -1687,25 +1680,58 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
     ampI2S.write(buf, n);
     bytesPlayed += n;
     lastDataMs = millis();
-    // Real crash found on hardware: delay(0) LOOKS like a yield but isn't a
-    // strong enough one to guarantee the CPU's own idle task actually gets
-    // scheduled - continuous TLS decrypt + I2S writes for the several
-    // seconds a blessing takes starved it, tripping the IDLE task watchdog
-    // and panic-rebooting the board. delay(1) is a real vTaskDelay wait,
-    // which reliably yields. This alone turned out not to be the whole
-    // story - see the watchdog reconfigure fix in setup() for the deeper
-    // cause (idle-task monitoring was never actually turned off like this
-    // code believed) - but keeping the yield here too costs nothing.
-    delay(1);
-    // This task (loop()/server.handleClient()) is itself subscribed to
-    // the watchdog independent of idle-task monitoring - a long clip
-    // (several seconds of streaming) needs its own explicit resets so it
-    // can't trip that subscription either.
-    esp_task_wdt_reset();
+    delay(1); // real yield, unlike delay(0) - see speakBlessingOnAmpAsync() for why this whole function no longer runs on the watchdog-subscribed task at all
   }
 
   https.end();
   Serial.printf("AMP: playback finished, %d bytes played\n", bytesPlayed);
+}
+
+// Two real crashes found on hardware tonight (both watchdog panics) came
+// from speakBlessingOnAmp() running inline inside the HTTP request
+// handler - on the SAME task as loop()/server.handleClient(), which is
+// subscribed to the watchdog. A TLS handshake, a slow synthesizeAudio
+// response, or - worst case - ampI2S.write() itself blocking forever if
+// the amp isn't actually consuming data (a wiring fault: the ESP32's I2S
+// DMA buffer fills up and write() waits for space that never frees) could
+// all run past the watchdog's timeout and reboot the whole board, freezing
+// the OLED and every other sensor along with it for however long it took.
+//
+// Running it on its own FreeRTOS task instead, NOT subscribed to the
+// watchdog, fixes the actual failure mode: a stuck or faulty amp can now
+// only ever produce silence, never a crash. blessingTaskActive guards
+// against two offerings overlapping, since ampI2S is a single shared
+// instance not safe for concurrent writes from two tasks at once.
+volatile bool blessingTaskActive = false;
+
+struct BlessingTaskParams {
+  String text;
+  String lang;
+};
+
+void speakBlessingTaskFn(void *pvParameters) {
+  BlessingTaskParams *params = (BlessingTaskParams *)pvParameters;
+  speakBlessingOnAmp(params->text, params->lang);
+  delete params;
+  blessingTaskActive = false;
+  vTaskDelete(NULL);
+}
+
+void speakBlessingOnAmpAsync(const String &text, const String &lang) {
+  if (blessingTaskActive) {
+    Serial.println("AMP: a blessing is already playing, skipping this one");
+    return;
+  }
+  if (!ampReady || text.length() == 0) return;
+
+  BlessingTaskParams *params = new BlessingTaskParams{text, lang};
+  blessingTaskActive = true;
+  BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 1);
+  if (created != pdPASS) {
+    Serial.println("AMP: failed to create blessing playback task");
+    delete params;
+    blessingTaskActive = false;
+  }
 }
 
 // Fired when the priest approves a devotee's submission from the Priest
@@ -1782,15 +1808,11 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
 
   setSystemState(STATE_FEET_ACTIVE, 12000);
 
-  // Speak the blessing text through the altar's own speaker. This call
-  // blocks for the duration of the network fetch + spoken audio (roughly
-  // 5-10s for a typical ~40-word blessing) - the whole device (OLED
-  // scroll, touch/PIR response, other web requests) is unresponsive for
-  // that window, same as any other synchronous call in this handler.
-  // Acceptable for now since it only happens during the offering's own
-  // already-paused display window, not during normal operation - revisit
-  // with a background task if real-device testing finds it too disruptive.
-  speakBlessingOnAmp(prayer, lang);
+  // Speak the blessing text through the altar's own speaker, on its own
+  // background task (see speakBlessingOnAmpAsync() above) - two real
+  // watchdog-panic crashes on hardware tonight both traced back to this
+  // running inline on the same task as loop()/server.handleClient().
+  speakBlessingOnAmpAsync(prayer, lang);
 }
 
 void triggerAarti() {
