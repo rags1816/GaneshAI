@@ -391,6 +391,105 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             el.scrollTop = el.scrollHeight;
         }
 
+        // Chrome's single-utterance mode (continuous:false) ends the
+        // moment it detects ANY pause in speech, not just a pause at the
+        // very end - so a natural mid-sentence breath was cutting
+        // listening short well before the 15s cap. These track text
+        // carried across automatically-chained sessions so listening
+        // feels continuous to the devotee even though under the hood
+        // it's a fresh session each time. speechSessionToken guards
+        // against a stale session's onend (still pending async) acting
+        // after a new tap has already started a different session.
+        let speechAccumulatedText = '';
+        let speechStopRequested = false;
+        let speechSecondsLeft = 0;
+        let speechLangCode = 'en-IN';
+        let speechSessionToken = 0;
+
+        function beginSpeechSession(wishInput, micBtn, myToken) {
+            const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognitionCtor();
+            recognition.lang = speechLangCode;
+            recognition.interimResults = true;
+            recognition.continuous = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => speechDebugLog('onstart fired');
+            recognition.onaudiostart = () => speechDebugLog('onaudiostart fired (mic audio flowing)');
+            recognition.onsoundstart = () => speechDebugLog('onsoundstart fired');
+            recognition.onspeechstart = () => speechDebugLog('onspeechstart fired');
+            recognition.onspeechend = () => speechDebugLog('onspeechend fired');
+            recognition.onresult = (event) => {
+                try {
+                    // Rebuild this segment's transcript (interim results can
+                    // still change until they settle), then show it appended
+                    // after whatever earlier segments already captured.
+                    let sessionTranscript = '';
+                    for (let i = 0; i < event.results.length; i++) {
+                        sessionTranscript += event.results[i][0].transcript;
+                    }
+                    const combined = (speechAccumulatedText + sessionTranscript).trim();
+                    speechDebugLog('onresult fired: "' + combined + '"');
+                    wishInput.value = combined;
+                    updateWordCount(); // same 20-word limit/warning as typing
+                } catch (e) {
+                    speechDebugLog('onresult handler THREW: ' + e.message);
+                }
+            };
+            recognition.onerror = (event) => {
+                console.warn('Speech recognition error:', event.error);
+                speechDebugLog('onerror fired: ' + event.error);
+                // "aborted" = our own .stop() call; "no-speech" = a pause
+                // between segments - both expected and handled by onend's
+                // auto-restart below, not real failures to alarm about.
+                // TEMPORARY: showing the raw error code in the alert itself
+                // while diagnosing real-device failures, since there's no
+                // way to see the phone's browser console otherwise - revert
+                // to the plain friendly message once this is solved.
+                if (event.error !== 'aborted' && event.error !== 'no-speech') {
+                    alert("Couldn't catch that clearly (error: " + event.error + ") - please try again or type your wish.");
+                }
+            };
+            recognition.onend = () => {
+                speechDebugLog('onend fired');
+                if (myToken !== speechSessionToken) {
+                    speechDebugLog('Stale session (superseded by a later tap) - ignoring');
+                    return;
+                }
+                // Lock in whatever this segment captured before deciding
+                // whether to keep listening for the next one.
+                speechAccumulatedText = wishInput.value.trim();
+                if (speechAccumulatedText) speechAccumulatedText += ' ';
+
+                if (speechStopRequested || speechSecondsLeft <= 0) {
+                    clearInterval(speechCountdownInterval);
+                    clearTimeout(speechHardStopTimeout);
+                    activeRecognition = null;
+                    micBtn.innerText = '🎤 Speak your wish';
+                    return;
+                }
+
+                speechDebugLog('Auto-restarting for next segment (up to 15s total)');
+                beginSpeechSession(wishInput, micBtn, myToken);
+            };
+
+            activeRecognition = recognition;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.warn('recognition.start() threw:', e);
+                speechDebugLog('recognition.start() THREW: ' + e.message);
+                if (myToken !== speechSessionToken) return;
+                clearInterval(speechCountdownInterval);
+                clearTimeout(speechHardStopTimeout);
+                activeRecognition = null;
+                micBtn.innerText = '🎤 Speak your wish';
+                if (!speechAccumulatedText) {
+                    alert("Couldn't start listening - please try again or type your wish.");
+                }
+            }
+        }
+
         function startSpeechInput() {
             // Guard against mobile "ghost click" double-firing (a real
             // pattern found tonight: tapping to stop appeared to
@@ -412,6 +511,8 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // some Android builds don't reliably fire onend after .stop().
             if (activeRecognition) {
                 speechDebugLog('Was already listening - stopping now');
+                speechStopRequested = true;
+                speechSessionToken++; // invalidate this session's pending onend
                 try { activeRecognition.stop(); } catch (e) { console.warn('recognition.stop() threw:', e); speechDebugLog('stop() threw: ' + e.message); }
                 clearInterval(speechCountdownInterval);
                 clearTimeout(speechHardStopTimeout);
@@ -430,88 +531,35 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const wishInput = document.getElementById('wish-input');
             speechDebugLog('lang-select found: ' + !!langSelect + ', wish-input found: ' + !!wishInput);
 
-            const recognition = new SpeechRecognitionCtor();
-            recognition.lang = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
-            speechDebugLog('Starting - recognition.lang = ' + recognition.lang);
-            // interimResults stays on so the wish box fills in live as you
-            // speak. continuous is deliberately OFF: real-device testing
-            // (Android Chrome) found continuous mode silently never fires
-            // onresult at all and .stop() doesn't reliably work either -
-            // a known reliability gap in that specific mode across some
-            // browser/OS builds. Plain single-utterance mode (auto-stops
-            // on a natural pause) is far more broadly supported; the 15s
-            // timeout and tap-to-stop below still apply as a safety net.
-            recognition.interimResults = true;
-            recognition.continuous = false;
-            recognition.maxAlternatives = 1;
-
-            let secondsLeft = SPEECH_TIMEOUT_MS / 1000;
-            micBtn.innerText = `🎤 Listening... ${secondsLeft}s (tap to stop)`;
-
-            recognition.onstart = () => speechDebugLog('onstart fired');
-            recognition.onaudiostart = () => speechDebugLog('onaudiostart fired (mic audio flowing)');
-            recognition.onsoundstart = () => speechDebugLog('onsoundstart fired');
-            recognition.onspeechstart = () => speechDebugLog('onspeechstart fired');
-            recognition.onspeechend = () => speechDebugLog('onspeechend fired');
-            recognition.onresult = (event) => {
-                try {
-                    // Rebuild the full transcript from every result seen so far
-                    // this session (interim results can still change until
-                    // they settle, so this always reflects the latest guess).
-                    let transcript = '';
-                    for (let i = 0; i < event.results.length; i++) {
-                        transcript += event.results[i][0].transcript;
-                    }
-                    speechDebugLog('onresult fired: "' + transcript + '"');
-                    wishInput.value = transcript;
-                    updateWordCount(); // same 20-word limit/warning as typing
-                } catch (e) {
-                    speechDebugLog('onresult handler THREW: ' + e.message);
-                }
-            };
-            recognition.onerror = (event) => {
-                console.warn('Speech recognition error:', event.error);
-                speechDebugLog('onerror fired: ' + event.error);
-                // "aborted" is what firing our own .stop() looks like -
-                // expected, not a real failure, so don't alarm the devotee.
-                // TEMPORARY: showing the raw error code in the alert itself
-                // while diagnosing real-device failures, since there's no
-                // way to see the phone's browser console otherwise - revert
-                // to the plain friendly message once this is solved.
-                if (event.error !== 'aborted') {
-                    alert("Couldn't catch that clearly (error: " + event.error + ") - please try again or type your wish.");
-                }
-            };
-            recognition.onend = () => {
-                speechDebugLog('onend fired');
-                clearInterval(speechCountdownInterval);
-                clearTimeout(speechHardStopTimeout);
-                activeRecognition = null;
-                micBtn.innerText = '🎤 Speak your wish';
-            };
+            speechLangCode = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
+            speechDebugLog('Starting - recognition.lang = ' + speechLangCode);
+            speechAccumulatedText = '';
+            speechStopRequested = false;
+            speechSecondsLeft = SPEECH_TIMEOUT_MS / 1000;
+            speechSessionToken++;
+            const myToken = speechSessionToken;
+            micBtn.innerText = `🎤 Listening... ${speechSecondsLeft}s (tap to stop)`;
 
             speechCountdownInterval = setInterval(() => {
-                secondsLeft--;
-                if (secondsLeft > 0) {
-                    micBtn.innerText = `🎤 Listening... ${secondsLeft}s (tap to stop)`;
+                speechSecondsLeft--;
+                if (speechSecondsLeft > 0) {
+                    micBtn.innerText = `🎤 Listening... ${speechSecondsLeft}s (tap to stop)`;
                 }
             }, 1000);
 
-            // Hard cap - Chrome's own silence-detection can sometimes run
-            // long with background noise, so don't rely on that alone.
-            speechHardStopTimeout = setTimeout(() => recognition.stop(), SPEECH_TIMEOUT_MS);
+            // Hard cap across all chained segments - Chrome's own
+            // silence-detection can sometimes run long with background
+            // noise, so don't rely on that alone. Stopping here triggers
+            // onend, which sees speechSecondsLeft <= 0 and finalizes
+            // instead of chaining into another segment.
+            speechHardStopTimeout = setTimeout(() => {
+                speechSecondsLeft = 0;
+                if (activeRecognition) {
+                    try { activeRecognition.stop(); } catch (e) { /* ignore */ }
+                }
+            }, SPEECH_TIMEOUT_MS);
 
-            activeRecognition = recognition;
-            try {
-                recognition.start();
-            } catch (e) {
-                console.warn('recognition.start() threw:', e);
-                clearInterval(speechCountdownInterval);
-                clearTimeout(speechHardStopTimeout);
-                activeRecognition = null;
-                micBtn.innerText = '🎤 Speak your wish';
-                alert("Couldn't start listening - please try again or type your wish.");
-            }
+            beginSpeechSession(wishInput, micBtn, myToken);
         }
 
         // AI blessing backend (see backend/functions/index.js) - only
