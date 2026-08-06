@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-05-r66"
+#define FIRMWARE_VERSION "2026-08-05-r67"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -184,6 +184,21 @@
 #define AMP_BCLK_PIN     13   // module pin BCLK
 #define AMP_LRC_PIN      14   // module pin LRC (Word Select)
 #define AMP_DIN_PIN      32   // module pin DIN (reclaimed from the I2S mic reservation)
+
+// CONFIRMED ON HARDWARE - two things beyond the three pins above, or the
+// amp powers up, receives valid I2S data, and stays completely silent
+// (this cost hours across TWO separate amp modules before being found):
+//   1. Module's SD (shutdown) pin -> tie to VIN. Unlike GAIN, a floating
+//      SD pin has no defined behavior on generic/clone MAX98357A
+//      breakouts (only Adafruit's ties it internally) - floating, it
+//      commonly settles into shutdown/muted regardless of good power and
+//      good I2S data. GAIN can stay floating - that's an intentional
+//      documented default (~9dB), not a problem.
+//   2. Module's GND -> also wire directly to an ESP32 GND pin, not only
+//      to the external adapter's ground via the WAGO. BCLK/LRC/DIN are
+//      logic signals referenced to a shared ground; power alone (VIN)
+//      can read a perfectly good 5V on a meter even when the adapter's
+//      ground isn't actually the same electrical node as the ESP32's.
 
 // ==========================================
 // Software & Timing Configurations
