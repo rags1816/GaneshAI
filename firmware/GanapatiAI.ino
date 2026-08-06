@@ -1656,7 +1656,14 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
     ampI2S.write(buf, n);
     bytesPlayed += n;
     lastDataMs = millis();
-    delay(0); // yield even while data keeps flowing, so a long clip can't starve the watchdog
+    // Real crash found on hardware: delay(0) LOOKS like a yield but isn't a
+    // strong enough one to guarantee the CPU's own idle task actually gets
+    // scheduled - continuous TLS decrypt + I2S writes for the several
+    // seconds a blessing takes starved it, tripping the IDLE task watchdog
+    // and panic-rebooting the board (confirmed via backtrace decode -
+    // prvIdleTask/esp_vApplicationIdleHook never got to run). delay(1) is
+    // a real vTaskDelay wait, which reliably yields long enough for it to.
+    delay(1);
   }
 
   https.end();
