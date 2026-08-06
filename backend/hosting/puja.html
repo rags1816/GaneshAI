@@ -253,11 +253,15 @@
                 </select>
             </div>
 
-            <!-- 2. Standard Blessings Picker -->
+            <!-- 2. Standard Blessings Picker - a quick, zero-typing
+                 alternative to the free-text wish below, for a devotee
+                 who'd rather tap once than write/speak something specific.
+                 Both can be filled in together (askClaudeForBlessing()
+                 combines them); neither is required. -->
             <div class="form-group">
-                <label for="standard-wish-select">Ask for Blessing (Optional)</label>
+                <label for="standard-wish-select">Quick Blessing (Optional - or write your own below)</label>
                 <select id="standard-wish-select" class="select-input">
-                    <option value="">-- Choose Standard Blessing --</option>
+                    <option value="">-- Pick a Quick Blessing --</option>
                     <option value="Wisdom & Intellect">🧠 Wisdom & Intellect</option>
                     <option value="Prosperity & Wealth">💰 Prosperity & Wealth</option>
                     <option value="Good Health & Energy">⚡ Good Health & Energy</option>

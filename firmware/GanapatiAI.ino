@@ -255,6 +255,19 @@ int currentPattern = 0;
 int currentVolume = DEFAULT_VOLUME;
 bool pirEnabled = true;
 
+// Runtime admin on/off toggles (dashboard "System Settings") for the
+// remaining components, same pattern as pirEnabled above - these are
+// independent of the compile-time *_CONNECTED flags in config.h (which
+// mean "is this hardware physically wired up at all"); these mean "is it
+// currently switched on" for hardware that IS wired up. No Mic toggle
+// here - the main board has no mic functionality built into it at all
+// yet (that only exists in the separate diagnostics/ExpansionBench
+// sketch), so there's nothing on this board to switch off.
+bool displayEnabled = true;
+bool ledEnabled = true;
+bool touchFeetEnabled = true;
+bool touchBackEnabled = true;
+
 // Language Settings: 0 = English, 1 = Marathi/Sanskrit, 2 = Tamil
 int selectedLang = 1; 
 // Theme of the Day: 0 = Tue (Ganesha), 1 = Mon (Shiva), 2 = Wed (Wisdom), 3 = Thu (Guru), 4 = Fri (Shakti), 5 = Sat (Discipline), 6 = Sun (Sun)
@@ -824,11 +837,13 @@ void handleWebRoutes() {
     unsigned long stateElapsed = millis() - stateTimer;
     if (stateElapsed > stateDuration) stateElapsed = stateDuration;
 
-    char json[700];
+    char json[800];
     int n = snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
+      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
       stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
-      pirEnabled ? "true" : "false", selectedLang, selectedTheme, currentPlayingTrack,
+      pirEnabled ? "true" : "false", displayEnabled ? "true" : "false", ledEnabled ? "true" : "false",
+      touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false",
+      selectedLang, selectedTheme, currentPlayingTrack,
       stateElapsed, stateDuration);
 
     // Minimal JSON string escaping - none of today's blessing/welcome text
@@ -978,6 +993,29 @@ void handleWebRoutes() {
     if (server.hasArg("theme")) {
       selectedTheme = server.arg("theme").toInt();
     }
+    if (server.hasArg("display")) {
+      displayEnabled = (server.arg("display").toInt() == 1);
+      if (!displayEnabled) {
+        // Blank it once immediately, rather than waiting for drawOLED()
+        // to notice - otherwise whatever was on screen stays frozen
+        // there until the next state change happens to redraw it.
+        u8g2.clearBuffer();
+        u8g2.sendBuffer();
+      }
+    }
+    if (server.hasArg("led")) {
+      ledEnabled = (server.arg("led").toInt() == 1);
+      if (!ledEnabled && LED_CONNECTED) {
+        fill_solid(leds, NUM_LEDS, CRGB::Black);
+        FastLED.show();
+      }
+    }
+    if (server.hasArg("touchFeet")) {
+      touchFeetEnabled = (server.arg("touchFeet").toInt() == 1);
+    }
+    if (server.hasArg("touchBack")) {
+      touchBackEnabled = (server.arg("touchBack").toInt() == 1);
+    }
     server.send(200, "text/plain", "OK");
   });
 }
@@ -1113,8 +1151,8 @@ void checkSensors() {
   // for TOUCH_SETTLE_MS before it counts as the new level, which rejects
   // the short bounces a rough solder joint produces. TOUCH_DEBOUNCE then
   // rate-limits genuine repeat taps.
-  bool feetRead = TOUCH_FEET_CONNECTED && (digitalRead(TOUCH_FEET_PIN) == HIGH);
-  bool backRead = TOUCH_BACK_CONNECTED && (digitalRead(TOUCH_BACK_PIN) == HIGH);
+  bool feetRead = TOUCH_FEET_CONNECTED && touchFeetEnabled && (digitalRead(TOUCH_FEET_PIN) == HIGH);
+  bool backRead = TOUCH_BACK_CONNECTED && touchBackEnabled && (digitalRead(TOUCH_BACK_PIN) == HIGH);
   // Both advanced every pass, before any branching - putting these calls
   // inside the if/else-if would let short-circuit evaluation skip one
   // pad's debounce on any pass the other pad reported an edge.
@@ -1908,6 +1946,7 @@ void stopAudioAndStandby() {
 //   0 Peacock Wave, 1 Circuit Pulse, 2 Golden Aura, 3 Rainbow Dream, 4 Diya Flicker
 void animateLeds() {
   if (!LED_CONNECTED) return; // FastLED never initialised - see setup()
+  if (!ledEnabled) return; // admin-disabled - blanked once already in the /api/settings handler
   if (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();
@@ -1991,6 +2030,8 @@ void animateLeds() {
 // OLED Text Drawing & Scrolling (U8g2)
 // ==========================================
 void drawOLED() {
+  if (!displayEnabled) return; // admin-disabled - blanked once already in the /api/settings handler
+
   // Hardware test card (/api/test?oled=1) outranks everything, including
   // the states where the screen is normally off - its whole job is to
   // answer "is this panel alive?" with the most visible image possible.

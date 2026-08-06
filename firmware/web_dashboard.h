@@ -842,6 +842,38 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span style="font-size: 12px; color: #a8b2d1;">Simulate PIR Detection</span>
             <button style="padding: 2px 6px; font-size: 9px;" onclick="triggerPIR()">Trigger PIR</button>
         </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">OLED Display</span>
+            <label class="switch">
+                <input type="checkbox" id="display-toggle" checked onchange="toggleComponent('display')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">LED Ring</span>
+            <label class="switch">
+                <input type="checkbox" id="led-toggle" checked onchange="toggleComponent('led')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">Feet Touch Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="touch-feet-toggle" checked onchange="toggleComponent('touchFeet')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container" style="margin-bottom: 5px;">
+            <span style="font-size: 12px; color: #a8b2d1;">Mouse-Back Touch Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="touch-back-toggle" checked onchange="toggleComponent('touchBack')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
         </details>
 
         <footer>
@@ -3296,6 +3328,18 @@ var QRCode;
             if (isPhysicalESP) espGet(`/api/settings?pir=${pirEnabled ? 1 : 0}`);
         }
 
+        // Same on/off pattern as togglePIR() above, for the other
+        // admin-toggleable components - one function since they're all
+        // identical apart from the checkbox id / query param name.
+        const COMPONENT_TOGGLE_IDS = {
+            display: 'display-toggle', led: 'led-toggle',
+            touchFeet: 'touch-feet-toggle', touchBack: 'touch-back-toggle'
+        };
+        function toggleComponent(name) {
+            const checked = document.getElementById(COMPONENT_TOGGLE_IDS[name]).checked;
+            if (isPhysicalESP) espGet(`/api/settings?${name}=${checked ? 1 : 0}`);
+        }
+
         // Priest Queue Logic
         let lastQueueCount = -1; // Track queue count for audio notifications
 
@@ -3641,6 +3685,19 @@ var QRCode;
                 if (pirToggle) pirToggle.checked = pirEnabled;
                 if (langSelect) langSelect.value = selectedLang;
                 if (themeSelect) themeSelect.value = selectedTheme;
+
+                // Same sync pattern as pirToggle above, for the other
+                // admin-toggleable components - keeps the dashboard
+                // showing the device's REAL current state even if it was
+                // last changed from a different browser tab/device.
+                const displayToggle = document.getElementById('display-toggle');
+                const ledToggle = document.getElementById('led-toggle');
+                const touchFeetToggle = document.getElementById('touch-feet-toggle');
+                const touchBackToggle = document.getElementById('touch-back-toggle');
+                if (displayToggle && typeof data.displayEnabled === 'boolean') displayToggle.checked = data.displayEnabled;
+                if (ledToggle && typeof data.ledEnabled === 'boolean') ledToggle.checked = data.ledEnabled;
+                if (touchFeetToggle && typeof data.touchFeetEnabled === 'boolean') touchFeetToggle.checked = data.touchFeetEnabled;
+                if (touchBackToggle && typeof data.touchBackEnabled === 'boolean') touchBackToggle.checked = data.touchBackEnabled;
 
                 // The real device already left playback on its own (its
                 // onboard AMBIENT timeout is 30s, well ahead of this
