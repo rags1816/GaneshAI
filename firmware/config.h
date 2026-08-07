@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-05-r71"
+#define FIRMWARE_VERSION "2026-08-05-r72"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -162,15 +162,48 @@
 // Serial-2 role, not their number. There is no conflict with the DFPlayer,
 // which also uses Serial 2: the ESP32 can route a UART to any pins, and
 // Serial2 is pointed at GPIO25/26 below, leaving these two free.
+// NO LONGER USABLE AS WRITTEN: D4 and D5 have since been reclaimed by
+// the wish pad (WISH_PAD_PIN) and the reserved mic (I2S_MIC_WS)
+// respectively, now that the display being used is the 4-pin I2C-only
+// SSD1309 module (no SPI capability at all, so this mode was never
+// going to be needed with it). Left defined for reference only - do NOT
+// select OLED_SSD1309_SPI without first re-picking free pins here.
 #define OLED_SPI_CLK     22   // module pin CLK -> board pin D22
-#define OLED_SPI_DIN      4   // module pin DIN -> board pin D4
-#define OLED_SPI_CS       5   // module pin CS  -> board pin D5
+#define OLED_SPI_DIN      4   // module pin DIN -> board pin D4 (CONFLICTS with WISH_PAD_PIN)
+#define OLED_SPI_CS       5   // module pin CS  -> board pin D5 (CONFLICTS with I2S_MIC_WS)
 #define OLED_SPI_DC      17   // module pin DC  -> board pin printed TX2
 #define OLED_SPI_RST     16   // module pin RST -> board pin printed RX2
 
 // DFPlayer Mini MP3 Player
 #define DFPLAYER_RX      25   // Connect to DFPlayer TX
 #define DFPLAYER_TX      26   // Connect to DFPlayer RX (via 1k resistor)
+
+// I2S Amp (MAX98357A) - speaks the AI blessing text through the altar's
+// own speaker when a priest approves an offering (see speakBlessingOnAmp()
+// in GanapatiAI.ino). Every other GPIO is already spoken for on this
+// board (DFPlayer on 25/26, touch pads on 4/23/27, PIR on 19, LED on 18,
+// OLED on 21/22) - 13 and 14 are the only genuinely free general-purpose
+// pins left, so DIN reclaims one pin (32) from the old I2S mic
+// reservation below. CONFIRM these are actually free on your current
+// board before wiring - swap them here if not.
+#define AMP_BCLK_PIN     13   // module pin BCLK
+#define AMP_LRC_PIN      14   // module pin LRC (Word Select)
+#define AMP_DIN_PIN      32   // module pin DIN (reclaimed from the I2S mic reservation)
+
+// CONFIRMED ON HARDWARE - two things beyond the three pins above, or the
+// amp powers up, receives valid I2S data, and stays completely silent
+// (this cost hours across TWO separate amp modules before being found):
+//   1. Module's SD (shutdown) pin -> tie to VIN. Unlike GAIN, a floating
+//      SD pin has no defined behavior on generic/clone MAX98357A
+//      breakouts (only Adafruit's ties it internally) - floating, it
+//      commonly settles into shutdown/muted regardless of good power and
+//      good I2S data. GAIN can stay floating - that's an intentional
+//      documented default (~9dB), not a problem.
+//   2. Module's GND -> also wire directly to an ESP32 GND pin, not only
+//      to the external adapter's ground via the WAGO. BCLK/LRC/DIN are
+//      logic signals referenced to a shared ground; power alone (VIN)
+//      can read a perfectly good 5V on a meter even when the adapter's
+//      ground isn't actually the same electrical node as the ESP32's.
 
 // I2S Microphone (INMP441) - RESERVED, NOT YET USED BY ANY CODE.
 // These three numbers are a plan, not a driver: nothing in the sketch
@@ -180,23 +213,16 @@
 // The INMP441 has SIX pads: VDD -> 3V3, GND -> GND, plus L/R -> GND
 // (L/R selects which stereo half it speaks on; tied to GND = left, which
 // is what the ESP32 side will expect).
-#define I2S_MIC_WS       32   // module pad WS  (Word Select / LRC)
+//
+// REAL BUG FOUND while assembling the final pin plan: WS used to be
+// GPIO32 here, the exact pin AMP_DIN_PIN above now also uses - the amp
+// correctly reclaimed it, but this definition was never updated to
+// match, so it was silently still claiming an already-used pin. Moved
+// WS to GPIO5 (genuinely free - it was only ever reserved for the
+// SPI-mode OLED, which this build doesn't use with an I2C-only display).
+#define I2S_MIC_WS        5   // module pad WS  (Word Select / LRC) - moved from 32, which AMP_DIN_PIN now uses
 #define I2S_MIC_SCK      33   // module pad SCK (Serial Clock / BCLK)
 #define I2S_MIC_SD       34   // module pad SD  (Serial Data) - input-only pin, correct for a mic
-
-// I2S Amp (MAX98357A) - speaks the AI blessing text through the altar's
-// own speaker when a priest approves an offering (see speakBlessingOnAmp()
-// in GanapatiAI.ino). Every other GPIO is already spoken for on this
-// board (DFPlayer on 25/26, touch pads on 23/27, PIR on 19, LED on 18,
-// OLED on 21/22, I2S mic reserved on 32/33/34) - 13 and 14 are the only
-// genuinely free general-purpose pins left, so DIN reclaims one pin from
-// the still-unused mic reservation above (WS/SCK on 32/33 stay reserved
-// for a future working mic; only SD/34 - unusable for an output anyway,
-// being input-only - was never a candidate). CONFIRM these are actually
-// free on your current board before wiring - swap them here if not.
-#define AMP_BCLK_PIN     13   // module pin BCLK
-#define AMP_LRC_PIN      14   // module pin LRC (Word Select)
-#define AMP_DIN_PIN      32   // module pin DIN (reclaimed from the I2S mic reservation)
 
 // CONFIRMED ON HARDWARE - two things beyond the three pins above, or the
 // amp powers up, receives valid I2S data, and stays completely silent
