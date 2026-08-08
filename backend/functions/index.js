@@ -261,6 +261,51 @@ exports.generateBlessing = onRequest(
     },
 );
 
+// Pulls Claude's self-reported mood out of its reply, tolerating real
+// deviation from the requested `[mood]`-at-the-start format - a prompt
+// this size (language instructions repeated twice, word limit, "no
+// markdown", THEN the mood-tag instruction tacked on last) genuinely
+// might not get followed to the letter every time, and every blessing
+// silently defaulting to the same mood (confirmed as the actual
+// symptom reported: two very different prayers both showing the same
+// LED color) is a real, reported failure mode, not a hypothetical one.
+// Three tiers, each looser than the last:
+//   1. `[mood]` exactly at the start (the requested format).
+//   2. `[mood]` anywhere in the first 40 characters (a short unwanted
+//      preamble before the tag, rather than no tag at all).
+//   3. A bare mood word, no brackets, anywhere in the first 60
+//      characters (Claude wrote the mood as English rather than
+//      formatting it as instructed).
+// Only truly gives up (constant "peaceful") if none of those find
+// anything - and logs the raw text either way, so a real Claude
+// formatting drift shows up in Firebase Functions logs immediately
+// instead of silently blending into "working, just always peaceful".
+function extractMood(text) {
+  const head = text.slice(0, 60);
+
+  let match = head.match(/^\[(\w+)\]\s*/i);
+  if (match && MOODS.includes(match[1].toLowerCase())) {
+    return {mood: match[1].toLowerCase(), cleanText: text.slice(match[0].length).trim()};
+  }
+
+  match = head.slice(0, 40).match(/\[(\w+)\]/i);
+  if (match && MOODS.includes(match[1].toLowerCase())) {
+    const idx = text.indexOf(match[0]);
+    return {mood: match[1].toLowerCase(), cleanText: (text.slice(0, idx) + text.slice(idx + match[0].length)).trim()};
+  }
+
+  const wordMatch = head.match(new RegExp(`\\b(${MOODS.join("|")})\\b`, "i"));
+  if (wordMatch) {
+    // Bare word left in place deliberately - a stray mood word loose in
+    // real English prose reads oddly if silently cut, and this branch
+    // means Claude already deviated from instructions once; trust the
+    // text less, not more.
+    return {mood: wordMatch[1].toLowerCase(), cleanText: text};
+  }
+
+  return {mood: "peaceful", cleanText: text};
+}
+
 // Returns {text, mood} - mood drives the LED ring's color for the
 // duration of this blessing (see MOODS/THEME_TO_MOOD above). touchOnly
 // gets its mood deterministically from the theme already chosen (no
@@ -335,18 +380,11 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
 
   let mood = deterministicMood;
   if (!mood) {
-    const moodMatch = text.match(/^\[(\w+)\]\s*/);
-    if (moodMatch && MOODS.includes(moodMatch[1].toLowerCase())) {
-      mood = moodMatch[1].toLowerCase();
-      text = text.slice(moodMatch[0].length).trim();
-    } else {
-      // Claude didn't follow the format (rare, but must never break the
-      // blessing itself over a missing color choice) - default to a
-      // safe, generically-fitting mood and use the text as-is, tag and
-      // all, only if it truly couldn't be stripped cleanly.
-      mood = "peaceful";
-      if (moodMatch) text = text.slice(moodMatch[0].length).trim(); // strip an unrecognized-but-present tag anyway
-    }
+    const rawStart = text.slice(0, 60);
+    const extracted = extractMood(text);
+    mood = extracted.mood;
+    text = extracted.cleanText;
+    console.log(`MOOD: raw start="${rawStart}" -> parsed=${mood}`);
   }
 
   return {text, mood};

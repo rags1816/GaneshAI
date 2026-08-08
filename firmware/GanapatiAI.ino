@@ -2297,6 +2297,7 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     // quick-offering panel doesn't relay it - animateLeds() treats an
     // empty mood the same as "not known", same as before this feature.
     strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
+    Serial.printf("OFFERING: mood param received = \"%s\"\n", mood.c_str());
   } else {
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
     strlcpy(scrollTextLang, "en", sizeof(scrollTextLang)); // fixed English template regardless of lang
