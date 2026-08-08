@@ -313,7 +313,14 @@ int selectedTheme = 0;
 // Fixed-size buffer, not String: drawOLED() runs ~30x/sec and continuous
 // String reallocation there was the cause of a heap-fragmentation abort()
 // crash after ~7 minutes of uptime.
-char scrollText[300] = "";
+//
+// 500, not 300 - a ~40-word blessing in Devanagari (Marathi/Hindi) or
+// other 3-byte-per-character UTF-8 scripts can run noticeably longer in
+// bytes than the same word count in English; 300 left too little margin
+// against snprintf() silently truncating a longer non-English blessing
+// (and potentially mid-character - the same class of bug fixed in
+// /api/state's JSON encoder, see checkSensors()/that handler below).
+char scrollText[500] = "";
 int scrollX = 128;
 unsigned long lastScrollUpdate = 0;
 
@@ -889,17 +896,40 @@ void handleWebRoutes() {
       selectedLang, selectedTheme, currentPlayingTrack,
       stateElapsed, stateDuration);
 
-    // Minimal JSON string escaping - none of today's blessing/welcome text
-    // needs it, but a future text edit could introduce a quote/backslash
-    // and silently break the dashboard's JSON.parse() without this.
-    // Bound reserves room for a full 2-byte escape sequence PLUS the
-    // closing "} written after the loop (3 bytes with the null
-    // terminator) - checking against just 3 bytes of margin left a
-    // narrow edge case where a final escaped character could leave only
-    // 1 byte free, truncating the closing brace.
-    for (const char* s = scrollText; *s && n < (int)sizeof(json) - 6; s++) {
-      if (*s == '"' || *s == '\\') json[n++] = '\\';
-      if ((unsigned char)*s >= 0x20) json[n++] = *s;
+    // Minimal JSON string escaping - none of today's ENGLISH blessing/
+    // welcome text needs it, but a future text edit could introduce a
+    // quote/backslash and silently break the dashboard's JSON.parse()
+    // without this. Bound reserves room for a full 2-byte escape
+    // sequence PLUS the closing "} written after the loop.
+    //
+    // UTF-8 AWARE on purpose - confirmed on hardware as the cause of a
+    // Marathi (Devanagari) offering showing correctly on the physical
+    // OLED (which reads scrollText directly) but not on the dashboard's
+    // mirrored text: the old version copied byte-by-byte and could stop
+    // mid-character right at the buffer boundary, since Devanagari is
+    // 3 bytes/character in UTF-8 while this loop only ever thought in
+    // single bytes. A truncated multi-byte sequence left invalid UTF-8
+    // in the JSON string, which the dashboard's response.json() then
+    // failed to render correctly. Now a whole character is always
+    // copied or none of it is - never split across the boundary.
+    for (const char* s = scrollText; *s; ) {
+      unsigned char b = (unsigned char)*s;
+      int charLen = 1;
+      if ((b & 0xE0) == 0xC0) charLen = 2;      // 2-byte UTF-8 (e.g. many European accents)
+      else if ((b & 0xF0) == 0xE0) charLen = 3; // 3-byte UTF-8 (Devanagari, Tamil, etc.)
+      else if ((b & 0xF8) == 0xF0) charLen = 4; // 4-byte UTF-8 (emoji)
+
+      // Worst case every byte of this character needs a backslash escape
+      // (never actually true for multi-byte bytes, which are always
+      // >= 0x80 and can't match '"'/'\\', but cheap to be conservative).
+      if (n + (charLen * 2) > (int)sizeof(json) - 6) break; // whole character wouldn't fit - stop here, don't split it
+
+      for (int k = 0; k < charLen && s[k]; k++) {
+        unsigned char cb = (unsigned char)s[k];
+        if (cb == '"' || cb == '\\') json[n++] = '\\';
+        if (cb >= 0x20) json[n++] = (char)cb;
+      }
+      s += charLen;
     }
     n += snprintf(json + n, sizeof(json) - n, "\"}");
 
