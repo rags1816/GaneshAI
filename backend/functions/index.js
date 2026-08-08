@@ -27,6 +27,26 @@ const OFFERING_NAMES = {
   coconut: "a fresh coconut",
 };
 
+// Touching the wish pad carries no text at all for Claude to react to, so
+// left alone it tends to converge on the same handful of phrasings across
+// repeated touches. Picking a random theme per touch and asking Claude to
+// weave it in gives each blessing a genuinely different focus, not just
+// different wording around the same idea.
+const WISH_PAD_THEMES = [
+  "removing obstacles from their path",
+  "wisdom and clear thinking",
+  "courage in difficult moments",
+  "prosperity and abundance",
+  "peace within their home and family",
+  "good health and vitality",
+  "success in new beginnings",
+  "patience and inner calm",
+  "protection from harm",
+  "joy and contentment",
+  "strength to persevere",
+  "harmony with those they love",
+];
+
 const MAX_PRAYER_CHARS = 300;
 const MAX_NAME_CHARS = 60;
 
@@ -190,11 +210,14 @@ exports.generateBlessing = onRequest(
 async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
   let situationText;
   if (touchOnly) {
+    const theme = WISH_PAD_THEMES[Math.floor(Math.random() * WISH_PAD_THEMES.length)];
     situationText = `who has come before you at the altar and gently touched the wish pad - ` +
       `the way one would touch a deity's feet - offering no words, only a silent prayer held ` +
       `in their heart. Reply with a short, warm blessing that acknowledges their silent prayer ` +
       `is heard and accepted, blessing them regardless of what they silently wish for, as if ` +
-      `spoken aloud to them.`;
+      `spoken aloud to them. Center this particular blessing around ${theme}, phrased freshly ` +
+      `and naturally rather than formulaically - avoid opening the same way you would for a ` +
+      `different theme.`;
   } else if (prayer.trim()) {
     situationText = `who has offered ${offeringText} and prayed: "${prayer}". Reply with ` +
       `a short, warm blessing that responds to their specific prayer, as if spoken aloud to them.`;
