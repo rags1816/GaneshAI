@@ -1077,8 +1077,16 @@ void handleWebRoutes() {
     if (server.hasArg("theme")) {
       selectedTheme = server.arg("theme").toInt();
     }
+    // Logged unconditionally on every toggle below (not just failures) -
+    // reported on hardware that a dashboard toggle can show OFF in the
+    // browser while the device keeps behaving as if it's still ON, with
+    // no way to tell from the UI alone whether the request ever reached
+    // the ESP32 at all. These lines make that directly checkable on the
+    // Serial Monitor instead of guessing between a JS-side and a
+    // firmware-side cause.
     if (server.hasArg("display")) {
       displayEnabled = (server.arg("display").toInt() == 1);
+      Serial.printf("SETTINGS: display -> %s\n", displayEnabled ? "true" : "false");
       if (!displayEnabled) {
         // Blank it once immediately, rather than waiting for drawOLED()
         // to notice - otherwise whatever was on screen stays frozen
@@ -1089,6 +1097,7 @@ void handleWebRoutes() {
     }
     if (server.hasArg("led")) {
       ledEnabled = (server.arg("led").toInt() == 1);
+      Serial.printf("SETTINGS: led -> %s\n", ledEnabled ? "true" : "false");
       if (!ledEnabled && LED_CONNECTED) {
         fill_solid(leds, NUM_LEDS, CRGB::Black);
         FastLED.show();
@@ -1096,12 +1105,15 @@ void handleWebRoutes() {
     }
     if (server.hasArg("touchFeet")) {
       touchFeetEnabled = (server.arg("touchFeet").toInt() == 1);
+      Serial.printf("SETTINGS: touchFeet -> %s\n", touchFeetEnabled ? "true" : "false");
     }
     if (server.hasArg("touchBack")) {
       touchBackEnabled = (server.arg("touchBack").toInt() == 1);
+      Serial.printf("SETTINGS: touchBack -> %s\n", touchBackEnabled ? "true" : "false");
     }
     if (server.hasArg("wishPad")) {
       wishPadEnabled = (server.arg("wishPad").toInt() == 1);
+      Serial.printf("SETTINGS: wishPad -> %s\n", wishPadEnabled ? "true" : "false");
     }
     server.send(200, "text/plain", "OK");
   });
@@ -2433,8 +2445,12 @@ void animateLeds() {
           leds[i] = blend(c1, c2, (uint8_t)(wave * 255));
           break;
         }
-        case 2: { // Golden Aura - uniform 60/40 c1/c2 blend, slow breathing
-          float breath = sinf(animHue * 0.03f) * 0.4f + 0.6f;
+        case 2: { // Golden Aura - uniform 60/40 c1/c2 blend, breathing
+          // Reported on hardware as "not happening" - the original 0.2-1.0
+          // brightness swing over ~1.4s was real but too subtle to read as
+          // an animation against a bright blend. Widened to a near-black
+          // trough and sped up so it's unmistakable within a second or two.
+          float breath = sinf(animHue * 0.045f) * 0.5f + 0.5f;
           leds[i] = blend(c1, c2, 102); // 0.4 * 255
           leds[i].nscale8_video((uint8_t)(breath * 255));
           break;
