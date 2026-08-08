@@ -100,6 +100,18 @@ int dfReadFileCounts() { return dfPlayerReady ? myDFPlayer.readFileCounts() : 0;
 I2SClass ampI2S;
 bool ampReady = false;
 
+// Set true for the whole life of the background task that speaks a
+// blessing through the amp (see speakBlessingOnAmpAsync()/
+// speakGenericBlessingOnAmpAsync() below) - declared up here, ahead of
+// updateStateMachine(), so its offering-resume logic can check it before
+// restarting the interrupted mantra on the DFPlayer. Without that check,
+// the mantra resumed on a fixed ~6s display timer that had no idea
+// whether the amp's blessing (a full network round trip: Claude, then
+// Google TTS, then streaming the WAV back) had actually finished -
+// confirmed on hardware as the mantra and the wish-pad blessing audibly
+// overlapping when the network call ran long.
+volatile bool blessingTaskActive = false;
+
 // System States
 SystemState currentState = STATE_STANDBY;
 unsigned long stateTimer = 0;
@@ -1420,7 +1432,15 @@ void updateStateMachine() {
       {
         bool offeringMinElapsed = (now - stateTimer > stateDuration);
         bool offeringHardCap    = (now - stateTimer > stateDuration + 20000);
-        bool offeringDone = offeringMinElapsed && (scrollPassComplete || offeringHardCap);
+        // Also wait for the amp's background task to finish speaking
+        // (blessingTaskActive) before resuming the interrupted mantra on
+        // the DFPlayer - the display's own timer/scroll can easily finish
+        // before the amp's network round trip does, and resuming the
+        // mantra early plays it right on top of the still-speaking amp.
+        // offeringHardCap overrides this too, so a stuck amp task can
+        // never hold the display hostage forever.
+        bool offeringDone = offeringMinElapsed &&
+                             ((scrollPassComplete && !blessingTaskActive) || offeringHardCap);
         bool plainDone    = (now - stateTimer > stateDuration);
 
       if (offeringDisplayActive ? offeringDone : plainDone) {
@@ -1843,10 +1863,10 @@ void speakGenericBlessingOnAmp(const String &lang) {
 //
 // Running it on its own FreeRTOS task instead, NOT subscribed to the
 // watchdog, fixes the actual failure mode: a stuck or faulty amp can now
-// only ever produce silence, never a crash. blessingTaskActive guards
-// against two offerings overlapping, since ampI2S is a single shared
-// instance not safe for concurrent writes from two tasks at once.
-volatile bool blessingTaskActive = false;
+// only ever produce silence, never a crash. blessingTaskActive (declared
+// near ampReady, above) guards against two offerings overlapping, since
+// ampI2S is a single shared instance not safe for concurrent writes from
+// two tasks at once.
 
 struct BlessingTaskParams {
   String text;
