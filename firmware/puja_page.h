@@ -329,14 +329,16 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             </p>
             <button class="btn-back" onclick="resetForm()">Make Another Offering</button>
         </div>
-    </div>
 
-    <!-- Bump alongside FIRMWARE_VERSION in config.h whenever this file
-         changes, so it's visible at a glance (no dev tools needed) which
-         build is actually live - avoids the "I flashed it, why doesn't it
-         match" back-and-forth when firmware/puja page/backend versions
-         drift apart during testing. -->
-    <div style="text-align:center; font-size:10px; opacity:0.5; padding:8px;">Puja page: 2026-08-08-r83</div>
+        <!-- Bump alongside FIRMWARE_VERSION in config.h whenever this file
+             changes, so it's visible at a glance (no dev tools needed) which
+             build is actually live - avoids the "I flashed it, why doesn't it
+             match" back-and-forth when firmware/puja page/backend versions
+             drift apart during testing. Inside .puja-card on purpose - the
+             body is a flex container centering ONE child, so a sibling div
+             out here sits beside the card instead of below it. -->
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-08-r84</div>
+    </div>
 
     <script>
         // Offering queue cloud relay - Firebase Realtime Database, chosen
