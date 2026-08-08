@@ -337,7 +337,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-08-r84</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-08-r85</div>
     </div>
 
     <script>
@@ -455,7 +455,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // telling the devotee to type instead rather than failing silently.
         const SPEECH_LANG_MAP = {
             en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', ta: 'ta-IN',
-            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN'
+            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN', bn: 'bn-IN'
         };
         const SPEECH_TIMEOUT_MS = 15000;
 
