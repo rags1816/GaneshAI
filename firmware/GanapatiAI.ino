@@ -455,6 +455,7 @@ void triggerFeetMantra();
 void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang);
 void triggerWishPadBlessing();
 void micTestTaskFn(void *pvParameters);
+void micRecordPlaybackTaskFn(void *pvParameters);
 void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
@@ -1003,6 +1004,29 @@ void handleWebRoutes() {
         "works; flat at 0 the whole time means check the wiring.");
       return;
     }
+    if (server.hasArg("micplay")) {
+      if (micTestRunning || blessingTaskActive) {
+        server.send(200, "text/plain", "A mic or amp test is already running - wait a few seconds and try again.");
+        return;
+      }
+      if (!ampReady) {
+        server.send(200, "text/plain", "Amp not ready - can't play back a recording.");
+        return;
+      }
+      micTestRunning = true;
+      blessingTaskActive = true;
+      BaseType_t created = xTaskCreatePinnedToCore(micRecordPlaybackTaskFn, "micPlayback", 8192, NULL, 1, NULL, 1);
+      if (created != pdPASS) {
+        micTestRunning = false;
+        blessingTaskActive = false;
+        server.send(500, "text/plain", "Failed to start mic playback task.");
+        return;
+      }
+      server.send(200, "text/plain",
+        "Recording 3 seconds now - speak or clap near the mic. It will play "
+        "back through the amp speaker a few seconds after this page loads.");
+      return;
+    }
     if (server.hasArg("track")) {
       int n = server.arg("track").toInt();
       dfStop();
@@ -1017,7 +1041,7 @@ void handleWebRoutes() {
       Serial.println(msg);
       server.send(200, "text/plain", msg);
     } else {
-      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1  or  /api/test?mic=1  or  /api/test?oled=1");
+      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1  or  /api/test?mic=1  or  /api/test?micplay=1  or  /api/test?oled=1");
     }
   });
 
@@ -2001,6 +2025,51 @@ void micTestTaskFn(void *pvParameters) {
   Serial.println("MIC TEST: done. A bar that moved with your voice/claps means the mic works; "
                   "flat at 0 the whole time means check the wiring before assuming the module is bad.");
   micTestRunning = false;
+  vTaskDelete(NULL);
+}
+
+// Records 3 real seconds from the mic and plays it straight back out the
+// amp speaker, so the mic can be judged by ear instead of a number -
+// triggered by /api/test?micplay=1. Holds BOTH micTestRunning and
+// blessingTaskActive for its whole life: it touches both shared I2S
+// instances (micI2S for the recording, ampI2S for playback) and neither
+// guard alone would stop it colliding with the other kind of test/use.
+void micRecordPlaybackTaskFn(void *pvParameters) {
+  Serial.println("MIC PLAYBACK: initializing I2S RX...");
+  micI2S.setPins(I2S_MIC_SCK, I2S_MIC_WS, -1, I2S_MIC_SD);
+  bool ok = micI2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO);
+  if (!ok) {
+    Serial.println("MIC PLAYBACK: I2S init FAILED - check wiring.");
+    micTestRunning = false;
+    blessingTaskActive = false;
+    vTaskDelete(NULL);
+    return;
+  }
+
+  Serial.println("MIC PLAYBACK: recording 3 seconds now - speak or clap near the mic...");
+  size_t wavSize = 0;
+  uint8_t *wavBuf = micI2S.recordWAV(3, &wavSize);
+  micI2S.end();
+
+  if (wavBuf == NULL || wavSize == 0) {
+    Serial.println("MIC PLAYBACK: recording FAILED - check wiring.");
+    micTestRunning = false;
+    blessingTaskActive = false;
+    vTaskDelete(NULL);
+    return;
+  }
+
+  Serial.printf("MIC PLAYBACK: recorded %u bytes, playing it back on the amp now...\n", (unsigned)wavSize);
+  if (ampReady) {
+    ampI2S.playWAV(wavBuf, wavSize);
+    Serial.println("MIC PLAYBACK: done playing.");
+  } else {
+    Serial.println("MIC PLAYBACK: amp not ready, can't play back.");
+  }
+  free(wavBuf);
+
+  micTestRunning = false;
+  blessingTaskActive = false;
   vTaskDelete(NULL);
 }
 
