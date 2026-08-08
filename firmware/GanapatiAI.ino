@@ -112,6 +112,15 @@ bool ampReady = false;
 // overlapping when the network call ran long.
 volatile bool blessingTaskActive = false;
 
+// One-off hardware sanity check for the physical INMP441 mic - see
+// micTestTaskFn() below and the /api/test?mic=1 route. Separate I2S
+// instance from ampI2S (RX vs TX, and the ESP32 has two independent I2S
+// peripherals so both can exist at once); guarded the same way the amp
+// task is, so a second request while one is already running can't start
+// a conflicting I2S RX config on the same pins.
+I2SClass micI2S;
+volatile bool micTestRunning = false;
+
 // System States
 SystemState currentState = STATE_STANDBY;
 unsigned long stateTimer = 0;
@@ -445,6 +454,7 @@ void triggerMantra();
 void triggerFeetMantra();
 void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang);
 void triggerWishPadBlessing();
+void micTestTaskFn(void *pvParameters);
 void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
@@ -975,6 +985,24 @@ void handleWebRoutes() {
       }
       return;
     }
+    if (server.hasArg("mic")) {
+      if (micTestRunning) {
+        server.send(200, "text/plain", "Mic test already running - check Serial Monitor.");
+        return;
+      }
+      micTestRunning = true;
+      BaseType_t created = xTaskCreatePinnedToCore(micTestTaskFn, "micTest", 4096, NULL, 1, NULL, 1);
+      if (created != pdPASS) {
+        micTestRunning = false;
+        server.send(500, "text/plain", "Failed to start mic test task.");
+        return;
+      }
+      server.send(200, "text/plain",
+        "Mic test started - open the Serial Monitor now, watch for ~4 seconds, "
+        "and clap or speak near the mic. A MIC LEVEL bar that moves means it "
+        "works; flat at 0 the whole time means check the wiring.");
+      return;
+    }
     if (server.hasArg("track")) {
       int n = server.arg("track").toInt();
       dfStop();
@@ -989,7 +1017,7 @@ void handleWebRoutes() {
       Serial.println(msg);
       server.send(200, "text/plain", msg);
     } else {
-      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1");
+      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1  or  /api/test?mic=1  or  /api/test?oled=1");
     }
   });
 
@@ -1930,6 +1958,50 @@ void speakGenericBlessingOnAmpAsync(const String &lang) {
     delete params;
     blessingTaskActive = false;
   }
+}
+
+// One-off hardware check for the physical INMP441 mic - triggered by
+// browsing to /api/test?mic=1, NOT run automatically at boot or in the
+// main loop (the mic has no feature using it yet - see the config.h
+// comment on I2S_MIC_WS/SCK/SD). Runs on its own background task, same
+// reasoning as the amp: an I2S read that never returns (bad wiring, dead
+// module) must never be able to stall the watchdog-subscribed main loop.
+// Prints a live level bar to Serial for ~4 seconds so you can watch it
+// react in real time while clapping/speaking near the mic, rather than
+// just a pass/fail verdict at the end.
+void micTestTaskFn(void *pvParameters) {
+  Serial.println("MIC TEST: initializing I2S RX...");
+  micI2S.setPins(I2S_MIC_SCK, I2S_MIC_WS, -1, I2S_MIC_SD);
+  bool ok = micI2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO);
+  if (!ok) {
+    Serial.println("MIC TEST: I2S init FAILED - check WS/SCK/SD/VDD/GND wiring on the INMP441.");
+    micTestRunning = false;
+    vTaskDelete(NULL);
+    return;
+  }
+
+  Serial.println("MIC TEST: running for 4 seconds - clap or speak near the mic now.");
+  static int16_t buf[1600]; // 100ms at 16kHz mono 16-bit
+  for (int chunk = 0; chunk < 40; chunk++) {
+    size_t bytesRead = micI2S.readBytes((char *)buf, sizeof(buf));
+    size_t samples = bytesRead / sizeof(int16_t);
+    int peak = 0;
+    for (size_t i = 0; i < samples; i++) {
+      int v = abs((int)buf[i]); // widen before abs() - abs(INT16_MIN) as int16_t overflows
+      if (v > peak) peak = v;
+    }
+    int barLen = map(peak, 0, 32767, 0, 40);
+    char bar[41];
+    memset(bar, '#', barLen);
+    bar[barLen] = '\0';
+    Serial.printf("MIC LEVEL: [%-40s] peak=%d samples=%u\n", bar, peak, (unsigned)samples);
+  }
+
+  micI2S.end();
+  Serial.println("MIC TEST: done. A bar that moved with your voice/claps means the mic works; "
+                  "flat at 0 the whole time means check the wiring before assuming the module is bad.");
+  micTestRunning = false;
+  vTaskDelete(NULL);
 }
 
 // Fired when the priest approves a devotee's submission from the Priest
