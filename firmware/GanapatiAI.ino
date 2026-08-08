@@ -1205,6 +1205,19 @@ void checkSensors() {
   // silent prayer touch shouldn't need to understand mantra playback
   // state at all. Own debounce state, own trigger, calls
   // triggerWishPadBlessing() directly (see below).
+  //
+  // TEMPORARY DIAGNOSTIC (remove once the pad is confirmed working): logs
+  // the RAW pin level once a second, unconditionally - ignores
+  // WISH_PAD_CONNECTED/wishPadEnabled and bypasses settleTouch() entirely,
+  // so it shows ground truth even if those flags or the debounce logic
+  // are the actual problem.
+  static unsigned long lastWishPadRawLog = 0;
+  if (now - lastWishPadRawLog > 1000) {
+    lastWishPadRawLog = now;
+    Serial.printf("WISH PAD RAW: GPIO%d=%s  WISH_PAD_CONNECTED=%s  wishPadEnabled=%s\n",
+                  WISH_PAD_PIN, digitalRead(WISH_PAD_PIN) == HIGH ? "HIGH" : "LOW",
+                  WISH_PAD_CONNECTED ? "true" : "false", wishPadEnabled ? "true" : "false");
+  }
   bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
   bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
   if (wishPadEdge && wishPadStable && now - lastWishPadTrigger > TOUCH_DEBOUNCE) {
