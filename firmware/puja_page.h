@@ -292,6 +292,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="pa">Punjabi</option>
                     <option value="gu">Gujarati</option>
                     <option value="ml">Malayalam</option>
+                    <option value="bn">Bengali</option>
                 </select>
             </div>
 
@@ -415,7 +416,8 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             { lang: 'te', re: /[ఀ-౿]/ },
             { lang: 'gu', re: /[઀-૿]/ },
             { lang: 'pa', re: /[਀-੿]/ },
-            { lang: 'ml', re: /[ഀ-ൿ]/ }
+            { lang: 'ml', re: /[ഀ-ൿ]/ },
+            { lang: 'bn', re: /[ঀ-৿]/ }
         ];
 
         function detectScriptLanguage(text) {

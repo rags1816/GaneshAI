@@ -70,7 +70,8 @@ const MAX_NAME_CHARS = 60;
 // confirmed ones but are untested. sd is a guess Google likely doesn't
 // even support - included because it costs nothing to try, but expect it
 // may fail differently (a "voice not found"/"language not supported"
-// error rather than a wrong-voice-name error).
+// error rather than a wrong-voice-name error). bn is new and untested,
+// same naming pattern as the confirmed ones.
 const LANGUAGE_CONFIG = {
   en: {
     claudeInstruction: "Reply entirely in English, from start to finish.",
@@ -95,6 +96,10 @@ const LANGUAGE_CONFIG = {
   ml: {
     claudeInstruction: "Reply entirely in Malayalam (Malayalam script), from start to finish, never switching to English.",
     voice: {languageCode: "ml-IN", name: "ml-IN-Wavenet-B", ssmlGender: "MALE"},
+  },
+  bn: {
+    claudeInstruction: "Reply entirely in Bengali (Bengali script), from start to finish, never switching to English.",
+    voice: {languageCode: "bn-IN", name: "bn-IN-Wavenet-B", ssmlGender: "MALE"},
   },
   gu: {
     claudeInstruction: "Reply entirely in Gujarati (Gujarati script), from start to finish, never switching to English.",

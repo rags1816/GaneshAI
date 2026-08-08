@@ -21,6 +21,7 @@
 #include "config.h"
 #include "web_dashboard.h"
 #include "puja_page.h"
+#include "indic_fonts.h"
 
 #ifdef U8G2_HAVE_HW_I2C
 #include <Wire.h>
@@ -2591,27 +2592,41 @@ void drawOLED() {
   //
   // Font is chosen per scrollTextLang, not fixed - u8g2_font_logisoso20_tf
   // (like every "normal" u8g2 font) only has glyphs for Latin script, so
-  // Devanagari/Malayalam text drawn with it just shows nothing for every
-  // character. Confirmed on hardware: Marathi and Tamil blessings played
-  // correctly and showed correctly on the dashboard, but the physical
-  // OLED stayed blank for both. u8g2 ships proper fonts for Devanagari
-  // (covers Hindi and Marathi, same script) and Malayalam, so those two
-  // switch to the real thing. There is no Tamil/Telugu/Gujarati/Punjabi
-  // font available anywhere in u8g2 at all - not a bug to fix, a glyph
-  // set that doesn't exist - so those fall back to a plain-English
-  // notice instead of blank space; the dashboard and the spoken audio
-  // still carry the real text and blessing correctly either way.
+  // non-Latin text drawn with it just shows nothing for every character.
+  // Confirmed on hardware: Marathi and Tamil blessings played correctly
+  // and showed correctly on the dashboard, but the physical OLED stayed
+  // blank for both.
+  //
+  // All seven fonts below (see indic_fonts.h) are custom-built from the
+  // real Noto Sans <Script> typefaces, not u8g2's built-in "Unifont"
+  // fallback - Unifont's own Devanagari/Malayalam glyphs are thin/rough
+  // (it prioritizes broad Unicode coverage over any one script's
+  // quality), which is why even the r81 fix looked "broken and not
+  // complete" rather than genuinely fixed. See indic_fonts.h's own
+  // header comment for the real, still-present limitation: u8g2 has no
+  // text-shaping engine, so multi-character conjuncts/reordered vowel
+  // signs still won't look exactly like the dashboard/phone render them.
+  // Sindhi and Farsi aren't in the dropdown at all yet, so they still
+  // fall back to a plain-English notice if ever selected.
   const uint8_t *scrollFont = u8g2_font_logisoso20_tf;
   const char *displayText = scrollText;
   const char *OLED_NO_FONT_MSG = "   Blessing spoken - see dashboard for text   ";
   if (strcmp(scrollTextLang, "hi") == 0 || strcmp(scrollTextLang, "mr") == 0) {
-    scrollFont = u8g2_font_unifont_t_devanagari;
+    scrollFont = u8g2_font_notosansdevanagari16_t;
   } else if (strcmp(scrollTextLang, "ml") == 0) {
-    scrollFont = u8g2_font_unifont_t_malayalam;
-  } else if (strcmp(scrollTextLang, "ta") == 0 || strcmp(scrollTextLang, "te") == 0 ||
-             strcmp(scrollTextLang, "gu") == 0 || strcmp(scrollTextLang, "pa") == 0 ||
-             strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0) {
-    displayText = OLED_NO_FONT_MSG; // no glyphs exist for this script - don't draw invisible text
+    scrollFont = u8g2_font_notosansmalayalam16_t;
+  } else if (strcmp(scrollTextLang, "ta") == 0) {
+    scrollFont = u8g2_font_notosanstamil16_t;
+  } else if (strcmp(scrollTextLang, "te") == 0) {
+    scrollFont = u8g2_font_notosanstelugu16_t;
+  } else if (strcmp(scrollTextLang, "gu") == 0) {
+    scrollFont = u8g2_font_notosansgujarati16_t;
+  } else if (strcmp(scrollTextLang, "pa") == 0) {
+    scrollFont = u8g2_font_notosansgurmukhi16_t;
+  } else if (strcmp(scrollTextLang, "bn") == 0) {
+    scrollFont = u8g2_font_notosansbengali16_t;
+  } else if (strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0) {
+    displayText = OLED_NO_FONT_MSG; // not in the dropdown yet, but stay safe if ever selected
   }
   u8g2.setFont(scrollFont);
 
