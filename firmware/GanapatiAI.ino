@@ -324,6 +324,16 @@ char scrollText[500] = "";
 int scrollX = 128;
 unsigned long lastScrollUpdate = 0;
 
+// Which language scrollText's CONTENT is actually in right now - drives
+// which OLED font drawOLED() loads before drawing it (see fontForScrollLang()
+// and OLED_UNSUPPORTED_SCRIPT_LANGS below). Everything in this firmware is
+// English EXCEPT a personalized offering's real prayer/blessing text
+// (triggerPersonalizedOffering() when prayer.length() > 0) - every other
+// scrollText assignment in the file sets this back to "en" alongside it,
+// so a leftover non-Latin font can never bleed into an unrelated English
+// message once the offering that needed it has ended.
+char scrollTextLang[4] = "en";
+
 // Display lock helper for Feet touch / Mouse Back / offerings. The lock
 // holds ONE message on screen (no blessing rotation) for feetDisplayLockMs
 // before the rotation resumes. 12s for an ordinary touch; an offering sets
@@ -1380,9 +1390,11 @@ void updateStateMachine() {
     if (ambientBlessingIdx % 2 == 0) {
       int r = random(0, 26);
       snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
     } else {
       int r = random(0, 22);
       snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledAdultBlessingsList[r]);
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
     }
     scrollX = 128;
     ambientBlessingIdx++;
@@ -1567,6 +1579,7 @@ void updateStateMachine() {
             // have a rotating blessing loop to naturally replace it.
             if (offeringPausedState == STATE_AARTI) {
               strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
             }
             setSystemState(offeringPausedState, offeringPausedDurationMs);
           } else {
@@ -1694,6 +1707,7 @@ void setSystemState(SystemState newState, unsigned long duration) {
       // Show the welcome sentence first; updateStateMachine() switches to
       // rotating blessings once this text finishes one scroll pass.
       strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
       lastAmbientBlessingRotate = stateTimer;
     }
   }
@@ -2227,8 +2241,12 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
 
   if (prayer.length() > 0) {
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] %s: %s   ", name.c_str(), prayer.c_str());
+    // The only place in the whole firmware where scrollText's content is
+    // ever anything but English - see fontForScrollLang() in drawOLED().
+    strlcpy(scrollTextLang, lang.c_str(), sizeof(scrollTextLang));
   } else {
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
+    strlcpy(scrollTextLang, "en", sizeof(scrollTextLang)); // fixed English template regardless of lang
   }
 
   // 12s is only the MINIMUM here. The display actually ends when the
@@ -2293,6 +2311,7 @@ void triggerWishPadBlessing() {
   feetDisplayTimer = millis();
   feetDisplayLocked = true;
   strlcpy(scrollText, "   \xF0\x9F\x99\x8F Your silent prayer is heard...   ", sizeof(scrollText));
+  strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
   feetDisplayLockMs = 600000UL; // cleared by updateStateMachine() when the display genuinely finishes, same as an offering
 
   setSystemState(STATE_FEET_ACTIVE, 6000);
@@ -2313,6 +2332,7 @@ void triggerAarti() {
 
   feetDisplayLocked = false;
   strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
 
   setSystemState(STATE_AARTI, AARTI_DURATION);
   currentPlayingTrack = AARTI_TRACK;
@@ -2370,6 +2390,7 @@ void openTempleFromClosed() {
   feetDisplayLocked = true;
   feetDisplayLockMs = 12000;
   strlcpy(scrollText, oledAmbientLoopText, sizeof(scrollText));
+      strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
   setSystemState(STATE_MANTRA_ACTIVE, mantraTracks[0].duration);
 }
 
@@ -2567,10 +2588,35 @@ void drawOLED() {
 
   // The actual content devotees read - now large enough to be legible
   // from across a room instead of squinting at a small font.
-  u8g2.setFont(u8g2_font_logisoso20_tf);
+  //
+  // Font is chosen per scrollTextLang, not fixed - u8g2_font_logisoso20_tf
+  // (like every "normal" u8g2 font) only has glyphs for Latin script, so
+  // Devanagari/Malayalam text drawn with it just shows nothing for every
+  // character. Confirmed on hardware: Marathi and Tamil blessings played
+  // correctly and showed correctly on the dashboard, but the physical
+  // OLED stayed blank for both. u8g2 ships proper fonts for Devanagari
+  // (covers Hindi and Marathi, same script) and Malayalam, so those two
+  // switch to the real thing. There is no Tamil/Telugu/Gujarati/Punjabi
+  // font available anywhere in u8g2 at all - not a bug to fix, a glyph
+  // set that doesn't exist - so those fall back to a plain-English
+  // notice instead of blank space; the dashboard and the spoken audio
+  // still carry the real text and blessing correctly either way.
+  const uint8_t *scrollFont = u8g2_font_logisoso20_tf;
+  const char *displayText = scrollText;
+  const char *OLED_NO_FONT_MSG = "   Blessing spoken - see dashboard for text   ";
+  if (strcmp(scrollTextLang, "hi") == 0 || strcmp(scrollTextLang, "mr") == 0) {
+    scrollFont = u8g2_font_unifont_t_devanagari;
+  } else if (strcmp(scrollTextLang, "ml") == 0) {
+    scrollFont = u8g2_font_unifont_t_malayalam;
+  } else if (strcmp(scrollTextLang, "ta") == 0 || strcmp(scrollTextLang, "te") == 0 ||
+             strcmp(scrollTextLang, "gu") == 0 || strcmp(scrollTextLang, "pa") == 0 ||
+             strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0) {
+    displayText = OLED_NO_FONT_MSG; // no glyphs exist for this script - don't draw invisible text
+  }
+  u8g2.setFont(scrollFont);
 
-  int textWidth = u8g2.getUTF8Width(scrollText);
-  u8g2.drawUTF8(scrollX, 46, scrollText);
+  int textWidth = u8g2.getUTF8Width(displayText);
+  u8g2.drawUTF8(scrollX, 46, displayText);
 
   if (now - lastScrollUpdate > TEXT_SCROLL_SPD) {
     lastScrollUpdate = now;
