@@ -1903,6 +1903,29 @@ void speakGenericBlessingOnAmp(const String &lang) {
   postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body);
 }
 
+// Fallback for triggerPersonalizedOffering() when the priest approves an
+// item before it has any already-decided blessing text (item.prayer is
+// still empty) - confirmed on hardware as offerings that show correctly
+// on the OLED but play NOTHING on the amp, since speakBlessingOnAmpAsync
+// silently skips empty text. Two real ways this happens: the devotee
+// submitted with no typed wish AND no quick-blessing dropdown pick (a
+// genuinely silent offering), or the priest approved faster than the
+// phone's own generateBlessing round trip finished. Rather than staying
+// silent either way, this generates a fresh blessing on the spot - same
+// idea as the wish pad's touchOnly path, but WITH the real name/offering
+// context (touchOnly:false), so it reads as "your offering", not a blind
+// touch.
+void speakOfferingFallbackBlessingOnAmp(const String &name, const String &offeringType, const String &lang) {
+  if (!ampReady) {
+    Serial.println("AMP: not initialized, skipping spoken blessing");
+    return;
+  }
+
+  String body = "{\"name\":\"" + jsonEscape(name) + "\",\"offering\":\"" + jsonEscape(offeringType) +
+                "\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":false}";
+  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body);
+}
+
 // Two real crashes found on hardware tonight (both watchdog panics) came
 // from speakBlessingOnAmp() running inline inside the HTTP request
 // handler - on the SAME task as loop()/server.handleClient(), which is
@@ -1943,6 +1966,40 @@ void speakBlessingOnAmpAsync(const String &text, const String &lang) {
   BlessingTaskParams *params = new BlessingTaskParams{text, lang};
   blessingTaskActive = true;
   BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 1);
+  if (created != pdPASS) {
+    Serial.println("AMP: failed to create blessing playback task");
+    delete params;
+    blessingTaskActive = false;
+  }
+}
+
+// Same background-task pattern again, for speakOfferingFallbackBlessingOnAmp()
+// above - see triggerPersonalizedOffering()'s call site for when this
+// fires instead of the normal already-decided-text path.
+struct OfferingFallbackTaskParams {
+  String name;
+  String offeringType;
+  String lang;
+};
+
+void speakOfferingFallbackTaskFn(void *pvParameters) {
+  OfferingFallbackTaskParams *params = (OfferingFallbackTaskParams *)pvParameters;
+  speakOfferingFallbackBlessingOnAmp(params->name, params->offeringType, params->lang);
+  delete params;
+  blessingTaskActive = false;
+  vTaskDelete(NULL);
+}
+
+void speakOfferingFallbackBlessingOnAmpAsync(const String &name, const String &offeringType, const String &lang) {
+  if (blessingTaskActive) {
+    Serial.println("AMP: a blessing is already playing, skipping this one");
+    return;
+  }
+  if (!ampReady) return;
+
+  OfferingFallbackTaskParams *params = new OfferingFallbackTaskParams{name, offeringType, lang};
+  blessingTaskActive = true;
+  BaseType_t created = xTaskCreatePinnedToCore(speakOfferingFallbackTaskFn, "offeringFallback", 8192, params, 1, NULL, 1);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
     delete params;
@@ -2147,11 +2204,27 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
 
   setSystemState(STATE_FEET_ACTIVE, 12000);
 
-  // Speak the blessing text through the altar's own speaker, on its own
+  // Speak the blessing through the altar's own speaker, on its own
   // background task (see speakBlessingOnAmpAsync() above) - two real
   // watchdog-panic crashes on hardware tonight both traced back to this
   // running inline on the same task as loop()/server.handleClient().
-  speakBlessingOnAmpAsync(prayer, lang);
+  //
+  // `prayer` here is normally the AI blessing text already decided by the
+  // devotee's phone (see upgradeOfferingText() in puja_page.h) - the fast
+  // path just re-speaks it. But it arrives EMPTY whenever that phone-side
+  // call hasn't landed yet (the priest approved faster than the network
+  // round trip) or genuinely failed - and empty text made
+  // speakBlessingOnAmpAsync silently do nothing, so the OLED showed the
+  // offering while the speaker stayed silent. Confirmed on hardware.
+  // Falling back to generating a blessing live (same idea as the wish
+  // pad, but with the real name/offering context) means an approved
+  // offering can never end in silence.
+  if (prayer.length() > 0) {
+    speakBlessingOnAmpAsync(prayer, lang);
+  } else {
+    Serial.println("OFFERING: no already-decided blessing text yet - generating one live instead of staying silent.");
+    speakOfferingFallbackBlessingOnAmpAsync(name, offeringType, lang);
+  }
 }
 
 // Fired by a touch on the physical wish pad (see checkSensors()) - the
