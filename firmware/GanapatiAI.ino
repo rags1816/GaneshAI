@@ -900,8 +900,8 @@ void handleWebRoutes() {
 
     char json[850];
     int n = snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
-      stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
+      "{\"firmware\":\"%s\",\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
+      FIRMWARE_VERSION, stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
       pirEnabled ? "true" : "false", displayEnabled ? "true" : "false", ledEnabled ? "true" : "false",
       touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false", wishPadEnabled ? "true" : "false",
       selectedLang, selectedTheme, currentPlayingTrack,

@@ -886,6 +886,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         <footer>
             Lord of Wisdom &bull; 2026 Theme
+            <div id="firmware-version-tag" style="font-size:10px; opacity:0.6; margin-top:4px;"></div>
         </footer>
     </div>
 
@@ -3669,6 +3670,8 @@ var QRCode;
             fetch('/api/state').then(r => r.json()).then(data => {
                 devicePollFailures = 0;
                 setDeviceOfflineBadge(false);
+                const fwTag = document.getElementById('firmware-version-tag');
+                if (fwTag && data.firmware) fwTag.textContent = 'Firmware: ' + data.firmware;
                 const prevState = state;
                 const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "AARTI_MODE");
                 const nowIdle = (data.state === "STANDBY" || data.state === "AMBIENT" || data.state === "TEMPLE_CLOSED");

@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-08-r82"
+#define FIRMWARE_VERSION "2026-08-08-r83"
 
 // ==========================================
 // Hardware Pin Definitions

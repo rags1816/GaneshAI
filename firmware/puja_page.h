@@ -331,6 +331,13 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Bump alongside FIRMWARE_VERSION in config.h whenever this file
+         changes, so it's visible at a glance (no dev tools needed) which
+         build is actually live - avoids the "I flashed it, why doesn't it
+         match" back-and-forth when firmware/puja page/backend versions
+         drift apart during testing. -->
+    <div style="text-align:center; font-size:10px; opacity:0.5; padding:8px;">Puja page: 2026-08-08-r83</div>
+
     <script>
         // Offering queue cloud relay - Firebase Realtime Database, chosen
         // after two ad-hoc free key-value services (keyvalue.immanuel.co,
