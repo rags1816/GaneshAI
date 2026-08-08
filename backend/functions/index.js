@@ -59,6 +59,27 @@ const WISH_PAD_THEMES = [
   "lightness of heart and simple delight",
 ];
 
+// Sentiment-aware LED mood - the altar's LED ring shows a color matched
+// to the emotional tone of the blessing, not a fixed color regardless of
+// what was actually prayed for. Six moods, each mapped to a distinct LED
+// color pair on the firmware side (see moodColorsFor() in GanapatiAI.ino) -
+// kept as a small fixed enum, not free text, so the firmware can switch
+// on it directly with no fuzzy string matching.
+const MOODS = ["joyful", "hopeful", "comforting", "peaceful", "empowering", "grateful"];
+
+// Deterministic theme->mood mapping for the wish pad's touchOnly path -
+// that path has no real prayer text for Claude to read sentiment from
+// (silent touch, no words), but it DOES already pick a random theme from
+// WISH_PAD_THEMES above, so mapping that same theme to a mood keeps the
+// LED color and the spoken blessing's actual content in sync, with no
+// extra LLM call or parsing risk. Index-aligned with WISH_PAD_THEMES.
+const THEME_TO_MOOD = [
+  "empowering", "peaceful", "empowering", "joyful", "peaceful", "hopeful",
+  "hopeful", "peaceful", "empowering", "joyful", "empowering", "peaceful",
+  "comforting", "joyful", "hopeful", "comforting", "comforting", "comforting",
+  "hopeful", "peaceful", "grateful", "comforting", "empowering", "joyful",
+];
+
 const MAX_PRAYER_CHARS = 300;
 const MAX_NAME_CHARS = 60;
 
@@ -119,11 +140,24 @@ const LANGUAGE_CONFIG = {
   },
 };
 
-// Slower and a touch deeper than Google's default (1.0 rate, 0 pitch) -
-// the first test came back sounding rushed and younger than intended for
-// a blessing. Tune further once you've heard this version.
-const SPEAKING_RATE = 0.85;
-const PITCH_SEMITONES = -3.0;
+// Pushed further after real feedback: family listening to the first
+// version (0.85 rate, -3 pitch) said it sounded rushed, monotonous, and
+// not "godly" - too close to a normal announcement voice. This is
+// deliberately close to the edge of what Google's Wavenet voices can
+// take before words start blurring together; if a specific language
+// comes back garbled rather than just slow/deep, ease PITCH_SEMITONES
+// back toward -3 to -4 for that voice specifically rather than reverting
+// everything.
+const SPEAKING_RATE = 0.72;
+const PITCH_SEMITONES = -5.0;
+
+// Reverb ("the voice fills a temple") is applied as actual audio DSP
+// after Google TTS returns the WAV, not a TTS parameter - Google's API
+// has no reverb/echo control, only pitch and rate. See applyReverb()
+// below for the algorithm (Schroeder comb+allpass, run through Node
+// directly on the raw PCM16 samples - no external audio library needed).
+const REVERB_WET_MIX = 0.30; // 30% wet - audible without drowning the words
+const REVERB_TAIL_SECONDS = 1.2;
 
 // Lightweight TTS-only endpoint - takes text that's ALREADY been decided
 // (the blessing the devotee already saw/heard on their own phone, read
@@ -200,8 +234,10 @@ exports.generateBlessing = onRequest(
       // prayer is empty.
 
       let blessingText;
+      let blessingMood;
       try {
-        blessingText = await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly);
+        ({text: blessingText, mood: blessingMood} =
+          await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly));
       } catch (err) {
         console.error("Claude call failed:", err);
         res.status(502).send(`Blessing generation failed (Claude): ${err.message}`);
@@ -218,16 +254,27 @@ exports.generateBlessing = onRequest(
       }
 
       res.set("X-Blessing-Text", encodeURIComponent(blessingText));
-      res.set("Access-Control-Expose-Headers", "X-Blessing-Text");
+      res.set("X-Blessing-Mood", blessingMood);
+      res.set("Access-Control-Expose-Headers", "X-Blessing-Text, X-Blessing-Mood");
       res.set("Content-Type", "audio/wav");
       res.status(200).send(audioBuffer);
     },
 );
 
+// Returns {text, mood} - mood drives the LED ring's color for the
+// duration of this blessing (see MOODS/THEME_TO_MOOD above). touchOnly
+// gets its mood deterministically from the theme already chosen (no
+// prayer text exists for Claude to read sentiment from); every other
+// case asks Claude to self-classify by prefixing its reply with the
+// mood word in brackets, which is then parsed out and stripped before
+// the text is spoken/displayed - the devotee never sees the tag itself.
 async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
   let situationText;
+  let deterministicMood = null;
   if (touchOnly) {
-    const theme = WISH_PAD_THEMES[Math.floor(Math.random() * WISH_PAD_THEMES.length)];
+    const themeIdx = Math.floor(Math.random() * WISH_PAD_THEMES.length);
+    const theme = WISH_PAD_THEMES[themeIdx];
+    deterministicMood = THEME_TO_MOOD[themeIdx];
     situationText = `who has come before you at the altar and gently touched the wish pad - ` +
       `the way one would touch a deity's feet - offering no words, only a silent prayer held ` +
       `in their heart. Reply with a short, warm blessing that acknowledges their silent prayer ` +
@@ -249,10 +296,17 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
       `wish for, as if spoken aloud to them.`;
   }
 
-  const prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
+  let prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
     `and directly to a devotee named ${name}, ${situationText} Under 40 words. Plain ` +
     `spoken text only - no stage directions, no quotation marks, no markdown. Remember: ` +
     `${langConfig.claudeInstruction}`;
+  if (!deterministicMood) {
+    prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
+      `classifying its emotional mood - exactly one of: ${MOODS.join(", ")}. Format that ` +
+      `first line as [mood] with square brackets, e.g. [hopeful], then a line break, then ` +
+      `the blessing text itself (still in ${langConfig.claudeInstruction.includes("English") ? "English" : "the language above"}, ` +
+      `the mood word is the only exception).`;
+  }
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -273,12 +327,29 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
   }
 
   const data = await response.json();
-  const text = data.content && data.content[0] && data.content[0].text ?
+  let text = data.content && data.content[0] && data.content[0].text ?
     data.content[0].text.trim() : "";
   if (!text) {
     throw new Error("Claude returned no text");
   }
-  return text;
+
+  let mood = deterministicMood;
+  if (!mood) {
+    const moodMatch = text.match(/^\[(\w+)\]\s*/);
+    if (moodMatch && MOODS.includes(moodMatch[1].toLowerCase())) {
+      mood = moodMatch[1].toLowerCase();
+      text = text.slice(moodMatch[0].length).trim();
+    } else {
+      // Claude didn't follow the format (rare, but must never break the
+      // blessing itself over a missing color choice) - default to a
+      // safe, generically-fitting mood and use the text as-is, tag and
+      // all, only if it truly couldn't be stripped cleanly.
+      mood = "peaceful";
+      if (moodMatch) text = text.slice(moodMatch[0].length).trim(); // strip an unrecognized-but-present tag anyway
+    }
+  }
+
+  return {text, mood};
 }
 
 async function synthesizeSpeech(text, langConfig) {
@@ -306,5 +377,129 @@ async function synthesizeSpeech(text, langConfig) {
   if (!data.audioContent) {
     throw new Error("Google TTS returned no audio");
   }
-  return Buffer.from(data.audioContent, "base64");
+  const rawWav = Buffer.from(data.audioContent, "base64");
+
+  // If the reverb DSP throws for any reason, fall back to the plain
+  // (dry) voice rather than failing the whole blessing - a slightly
+  // less atmospheric voice beats no voice at all.
+  try {
+    const {sampleRate, pcmData} = parseWav(rawWav);
+    const wetPcm = applyReverb(pcmData, sampleRate);
+    return buildWav(wetPcm, sampleRate);
+  } catch (err) {
+    console.error("Reverb DSP failed, returning dry audio instead:", err);
+    return rawWav;
+  }
+}
+
+// Minimal WAV (RIFF/PCM) reader - scans for the "fmt " and "data" chunks
+// rather than assuming the canonical 44-byte header, the same defensive
+// approach the ESP32 firmware's own WAV parser uses (skipToWavData() in
+// GanapatiAI.ino) - robust against Google ever adding extra chunks.
+function parseWav(buffer) {
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("Not a RIFF/WAVE file");
+  }
+  let offset = 12;
+  let sampleRate = 16000;
+  let pcmData = null;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const bodyStart = offset + 8;
+    if (chunkId === "fmt ") {
+      sampleRate = buffer.readUInt32LE(bodyStart + 4);
+    } else if (chunkId === "data") {
+      pcmData = buffer.subarray(bodyStart, bodyStart + chunkSize);
+    }
+    offset = bodyStart + chunkSize + (chunkSize % 2); // chunks are word-aligned
+  }
+  if (!pcmData) throw new Error("No data chunk found in WAV");
+  return {sampleRate, pcmData};
+}
+
+// Writes a canonical 44-byte-header mono 16-bit PCM WAV - what the ESP32
+// side and every normal WAV consumer expects.
+function buildWav(pcmData, sampleRate) {
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcmData.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // fmt chunk size (PCM)
+  header.writeUInt16LE(1, 20); // audio format = PCM
+  header.writeUInt16LE(numChannels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcmData.length, 40);
+  return Buffer.concat([header, pcmData]);
+}
+
+// "Fills the whole space" reverb - a classic Schroeder design (four
+// parallel feedback comb filters summed together, then two series
+// all-pass filters to diffuse the sound without adding obvious metallic
+// coloration). Runs directly on the raw PCM16 samples; no external audio
+// library, so no extra Cloud Function dependency or cold-start cost.
+// Delay times are the well-known ratios (mutually near-prime) that avoid
+// audible resonance/flutter. Adds REVERB_TAIL_SECONDS of ringing silence
+// after the voice ends, same as a real room continuing to reflect sound
+// after the speaker stops.
+function applyReverb(pcmBuffer, sampleRate) {
+  const numSamples = pcmBuffer.length / 2;
+  const tailSamples = Math.round(sampleRate * REVERB_TAIL_SECONDS);
+  const totalSamples = numSamples + tailSamples;
+
+  const input = new Float32Array(totalSamples); // trailing zeros = the tail's silent "input"
+  for (let i = 0; i < numSamples; i++) {
+    input[i] = pcmBuffer.readInt16LE(i * 2) / 32768;
+  }
+
+  const combDelaysMs = [29.7, 37.1, 41.1, 43.7];
+  const combGain = 0.78;
+  const combSum = new Float32Array(totalSamples);
+  for (const ms of combDelaysMs) {
+    const delaySamples = Math.max(1, Math.round(sampleRate * ms / 1000));
+    const delayLine = new Float32Array(delaySamples);
+    let idx = 0;
+    for (let i = 0; i < totalSamples; i++) {
+      const delayed = delayLine[idx];
+      const y = input[i] + delayed * combGain;
+      delayLine[idx] = y;
+      idx = (idx + 1) % delaySamples;
+      combSum[i] += y * 0.25;
+    }
+  }
+
+  function allpass(signal, delayMs, gain) {
+    const delaySamples = Math.max(1, Math.round(sampleRate * delayMs / 1000));
+    const out = new Float32Array(signal.length);
+    const delayLine = new Float32Array(delaySamples);
+    let idx = 0;
+    for (let i = 0; i < signal.length; i++) {
+      const delayed = delayLine[idx];
+      const y = -gain * signal[i] + delayed;
+      delayLine[idx] = signal[i] + gain * y;
+      idx = (idx + 1) % delaySamples;
+      out[i] = y;
+    }
+    return out;
+  }
+
+  let wet = allpass(combSum, 5.0, 0.7);
+  wet = allpass(wet, 1.7, 0.7);
+
+  const outBuf = Buffer.alloc(totalSamples * 2);
+  for (let i = 0; i < totalSamples; i++) {
+    let v = input[i] * (1 - REVERB_WET_MIX) + wet[i] * REVERB_WET_MIX;
+    v = Math.max(-1, Math.min(1, v)); // hard-limit - the comb/allpass feedback can occasionally overshoot
+    outBuf.writeInt16LE(Math.round(v * 32767), i * 2);
+  }
+  return outBuf;
 }

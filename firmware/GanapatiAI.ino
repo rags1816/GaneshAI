@@ -335,6 +335,18 @@ unsigned long lastScrollUpdate = 0;
 // message once the offering that needed it has ended.
 char scrollTextLang[4] = "en";
 
+// Sentiment-aware LED mood - set from the backend's X-Blessing-Mood
+// response header (see postAndStreamAudioToAmp()'s outMood parameter and
+// askClaudeForBlessing()/THEME_TO_MOOD in index.js) whenever a wish-pad
+// touch or offering has one available. Empty string means "no mood
+// known" - animateLeds() falls back to the plain saffron/gold blessing
+// palette in that case (network/backend failure, or the phone-relayed
+// offering path where a mood wasn't captured - see the mood query param
+// in triggerPersonalizedOffering()). Cleared back to "" everywhere
+// offeringDisplayActive itself gets cleared, so a mood color can never
+// bleed into an unrelated later blessing.
+char currentMoodTag[16] = "";
+
 // Display lock helper for Feet touch / Mouse Back / offerings. The lock
 // holds ONE message on screen (no blessing rotation) for feetDisplayLockMs
 // before the rotation resumes. 12s for an ordinary touch; an offering sets
@@ -470,7 +482,7 @@ void drawOLED();
 void setSystemState(SystemState newState, unsigned long duration = 0);
 void triggerMantra();
 void triggerFeetMantra();
-void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang);
+void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang, String mood);
 void triggerWishPadBlessing();
 void micTestTaskFn(void *pvParameters);
 void micRecordPlaybackTaskFn(void *pvParameters);
@@ -981,7 +993,13 @@ void handleWebRoutes() {
       String offeringType = server.arg("offering");
       String prayer = server.arg("prayer");
       String lang = server.hasArg("lang") ? server.arg("lang") : "en";
-      triggerPersonalizedOffering(name, offeringType, prayer, lang);
+      // Set only when the phone's own generateBlessing call already
+      // determined one (see X-Blessing-Mood in requestAiBlessing(),
+      // puja_page.h) - empty when it hasn't (older queue items, or the
+      // priest approved before that call finished). triggerPersonalizedOffering()
+      // falls back to determining its own mood live in that case.
+      String mood = server.hasArg("mood") ? server.arg("mood") : "";
+      triggerPersonalizedOffering(name, offeringType, prayer, lang, mood);
     }
     server.send(200, "text/plain", "OK");
   });
@@ -1560,6 +1578,7 @@ void updateStateMachine() {
           // instead of using DFPlayer's pause()/start() (unreliable on
           // many DFPlayer Mini clones).
           offeringDisplayActive = false;
+          currentMoodTag[0] = '\0'; // don't let this blessing's mood color bleed into the resumed mantra
           // Release the display lock explicitly so the resumed mantra's
           // blessing rotation starts again immediately, and reset the
           // lock window for the next ordinary touch.
@@ -1720,6 +1739,7 @@ void triggerMantra() {
   // A fresh touch always wins over any pending offering resume.
   offeringDisplayActive = false;
   offeringInterrupted = false;
+  currentMoodTag[0] = '\0';
 
   // Stop whatever is playing before starting the next track
   dfStop();
@@ -1761,6 +1781,7 @@ void triggerFeetMantra() {
   // A fresh touch always wins over any pending offering resume.
   offeringDisplayActive = false;
   offeringInterrupted = false;
+  currentMoodTag[0] = '\0';
 
   // Stop whatever is playing before starting the next track
   dfStop();
@@ -1876,7 +1897,18 @@ bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
 // both just POST a JSON body to a Cloud Function and stream whatever WAV
 // audio comes back straight to the I2S amp, never buffering the whole
 // clip in RAM; only the URL and body actually differ between them.
-void postAndStreamAudioToAmp(const String &url, const String &jsonBody) {
+//
+// outMood is optional (pass NULL to ignore) - populated from the
+// X-Blessing-Mood response header when the backend sends one (see
+// askClaudeForBlessing()/THEME_TO_MOOD in index.js), so animateLeds()
+// can switch the LED ring to match the blessing's actual emotional tone
+// instead of a fixed color regardless of what was prayed for. Captured
+// right after the headers arrive, before the (possibly multi-second)
+// audio stream starts, so the LED can react as early as possible - the
+// synthesizeAudio endpoint (speakBlessingOnAmp's fast path) never sets
+// this header at all, so outMood is left untouched for that caller,
+// which is fine since that caller doesn't pass one.
+void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *outMood = NULL) {
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(10000);
@@ -1888,12 +1920,21 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody) {
     return;
   }
   https.addHeader("Content-Type", "application/json");
+  if (outMood != NULL) {
+    const char *headerKeys[] = {"X-Blessing-Mood"};
+    https.collectHeaders(headerKeys, 1);
+  }
 
   int code = https.POST(jsonBody);
   if (code != 200) {
     Serial.printf("AMP: backend returned HTTP %d\n", code);
     https.end();
     return;
+  }
+
+  if (outMood != NULL && https.hasHeader("X-Blessing-Mood")) {
+    *outMood = https.header("X-Blessing-Mood");
+    Serial.printf("AMP: blessing mood = %s\n", outMood->c_str());
   }
 
   WiFiClient *stream = https.getStreamPtr();
@@ -1957,7 +1998,9 @@ void speakGenericBlessingOnAmp(const String &lang) {
   }
 
   String body = "{\"name\":\"a devotee\",\"offering\":\"\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":true}";
-  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body);
+  String mood;
+  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  if (mood.length() > 0) strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
 }
 
 // Fallback for triggerPersonalizedOffering() when the priest approves an
@@ -1980,7 +2023,9 @@ void speakOfferingFallbackBlessingOnAmp(const String &name, const String &offeri
 
   String body = "{\"name\":\"" + jsonEscape(name) + "\",\"offering\":\"" + jsonEscape(offeringType) +
                 "\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":false}";
-  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body);
+  String mood;
+  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  if (mood.length() > 0) strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
 }
 
 // Two real crashes found on hardware tonight (both watchdog panics) came
@@ -2194,7 +2239,7 @@ void micRecordPlaybackTaskFn(void *pvParameters) {
 // locally in the browser dashboard when a priest approves an item, and
 // speaks it aloud through the altar's own speaker (see
 // speakBlessingOnAmp() above).
-void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang) {
+void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang, String mood) {
   blessingCounter++;
 
   // If a mantra OR the Aarti chant is actively playing, remember it so it
@@ -2245,9 +2290,20 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     // The only place in the whole firmware where scrollText's content is
     // ever anything but English - see fontForScrollLang() in drawOLED().
     strlcpy(scrollTextLang, lang.c_str(), sizeof(scrollTextLang));
+    // Mood was already decided when the phone's own generateBlessing call
+    // ran (see X-Blessing-Mood in requestAiBlessing()/puja_page.h) - use
+    // it directly, no extra network round trip needed. Empty when an
+    // older queue item never captured one, or the dashboard's own
+    // quick-offering panel doesn't relay it - animateLeds() treats an
+    // empty mood the same as "not known", same as before this feature.
+    strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
   } else {
     snprintf(scrollText, sizeof(scrollText), "   [OFFERING] Thank you, %s, for your %s offering!   ", name.c_str(), offeringType.c_str());
     strlcpy(scrollTextLang, "en", sizeof(scrollTextLang)); // fixed English template regardless of lang
+    // Not known yet in this branch - speakOfferingFallbackBlessingOnAmpAsync()
+    // below determines its own mood live and fills this in once its
+    // network call returns, same async-update pattern as the wish pad.
+    currentMoodTag[0] = '\0';
   }
 
   // 12s is only the MINIMUM here. The display actually ends when the
@@ -2313,6 +2369,11 @@ void triggerWishPadBlessing() {
   feetDisplayLocked = true;
   strlcpy(scrollText, "   \xF0\x9F\x99\x8F Your silent prayer is heard...   ", sizeof(scrollText));
   strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
+  // Not known yet - speakGenericBlessingOnAmpAsync() below determines the
+  // mood live (deterministically, from the same random theme it picks
+  // for the blessing text) and fills this in once its network call
+  // returns, same as the LED starting on the default palette until then.
+  currentMoodTag[0] = '\0';
   feetDisplayLockMs = 600000UL; // cleared by updateStateMachine() when the display genuinely finishes, same as an offering
 
   setSystemState(STATE_FEET_ACTIVE, 6000);
@@ -2375,6 +2436,7 @@ void openTempleFromClosed() {
 
   offeringDisplayActive = false;
   offeringInterrupted = false;
+  currentMoodTag[0] = '\0';
 
   dfStop();
   delay(50);
@@ -2416,6 +2478,40 @@ void stopAudioAndStandby() {
 // web_dashboard.h drawLeds()/peacockWaveColor()/etc.) so /api/leds?pattern=N
 // looks the same on the physical ring as it does in the browser simulation:
 //   0 Peacock Wave, 1 Circuit Pulse, 2 Golden Aura, 3 Rainbow Dream, 4 Diya Flicker
+
+// Sentiment-aware LED colors for an offering/wish-pad blessing - see
+// currentMoodTag and MOODS/THEME_TO_MOOD in backend/functions/index.js.
+// Six moods, kept as a small fixed set matched exactly to the backend's
+// list so every value Claude/the theme mapping can produce has a real
+// color here; anything unrecognized (empty string - mood not known yet
+// or the backend call failed - or a future backend change this build
+// predates) returns false and the caller keeps the plain saffron/gold
+// default, same as before this feature existed.
+bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2) {
+  if (strcmp(mood, "joyful") == 0) {
+    c1 = CRGB(255, 200, 0);   // bright gold
+    c2 = CRGB(255, 105, 180); // festive pink
+  } else if (strcmp(mood, "hopeful") == 0) {
+    c1 = CRGB(135, 206, 250); // sky blue - dawn light
+    c2 = CRGB(255, 255, 255); // white
+  } else if (strcmp(mood, "comforting") == 0) {
+    c1 = CRGB(147, 112, 219); // soft purple
+    c2 = CRGB(255, 182, 193); // soft pink
+  } else if (strcmp(mood, "peaceful") == 0) {
+    c1 = CRGB(0, 191, 255);   // deep sky blue
+    c2 = CRGB(144, 238, 144); // light green
+  } else if (strcmp(mood, "empowering") == 0) {
+    c1 = CRGB(220, 20, 60);   // crimson
+    c2 = CRGB(255, 140, 0);   // orange
+  } else if (strcmp(mood, "grateful") == 0) {
+    c1 = CRGB(255, 215, 0);   // gold
+    c2 = CRGB(255, 255, 255); // white
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void animateLeds() {
   if (!LED_CONNECTED) return; // FastLED never initialised - see setup()
   if (!ledEnabled) return; // admin-disabled - blanked once already in the /api/settings handler
@@ -2462,11 +2558,20 @@ void animateLeds() {
   if (currentState == STATE_AMBIENT || currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI) {
     CRGB c1, c2;
     if (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE) {
-      // Dedicated warm "blessing" palette - a mantra touch should always
-      // feel the same and special, not vary with whatever ambient theme
-      // happens to be selected.
-      c1 = CRGB(255, 140, 0);  // saffron
-      c2 = CRGB(255, 215, 0);  // gold
+      // A plain feet/mouse-back touch mantra always shows the same warm
+      // saffron/gold - "a mantra touch should always feel the same and
+      // special". An offering or wish-pad blessing (offeringDisplayActive)
+      // is different: if a real mood came back with it, show that
+      // instead, so the LED reflects what was actually prayed for rather
+      // than looking identical regardless of the blessing's content.
+      bool usedMoodColor = false;
+      if (offeringDisplayActive && currentMoodTag[0] != '\0') {
+        usedMoodColor = moodColorsFor(currentMoodTag, c1, c2);
+      }
+      if (!usedMoodColor) {
+        c1 = CRGB(255, 140, 0);  // saffron
+        c2 = CRGB(255, 215, 0);  // gold
+      }
     } else if (currentState == STATE_AARTI) {
       c1 = CRGB(180, 20, 0);   // deep ember red
       c2 = CRGB(255, 120, 0);  // bright flame orange

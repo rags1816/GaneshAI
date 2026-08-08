@@ -337,7 +337,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-08-r85</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-08-r86</div>
     </div>
 
     <script>
@@ -719,15 +719,22 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 .then(res => {
                     if (!res.ok) throw new Error('blessing generation status ' + res.status);
                     const blessingText = decodeURIComponent(res.headers.get('X-Blessing-Text') || '');
-                    return res.blob().then(audioBlob => ({ blessingText, audioBlob }));
+                    // Sentiment-aware LED color for this blessing (see
+                    // MOODS in backend/functions/index.js) - carried
+                    // through to the ESP32 so the LED ring matches the
+                    // blessing's actual emotional tone once a priest
+                    // approves it, instead of a fixed color regardless of
+                    // what was prayed for.
+                    const blessingMood = res.headers.get('X-Blessing-Mood') || '';
+                    return res.blob().then(audioBlob => ({ blessingText, blessingMood, audioBlob }));
                 })
-                .then(({ blessingText, audioBlob }) => {
+                .then(({ blessingText, blessingMood, audioBlob }) => {
                     if (playOnPhone) {
                         const audioEl = new Audio(URL.createObjectURL(audioBlob));
                         audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
                     }
 
-                    if (blessingText) upgradeOfferingText(requestId, blessingText);
+                    if (blessingText) upgradeOfferingText(requestId, blessingText, blessingMood);
                 })
                 .catch(err => {
                     console.warn('AI blessing generation failed or timed out, offering already submitted with the typed wish as-is:', err);
@@ -739,11 +746,12 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // offering that's already been submitted and relayed - both in
         // this browser's local queue and the shared online one, so the
         // priest sees the nicer version whenever it's ready.
-        function upgradeOfferingText(requestId, blessingText) {
+        function upgradeOfferingText(requestId, blessingText, blessingMood) {
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             const localItem = localQueue.find(item => item.id === requestId);
             if (localItem) {
                 localItem.prayer = blessingText;
+                localItem.mood = blessingMood || '';
                 localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
                 localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             }
@@ -754,6 +762,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     const onlineItem = onlineQueue.find(item => item.id === requestId);
                     if (!onlineItem) return;
                     onlineItem.prayer = blessingText;
+                    onlineItem.mood = blessingMood || '';
                     return relayWriteQueue(onlineQueue);
                 })
                 .catch(err => console.warn('Could not upgrade relayed offering text with AI reply:', err));

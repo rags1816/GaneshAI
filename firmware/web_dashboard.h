@@ -3475,10 +3475,14 @@ var QRCode;
             // Show the devotee's actual name/offering/prayer on the
             // physical OLED too, not just this browser's local preview.
             if (isPhysicalESP) {
-                // item.lang is only present on offerings submitted via the
-                // puja.html language dropdown - older items and the
-                // dashboard's own quick-offering panel default to English.
-                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}`;
+                // item.lang/item.mood are only present on offerings that
+                // went through requestAiBlessing() (puja.html submissions
+                // whose AI reply landed in time) - older items and the
+                // dashboard's own quick-offering panel default to English/
+                // no mood, same as before this existed. Sentiment-aware
+                // LED color: see MOODS in backend/functions/index.js and
+                // moodColorsFor() in GanapatiAI.ino.
+                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}&mood=${encodeURIComponent(item.mood || '')}`;
                 sendESPControl('offering', params);
             }
         }
