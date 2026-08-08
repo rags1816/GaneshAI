@@ -45,6 +45,18 @@ const WISH_PAD_THEMES = [
   "joy and contentment",
   "strength to persevere",
   "harmony with those they love",
+  "love and deep affection for those around them",
+  "lasting happiness, not just a passing moment",
+  "success in their efforts and ambitions",
+  "a true sense of belonging, of being at home",
+  "comfort and rest for a weary heart",
+  "grace and gentle, unearned kindness",
+  "renewal and a fresh start after hard times",
+  "clarity of mind and awakening to what matters",
+  "gratitude for what is already theirs",
+  "wholeness, with nothing broken left unmended",
+  "confidence to rise after a setback",
+  "lightness of heart and simple delight",
 ];
 
 const MAX_PRAYER_CHARS = 300;
