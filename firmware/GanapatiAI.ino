@@ -491,6 +491,9 @@ void setup() {
   Serial.println("DEBUG: TOUCH_FEET_PIN configured.");
   pinMode(TOUCH_BACK_PIN, INPUT);
   Serial.println("DEBUG: TOUCH_BACK_PIN configured.");
+  pinMode(WISH_PAD_PIN, INPUT);
+  Serial.printf("DEBUG: WISH_PAD_PIN configured, WISH_PAD_CONNECTED=%s\n",
+                WISH_PAD_CONNECTED ? "true" : "false");
   Serial.println("DEBUG: Sensor pins configured successfully.");
   // Printed explicitly because these two config.h flags being left false
   // is the single most common reason touch "does nothing" after wiring a
