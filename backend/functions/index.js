@@ -16,9 +16,104 @@
 
 const {onRequest} = require("firebase-functions/v2/https");
 const {defineSecret} = require("firebase-functions/params");
+const path = require("path");
+const {createCanvas, GlobalFonts} = require("@napi-rs/canvas");
 
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const GOOGLE_TTS_API_KEY = defineSecret("GOOGLE_TTS_API_KEY");
+
+// U8g2 (the ESP32's OLED library) has no text-shaping engine - it draws
+// one Unicode codepoint's glyph at a time, left to right, with no
+// ability to reorder a vowel mark that visually belongs before its
+// consonant or fuse consonant conjuncts into their combined form. Every
+// script below (Devanagari/Hindi+Marathi, Tamil, Telugu, Gujarati,
+// Gurmukhi/Punjabi, Malayalam, Bengali) genuinely needs that shaping to
+// render correctly - without it, real words looked "broken and not
+// complete" (reported on hardware) even with a correct, dedicated font
+// per script (see indic_fonts.h).
+//
+// Fix: render the blessing text into a correctly-shaped bitmap HERE,
+// where full font-rendering software (via @napi-rs/canvas, built on the
+// same Skia engine Chrome uses - verified with a real shaping test:
+// Devanagari vowel reordering and conjunct ligatures both render
+// correctly) is available, and ship the ESP32 a picture instead of raw
+// text. The ESP32's job shrinks to "draw these pixels" - something
+// u8g2's own drawXBMP() already does natively, no new device-side
+// intelligence needed.
+const RENDER_FONT_HEIGHT_PX = 30; // canvas height per rendered line - see renderTextToXbm()
+const RENDER_FONT_SIZE_PX = 24; // font size fed to the canvas - leaves margin above/below for matras/descenders
+
+// lang code -> {file, family}. Font files live in fonts/ alongside this
+// file (bundled into the Cloud Function deploy automatically - nothing
+// in firebase.json/.gitignore excludes them). family names are
+// arbitrary, just need to be unique and match what's passed to
+// GlobalFonts.registerFromPath().
+const SCRIPT_FONTS = {
+  hi: {file: "NotoSansDevanagari-Regular.ttf", family: "GanapatiDevanagari"},
+  mr: {file: "NotoSansDevanagari-Regular.ttf", family: "GanapatiDevanagari"},
+  ta: {file: "NotoSansTamil-Regular.ttf", family: "GanapatiTamil"},
+  te: {file: "NotoSansTelugu-Regular.ttf", family: "GanapatiTelugu"},
+  gu: {file: "NotoSansGujarati-Regular.ttf", family: "GanapatiGujarati"},
+  pa: {file: "NotoSansGurmukhi-Regular.ttf", family: "GanapatiGurmukhi"},
+  ml: {file: "NotoSansMalayalam-Regular.ttf", family: "GanapatiMalayalam"},
+  bn: {file: "NotoSansBengali-Regular.ttf", family: "GanapatiBengali"},
+};
+
+// Cold-start-only: each font gets registered once per Cloud Function
+// instance, not once per request - GlobalFonts.registerFromPath() reads
+// from disk, no need to repeat that on every single blessing.
+const registeredFamilies = new Set();
+function ensureFontRegistered(langKey) {
+  const font = SCRIPT_FONTS[langKey];
+  if (!font) return null;
+  if (!registeredFamilies.has(font.family)) {
+    GlobalFonts.registerFromPath(path.join(__dirname, "fonts", font.file), font.family);
+    registeredFamilies.add(font.family);
+  }
+  return font.family;
+}
+
+// Renders text to a 1-bit monochrome bitmap in XBM byte layout (what
+// u8g2's drawXBMP() expects: rows byte-aligned, bits LSB-first within
+// each byte, 1 = draw/lit pixel). Returns null if the language has no
+// dedicated font (English doesn't need this path at all - the existing
+// scrolling text/logisoso20 font already renders it correctly).
+function renderTextToXbm(text, langKey) {
+  const family = ensureFontRegistered(langKey);
+  if (!family) return null;
+
+  // Measure first (a throwaway small canvas is enough for measureText),
+  // then build the real canvas at exactly the width needed - no point
+  // shipping a wider image than the text actually is.
+  const measure = createCanvas(10, 10).getContext("2d");
+  measure.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  const textWidth = Math.ceil(measure.measureText(text).width) + 8; // small horizontal margin
+
+  const canvas = createCanvas(textWidth, RENDER_FONT_HEIGHT_PX);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
+  ctx.fillStyle = "black";
+  ctx.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  ctx.textBaseline = "alphabetic";
+  // Baseline near the bottom of the canvas, leaving headroom above for
+  // tall matras/ascenders that sit above the main letter body.
+  ctx.fillText(text, 4, RENDER_FONT_HEIGHT_PX - 6);
+
+  const {data} = ctx.getImageData(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
+  const bytesPerRow = Math.ceil(textWidth / 8);
+  const packed = Buffer.alloc(bytesPerRow * RENDER_FONT_HEIGHT_PX);
+  const DARK_THRESHOLD = 128;
+  for (let y = 0; y < RENDER_FONT_HEIGHT_PX; y++) {
+    for (let x = 0; x < textWidth; x++) {
+      const r = data[(y * textWidth + x) * 4]; // pure black/white render - red channel alone is enough
+      if (r < DARK_THRESHOLD) {
+        packed[y * bytesPerRow + (x >> 3)] |= (1 << (x & 7));
+      }
+    }
+  }
+  return {width: textWidth, height: RENDER_FONT_HEIGHT_PX, bytesPerRow, data: packed};
+}
 
 const OFFERING_NAMES = {
   hibiscus: "a hibiscus flower",
@@ -197,6 +292,54 @@ exports.synthesizeAudio = onRequest(
       res.status(200).send(audioBuffer);
     },
 );
+
+// Renders already-decided text (no Claude call - same "text already
+// decided" pattern as synthesizeAudio above) into a correctly-shaped
+// bitmap for the physical OLED - see renderTextToXbm()/SCRIPT_FONTS
+// above for why this exists at all. Response is a tiny custom binary
+// format the firmware parses directly (no JSON/base64 overhead, which
+// matters on a device this RAM-constrained):
+//   byte 0-1: width  (uint16, little-endian)
+//   byte 2-3: height (uint16, little-endian)
+//   byte 4-5: bytesPerRow (uint16, little-endian)
+//   byte 6..: the packed 1-bit XBM rows themselves
+// Returns 204 No Content (no body) for English or any language with no
+// dedicated font - the firmware's existing scrolling-text path already
+// handles those correctly and doesn't need an image at all.
+exports.renderTextImage = onRequest({cors: true}, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("POST only");
+    return;
+  }
+
+  const text = (req.body.text || "").toString().slice(0, MAX_BLESSING_CHARS);
+  const langKey = (req.body.lang || "en").toString();
+  if (!text.trim()) {
+    res.status(400).send("text is required");
+    return;
+  }
+
+  let bitmap;
+  try {
+    bitmap = renderTextToXbm(text, langKey);
+  } catch (err) {
+    console.error("Text-to-image rendering failed:", err);
+    res.status(502).send(`Rendering failed: ${err.message}`);
+    return;
+  }
+
+  if (!bitmap) {
+    res.status(204).send();
+    return;
+  }
+
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(bitmap.width, 0);
+  header.writeUInt16LE(bitmap.height, 2);
+  header.writeUInt16LE(bitmap.bytesPerRow, 4);
+  res.set("Content-Type", "application/octet-stream");
+  res.status(200).send(Buffer.concat([header, bitmap.data]));
+});
 
 exports.generateBlessing = onRequest(
     {secrets: [ANTHROPIC_API_KEY, GOOGLE_TTS_API_KEY], cors: true},

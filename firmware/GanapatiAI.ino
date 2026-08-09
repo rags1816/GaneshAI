@@ -347,6 +347,30 @@ char scrollTextLang[4] = "en";
 // bleed into an unrelated later blessing.
 char currentMoodTag[16] = "";
 
+// Correctly-shaped blessing bitmap for scripts U8g2 can't render properly
+// on its own (see renderTextToXbm()/SCRIPT_FONTS in backend/functions/
+// index.js and fetchBlessingImage() below) - non-NULL exactly when
+// drawOLED() should draw+scroll THIS image instead of scrollText.
+// Heap-allocated because size varies with text length; freeBlessingImage()
+// must be called before ever overwriting these, and at every point
+// offeringDisplayActive itself gets cleared, so a stale image can never
+// bleed into an unrelated later blessing or leak memory.
+uint8_t *blessingImageBuf = NULL;
+int blessingImageWidth = 0;
+int blessingImageHeight = 0;
+int blessingImageBytesPerRow = 0;
+int blessingImageScrollX = 128;
+
+void freeBlessingImage() {
+  if (blessingImageBuf != NULL) {
+    free(blessingImageBuf);
+    blessingImageBuf = NULL;
+  }
+  blessingImageWidth = 0;
+  blessingImageHeight = 0;
+  blessingImageBytesPerRow = 0;
+}
+
 // Display lock helper for Feet touch / Mouse Back / offerings. The lock
 // holds ONE message on screen (no blessing rotation) for feetDisplayLockMs
 // before the rotation resumes. 12s for an ordinary touch; an offering sets
@@ -485,6 +509,8 @@ void triggerFeetMantra();
 void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang, String mood);
 void triggerWishPadBlessing();
 void micTestTaskFn(void *pvParameters);
+void fetchBlessingImage(const String &text, const String &lang);
+void freeBlessingImage();
 void micRecordPlaybackTaskFn(void *pvParameters);
 void triggerAarti();
 void triggerAartiThenClose();
@@ -1579,6 +1605,7 @@ void updateStateMachine() {
           // many DFPlayer Mini clones).
           offeringDisplayActive = false;
           currentMoodTag[0] = '\0'; // don't let this blessing's mood color bleed into the resumed mantra
+          freeBlessingImage(); // same reasoning - don't let a stale image show through the resumed mantra
           // Release the display lock explicitly so the resumed mantra's
           // blessing rotation starts again immediately, and reset the
           // lock window for the next ordinary touch.
@@ -1740,6 +1767,7 @@ void triggerMantra() {
   offeringDisplayActive = false;
   offeringInterrupted = false;
   currentMoodTag[0] = '\0';
+  freeBlessingImage();
 
   // Stop whatever is playing before starting the next track
   dfStop();
@@ -1782,6 +1810,7 @@ void triggerFeetMantra() {
   offeringDisplayActive = false;
   offeringInterrupted = false;
   currentMoodTag[0] = '\0';
+  freeBlessingImage();
 
   // Stop whatever is playing before starting the next track
   dfStop();
@@ -1878,6 +1907,128 @@ bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
     }
   }
   return false;
+}
+
+// Fetches a correctly-shaped bitmap for text/lang from the backend's
+// renderTextImage endpoint (see SCRIPT_FONTS/renderTextToXbm() in
+// backend/functions/index.js - U8g2 has no text-shaping engine, so
+// Devanagari/Tamil/etc. text drawn directly looks fragmented; this
+// endpoint renders it correctly server-side instead) and stores it in
+// blessingImageBuf/Width/Height/BytesPerRow for drawOLED() to draw+
+// scroll in place of scrollText. Best-effort only, same philosophy as
+// postAndStreamAudioToAmp() below: any failure here just means the OLED
+// falls back to whatever scrollText already holds (the plain English
+// "Blessing spoken - see dashboard for text" notice) - never a crash or
+// a hang, and never blocks the spoken blessing, which is unaffected by
+// whatever happens here.
+void fetchBlessingImage(const String &text, const String &lang) {
+  freeBlessingImage(); // always start clean - a stale image from a previous blessing must never show through a failed fetch
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10000);
+
+  HTTPClient https;
+  https.setTimeout(10000);
+  if (!https.begin(client, "https://us-central1-ganapatiai.cloudfunctions.net/renderTextImage")) {
+    Serial.println("IMAGE: https.begin() failed");
+    return;
+  }
+  https.addHeader("Content-Type", "application/json");
+
+  String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
+  int code = https.POST(body);
+  if (code == 204) {
+    Serial.println("IMAGE: backend has no dedicated font for this language - staying on plain text");
+    https.end();
+    return;
+  }
+  if (code != 200) {
+    Serial.printf("IMAGE: backend returned HTTP %d\n", code);
+    https.end();
+    return;
+  }
+
+  WiFiClient *stream = https.getStreamPtr();
+
+  // 6-byte header: width, height, bytesPerRow, each uint16 little-endian
+  // (see renderTextImage's own comment in index.js).
+  uint8_t header[6];
+  int got = 0;
+  unsigned long headerDeadline = millis() + 8000;
+  while (got < 6 && millis() < headerDeadline) {
+    if (stream->available()) {
+      got += stream->readBytes(header + got, 6 - got);
+    } else if (!https.connected()) {
+      break;
+    } else {
+      delay(5);
+    }
+  }
+  if (got != 6) {
+    Serial.println("IMAGE: timed out or stream closed before the 6-byte header arrived");
+    https.end();
+    return;
+  }
+
+  int w = header[0] | (header[1] << 8);
+  int h = header[2] | (header[3] << 8);
+  int bpr = header[4] | (header[5] << 8);
+  int dataLen = bpr * h;
+
+  // Sanity bounds before ever malloc()ing based on network-supplied
+  // numbers, on a device this RAM-constrained - a corrupted response
+  // must never be trusted with an unbounded allocation. A full-width
+  // (128px-wide screen worth of rows) blessing at the font size this
+  // renders at would be nowhere near these limits even for a very long
+  // blessing, so this is generous headroom, not a real constraint.
+  if (w <= 0 || w > 4000 || h <= 0 || h > 200 || dataLen <= 0 || dataLen > 40000) {
+    Serial.printf("IMAGE: header out of sane bounds (w=%d h=%d bytesPerRow=%d) - aborting\n", w, h, bpr);
+    https.end();
+    return;
+  }
+
+  uint8_t *buf = (uint8_t *)malloc(dataLen);
+  if (buf == NULL) {
+    Serial.println("IMAGE: malloc failed - out of heap, staying on plain text");
+    https.end();
+    return;
+  }
+
+  int readSoFar = 0;
+  unsigned long lastDataMs = millis();
+  while (readSoFar < dataLen) {
+    size_t avail = stream->available();
+    if (avail == 0) {
+      if (!https.connected() || millis() - lastDataMs > 8000) {
+        Serial.println("IMAGE: stream ended/stalled before the full image arrived");
+        free(buf);
+        https.end();
+        return;
+      }
+      delay(5);
+      continue;
+    }
+    size_t toRead = avail < (size_t)(dataLen - readSoFar) ? avail : (size_t)(dataLen - readSoFar);
+    int n = stream->readBytes(buf + readSoFar, toRead);
+    if (n <= 0) break;
+    readSoFar += n;
+    lastDataMs = millis();
+  }
+  https.end();
+
+  if (readSoFar != dataLen) {
+    Serial.printf("IMAGE: incomplete (%d of %d bytes) - discarding\n", readSoFar, dataLen);
+    free(buf);
+    return;
+  }
+
+  blessingImageBuf = buf;
+  blessingImageWidth = w;
+  blessingImageHeight = h;
+  blessingImageBytesPerRow = bpr;
+  blessingImageScrollX = 128;
+  Serial.printf("IMAGE: received %dx%d blessing bitmap (%d bytes)\n", w, h, dataLen);
 }
 
 // Fetches spoken-blessing audio for the given (already-decided) text from
@@ -2052,6 +2203,13 @@ struct BlessingTaskParams {
 
 void speakBlessingTaskFn(void *pvParameters) {
   BlessingTaskParams *params = (BlessingTaskParams *)pvParameters;
+  // Same text/lang already known for the speech itself - reused here so
+  // there's no separate plumbing needed. fetchBlessingImage() is a
+  // no-op (204 from the backend) for English or any language with no
+  // dedicated font, so this is safe to call unconditionally rather than
+  // duplicating the "which languages get an image" list on this side
+  // too - the backend's SCRIPT_FONTS is the one source of truth for that.
+  fetchBlessingImage(params->text, params->lang);
   speakBlessingOnAmp(params->text, params->lang);
   delete params;
   blessingTaskActive = false;
@@ -2305,6 +2463,10 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     // below determines its own mood live and fills this in once its
     // network call returns, same async-update pattern as the wish pad.
     currentMoodTag[0] = '\0';
+    // This branch always shows the fixed English template above, never
+    // a fetched image - clear out any leftover image from a PREVIOUS
+    // offering so it can't show through underneath this one.
+    freeBlessingImage();
   }
 
   // 12s is only the MINIMUM here. The display actually ends when the
@@ -2375,6 +2537,7 @@ void triggerWishPadBlessing() {
   // for the blessing text) and fills this in once its network call
   // returns, same as the LED starting on the default palette until then.
   currentMoodTag[0] = '\0';
+  freeBlessingImage(); // this display is always the fixed English message above, never a fetched image
   feetDisplayLockMs = 600000UL; // cleared by updateStateMachine() when the display genuinely finishes, same as an offering
 
   setSystemState(STATE_FEET_ACTIVE, 6000);
@@ -2438,6 +2601,7 @@ void openTempleFromClosed() {
   offeringDisplayActive = false;
   offeringInterrupted = false;
   currentMoodTag[0] = '\0';
+  freeBlessingImage();
 
   dfStop();
   delay(50);
@@ -2696,24 +2860,43 @@ void drawOLED() {
   // The actual content devotees read - now large enough to be legible
   // from across a room instead of squinting at a small font.
   //
+  // blessingImageBuf takes over completely when set (see
+  // fetchBlessingImage()/renderTextToXbm() in backend/functions/
+  // index.js): U8g2 has no text-shaping engine, so even the correct
+  // dedicated font per script (indic_fonts.h) only draws isolated
+  // glyphs, never reordering a vowel mark or fusing a conjunct -
+  // confirmed on hardware as real words looking "broken and not
+  // complete". The backend now renders the text into a correctly-
+  // shaped bitmap instead (verified against real shaping: matra
+  // reordering and conjunct ligatures both confirmed correct before
+  // this was wired in), so the ESP32's job here shrinks to "scroll
+  // through this picture", the same drawXBMP() call U8g2 already
+  // supports natively - no per-script font selection needed for
+  // anything blessingImageBuf covers.
+  if (blessingImageBuf != NULL) {
+    u8g2.drawXBMP(blessingImageScrollX, 20, blessingImageWidth, blessingImageHeight, blessingImageBuf);
+    if (now - lastScrollUpdate > TEXT_SCROLL_SPD) {
+      lastScrollUpdate = now;
+      blessingImageScrollX -= SCROLL_PX_PER_STEP;
+      if (blessingImageScrollX < -blessingImageWidth) {
+        blessingImageScrollX = 128;
+        scrollPassComplete = true; // same "finished one pass" signal the text path uses - updateStateMachine()'s offering-done timing relies on it regardless of which path is active
+      }
+    }
+    u8g2.sendBuffer();
+    return;
+  }
+
   // Font is chosen per scrollTextLang, not fixed - u8g2_font_logisoso20_tf
   // (like every "normal" u8g2 font) only has glyphs for Latin script, so
   // non-Latin text drawn with it just shows nothing for every character.
-  // Confirmed on hardware: Marathi and Tamil blessings played correctly
-  // and showed correctly on the dashboard, but the physical OLED stayed
-  // blank for both.
-  //
-  // All seven fonts below (see indic_fonts.h) are custom-built from the
-  // real Noto Sans <Script> typefaces, not u8g2's built-in "Unifont"
-  // fallback - Unifont's own Devanagari/Malayalam glyphs are thin/rough
-  // (it prioritizes broad Unicode coverage over any one script's
-  // quality), which is why even the r81 fix looked "broken and not
-  // complete" rather than genuinely fixed. See indic_fonts.h's own
-  // header comment for the real, still-present limitation: u8g2 has no
-  // text-shaping engine, so multi-character conjuncts/reordered vowel
-  // signs still won't look exactly like the dashboard/phone render them.
-  // Sindhi and Farsi aren't in the dropdown at all yet, so they still
-  // fall back to a plain-English notice if ever selected.
+  // This path (no image, plain scrollText) now only actually runs for
+  // English text, or the rare case blessingImageBuf failed to arrive
+  // (network hiccup) - the per-script fonts below are kept as a graceful
+  // partial fallback for that case rather than showing nothing, even
+  // though they don't shape correctly on their own (see indic_fonts.h's
+  // header comment) - some legible letters beat none while a retry
+  // would come too late to matter for this display cycle.
   const uint8_t *scrollFont = u8g2_font_logisoso20_tf;
   const char *displayText = scrollText;
   const char *OLED_NO_FONT_MSG = "   Blessing spoken - see dashboard for text   ";
