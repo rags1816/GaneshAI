@@ -707,8 +707,15 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // undercut it. Never blocks or delays the offering itself (see
         // submitPuja() above).
         function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId, playOnPhone) {
+            // 25s, not 15s (see r86) - generateBlessing now runs a real
+            // Schroeder reverb DSP pass over the full PCM buffer server-side
+            // on top of the existing Claude + Google TTS calls, so the old
+            // 15s budget was cutting off the upgrade (translated/
+            // personalized text) more often than before. Purely a "how long
+            // to wait for the nicer version" budget - the offering itself
+            // (see proceedWithOffering() above) is never gated on this.
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
 
             fetch(GENERATE_BLESSING_URL, {
                 method: 'POST',
