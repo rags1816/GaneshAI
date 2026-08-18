@@ -243,7 +243,14 @@ const LANGUAGE_CONFIG = {
 // comes back garbled rather than just slow/deep, ease PITCH_SEMITONES
 // back toward -3 to -4 for that voice specifically rather than reverting
 // everything.
-const SPEAKING_RATE = 0.72;
+//
+// Rate pushed further still after "needs to feel elderly" feedback
+// (0.72->0.66) - a more deliberate, weightier pace reads as aged/wise.
+// PITCH_SEMITONES deliberately left alone here: it's already at the
+// documented edge above, and Google's WaveNet API has no age/breathiness
+// control at all, so pitch isn't the right knob for "elderly" - pushing
+// it further only risks the garbling this comment already warns about.
+const SPEAKING_RATE = 0.66;
 const PITCH_SEMITONES = -5.0;
 
 // Reverb ("the voice fills a temple") is applied as actual audio DSP
@@ -251,8 +258,10 @@ const PITCH_SEMITONES = -5.0;
 // has no reverb/echo control, only pitch and rate. See applyReverb()
 // below for the algorithm (Schroeder comb+allpass, run through Node
 // directly on the raw PCM16 samples - no external audio library needed).
-const REVERB_WET_MIX = 0.30; // 30% wet - audible without drowning the words
-const REVERB_TAIL_SECONDS = 1.2;
+// Raised from 0.30/1.2s after "not reverberating enough" feedback - still
+// short of drowning the words, but a noticeably bigger/longer space.
+const REVERB_WET_MIX = 0.42;
+const REVERB_TAIL_SECONDS = 1.8;
 
 // Lightweight TTS-only endpoint - takes text that's ALREADY been decided
 // (the blessing the devotee already saw/heard on their own phone, read
