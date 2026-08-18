@@ -2060,6 +2060,12 @@ void fetchBlessingImage(const String &text, const String &lang) {
 // this header at all, so outMood is left untouched for that caller,
 // which is fine since that caller doesn't pass one.
 void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *outMood = NULL) {
+  // Logged before the TLS handshake/POST even starts, since both can take
+  // several seconds on ESP32 (WiFiClientSecure re-handshakes every call,
+  // even with setInsecure()) and that whole stretch was otherwise silent -
+  // easy to misread as a hang when it's just an in-flight connection.
+  Serial.println("AMP: connecting...");
+
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(10000);
