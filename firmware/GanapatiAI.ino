@@ -2548,10 +2548,17 @@ void triggerWishPadBlessing() {
 
   setSystemState(STATE_FEET_ACTIVE, 6000);
 
-  // English default - the wish pad has no language picker of its own
-  // (unlike puja.html's dropdown); worth wiring to the dashboard's
-  // language setting later if that turns out to matter in practice.
-  speakGenericBlessingOnAmpAsync("en");
+  // Reuses the dashboard's own language setting (selectedLang, 0/1/2 -
+  // see its declaration above) rather than always English - the wish pad
+  // has no language picker of its own, unlike puja.html's 9-language
+  // dropdown, but devotees touching it still hear it in whatever language
+  // the altar is currently set to. Code 1 covers Marathi AND Sanskrit
+  // combined on the dashboard (they share one firmware slot, see
+  // LANG_TO_CODE in web_dashboard.h) - mapped to Hindi here since the
+  // backend's LANGUAGE_CONFIG has no dedicated Sanskrit voice at all,
+  // and Hindi is the closer of the two actually-available voices.
+  const char *wishPadLang = (selectedLang == 1) ? "hi" : (selectedLang == 2) ? "ta" : "en";
+  speakGenericBlessingOnAmpAsync(wishPadLang);
 }
 
 void triggerAarti() {
