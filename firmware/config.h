@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-18-r90"
+#define FIRMWARE_VERSION "2026-08-18-r91"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -68,7 +68,7 @@
 // pad is dead" and costs more time than the phantom touches would.
 // Set TRUE once the TP223's OUT lead is actually wired to D4.
 #define WISH_PAD_PIN        4
-#define WISH_PAD_CONNECTED  false
+#define WISH_PAD_CONNECTED  true
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
