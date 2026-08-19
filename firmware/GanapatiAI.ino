@@ -1403,6 +1403,24 @@ void checkSensors() {
     }
   }
 
+  // TEMPORARY DIAGNOSTIC (remove once mouse-back is confirmed working):
+  // same pattern as the wish pad's own raw log below - unconditional,
+  // ignores TOUCH_BACK_CONNECTED/touchBackEnabled and settleTouch()
+  // entirely, so it shows ground truth on GPIO23 even if a flag or the
+  // debounce logic is the actual problem. Added after a report of the
+  // mouse-back pad producing literally zero TOUCH lines across 14s of
+  // touching - this settles whether GPIO23 itself ever moves at all
+  // (a physical/wiring question) without needing anyone to open a
+  // browser tab - it just shows up in the same Serial Monitor already
+  // open for everything else.
+  static unsigned long lastBackPadRawLog = 0;
+  if (now - lastBackPadRawLog > 1000) {
+    lastBackPadRawLog = now;
+    Serial.printf("BACK PAD RAW: GPIO%d=%s  TOUCH_BACK_CONNECTED=%s  touchBackEnabled=%s\n",
+                  TOUCH_BACK_PIN, digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH" : "LOW",
+                  TOUCH_BACK_CONNECTED ? "true" : "false", touchBackEnabled ? "true" : "false");
+  }
+
   // Wish pad: deliberately self-contained, NOT wired into feetTouched/
   // backTouched or the wake/resume state-machine logic those feed - a
   // silent prayer touch shouldn't need to understand mantra playback
