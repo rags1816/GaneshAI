@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -630,6 +629,7 @@
             <div class="status-card">
                 <div class="status-label">System State</div>
                 <div id="state-val" class="status-val">STANDBY</div>
+                <div id="device-offline-badge" style="display:none; margin-top:6px; font-size:11px; font-weight:700; letter-spacing:0.05em; color:#ff4b4b; background:rgba(255,75,75,0.12); border:1px solid #ff4b4b; border-radius:4px; padding:3px 8px;">&#9888; DEVICE OFFLINE - showing last known state</div>
             </div>
             <div class="status-card">
                 <div class="status-label">Blessings Today</div>
@@ -754,6 +754,9 @@
                  ~25px+ per side, not a token few pixels. -->
             <div id="qr-code-container" style="display: inline-block; background: #fff; padding: 28px; border-radius: 8px; line-height: 0;"></div>
             <div id="qr-code-status" style="font-size: 10px; color: var(--text-muted); margin-top: 8px;">Devotees scan this to submit their own offering &amp; prayer from their phone.</div>
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255, 215, 0, 0.15); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <button id="festival-toggle-btn" class="btn-back" style="margin-top:0; font-size: 11px; padding: 6px 12px;" onclick="toggleFestivalActive()">Loading...</button>
+            </div>
         </div>
         </details>
 
@@ -833,10 +836,51 @@
             <span style="font-size: 12px; color: #a8b2d1;">Simulate PIR Detection</span>
             <button style="padding: 2px 6px; font-size: 9px;" onclick="triggerPIR()">Trigger PIR</button>
         </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">OLED Display</span>
+            <label class="switch">
+                <input type="checkbox" id="display-toggle" checked onchange="toggleComponent('display')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">LED Ring</span>
+            <label class="switch">
+                <input type="checkbox" id="led-toggle" checked onchange="toggleComponent('led')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">Feet Touch Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="touch-feet-toggle" checked onchange="toggleComponent('touchFeet')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container">
+            <span style="font-size: 12px; color: #a8b2d1;">Mouse-Back Touch Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="touch-back-toggle" checked onchange="toggleComponent('touchBack')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+
+        <div class="toggle-container" style="margin-bottom: 5px;">
+            <span style="font-size: 12px; color: #a8b2d1;">Wish Pad</span>
+            <label class="switch">
+                <input type="checkbox" id="wish-pad-toggle" checked onchange="toggleComponent('wishPad')">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
         </details>
 
         <footer>
             Lord of Wisdom &bull; 2026 Theme
+            <div id="firmware-version-tag" style="font-size:10px; opacity:0.6; margin-top:4px;"></div>
         </footer>
     </div>
 
@@ -2116,18 +2160,17 @@ var QRCode;
             
             if (scrollTimer) clearInterval(scrollTimer);
 
-            if (state === "FEET_ACTIVE") {
-                // Blessing mode: static, wrapped, centered, and GOLD!
-                scroller.style.whiteSpace = 'normal';
-                scroller.style.textAlign = 'center';
-                scroller.style.color = '#ffd700'; // Gold
-                scroller.style.textShadow = '0 0 6px rgba(255, 215, 0, 0.4)';
-                scroller.style.transform = 'none';
-                scroller.style.position = 'relative';
-                scroller.style.width = '100%';
-                scroller.style.fontSize = '8px'; // Slightly smaller to fit personalized content
-                scroller.style.lineHeight = '1.1';
-            } else {
+            // FEET_ACTIVE used to render as a static, wrapped, gold block -
+            // no scroll animation at all, unlike every other state. The
+            // physical OLED does not make this distinction: it scrolls
+            // identically for both pads. That mismatch was reported on
+            // hardware as "dashboard stays stationary on a feet touch, but
+            // the real display scrolls immediately" - a real, confirmed,
+            // reproducible difference, not a sync failure in how data
+            // reaches the dashboard. Folding FEET_ACTIVE into the same
+            // scrolling path as everything else below matches the physical
+            // device exactly instead of special-casing one pad.
+            {
                 // Normal rolling mode: cyan, scrolling, single line
                 scroller.style.whiteSpace = 'nowrap';
                 scroller.style.color = '#00f2fe'; // Cyan
@@ -2150,7 +2193,7 @@ var QRCode;
                             // On a physical device, pollDeviceState() is the one that updates
                             // scroller text (from the firmware's own scrollText), so picking
                             // independently here would show different text than the display.
-                            if (!isPhysicalESP && (state === "AMBIENT" || state === "MANTRA_ACTIVE")) {
+                            if (!isPhysicalESP && (state === "AMBIENT" || state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE")) {
                                 const nextBlessing = combinedBlessings[currentBlessingIndex];
                                 currentBlessingIndex = (currentBlessingIndex + 1) % combinedBlessings.length;
                                 const nextText = `   [BLESSING] ${nextBlessing}   `;
@@ -2461,14 +2504,31 @@ var QRCode;
             } : { r: 0, g: 242, b: 254 };
         }
 
-        // Helpers for Base64URL encoding/decoding (bypasses IIS special character path restrictions)
-        function base64UrlEncode(str) {
-            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        // Offering queue cloud relay - Firebase Realtime Database, chosen
+        // after two ad-hoc free key-value services (keyvalue.immanuel.co,
+        // kvdb.io) both turned out to block/reject real browser writes for
+        // undocumented reasons. Firebase is built and documented for
+        // exactly this - phones and dashboards syncing live data directly
+        // from the browser - and is needed because devotees can submit
+        // from outside the home Wi-Fi entirely (family in the UK away
+        // from home, or in India), so this can't just be a local ESP32
+        // call. Firebase's REST API takes/returns plain JSON directly, so
+        // no base64 encoding workaround is needed here either. Same
+        // relay as puja_page.h's submitPuja().
+        const RELAY_QUEUE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/ganesha_queue.json';
+
+        function relayReadQueue() {
+            return fetch(`${RELAY_QUEUE_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('read status ' + res.status); return res.json(); })
+                .then(data => (Array.isArray(data) ? data : []));
         }
-        function base64UrlDecode(str) {
-            let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-            while (b64.length % 4) b64 += '=';
-            return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+
+        function relayWriteQueue(queueArray) {
+            return fetch(RELAY_QUEUE_URL, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queueArray)
+            }).then(res => { if (!res.ok) throw new Error('write status ' + res.status); });
         }
 
         // Personalized Blessing Formatter
@@ -2960,21 +3020,11 @@ var QRCode;
 
             // Best-effort background sync so other devices/tabs see it too -
             // same relay pattern used by approveQueueItem()/rejectQueueItem().
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     onlineQueue.push(newRequest);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .catch(err => console.warn("Background relay sync failed for new offering (still added locally):", err));
 
@@ -3281,6 +3331,19 @@ var QRCode;
             if (isPhysicalESP) espGet(`/api/settings?pir=${pirEnabled ? 1 : 0}`);
         }
 
+        // Same on/off pattern as togglePIR() above, for the other
+        // admin-toggleable components - one function since they're all
+        // identical apart from the checkbox id / query param name.
+        const COMPONENT_TOGGLE_IDS = {
+            display: 'display-toggle', led: 'led-toggle',
+            touchFeet: 'touch-feet-toggle', touchBack: 'touch-back-toggle',
+            wishPad: 'wish-pad-toggle'
+        };
+        function toggleComponent(name) {
+            const checked = document.getElementById(COMPONENT_TOGGLE_IDS[name]).checked;
+            if (isPhysicalESP) espGet(`/api/settings?${name}=${checked ? 1 : 0}`);
+        }
+
         // Priest Queue Logic
         let lastQueueCount = -1; // Track queue count for audio notifications
 
@@ -3292,23 +3355,10 @@ var QRCode;
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             
             // Fetch from online relay to sync mobile phone submissions
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try {
-                            onlineQueue = JSON.parse(base64UrlDecode(b64data));
-                        } catch (e) {
-                            console.warn("Error decoding online queue, resetting:", e);
-                        }
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
-                    
+
                     // Deduplicate items based on ID
                     const mergedQueue = [...onlineQueue];
                     localQueue.forEach(l => {
@@ -3419,7 +3469,14 @@ var QRCode;
             // Show the devotee's actual name/offering/prayer on the
             // physical OLED too, not just this browser's local preview.
             if (isPhysicalESP) {
-                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}`;
+                // item.lang/item.mood are only present on offerings that
+                // went through requestAiBlessing() (puja.html submissions
+                // whose AI reply landed in time) - older items and the
+                // dashboard's own quick-offering panel default to English/
+                // no mood, same as before this existed. Sentiment-aware
+                // LED color: see MOODS in backend/functions/index.js and
+                // moodColorsFor() in GanapatiAI.ino.
+                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}&mood=${encodeURIComponent(item.mood || '')}`;
                 sendESPControl('offering', params);
             }
         }
@@ -3447,25 +3504,15 @@ var QRCode;
             // removed the item from the relay and re-rendered, which is
             // exactly the reported bug: approving a devotee's real
             // submission "just cleared the queue" with no bell/display.
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
                     if (!item && indexOnline !== -1) {
                         applyApprovedOffering(onlineQueue[indexOnline]);
                     }
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for approve (item still removed locally):", err));
@@ -3480,37 +3527,23 @@ var QRCode;
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             renderQueue();
 
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
-            const readUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${appKey}/${itemKey}?_t=${Date.now()}`;
-            fetch(readUrl)
-                .then(res => res.json())
-                .then(b64data => {
-                    let onlineQueue = [];
-                    if (b64data && b64data.trim() !== "" && b64data !== "test_value" && b64data !== "[]") {
-                        try { onlineQueue = JSON.parse(base64UrlDecode(b64data)); } catch (e) {}
-                    }
+            relayReadQueue()
+                .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
                     const indexOnline = onlineQueue.findIndex(oi => oi.id === id);
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
-                    const encodedVal = base64UrlEncode(JSON.stringify(onlineQueue));
-                    const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-                    return fetch(writeUrl, { method: 'POST' });
+                    return relayWriteQueue(onlineQueue);
                 })
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for reject (item still removed locally):", err));
         }
 
         function clearAllQueue() {
-            const appKey = "sxnoamwe";
-            const itemKey = "ganesha_queue";
             localStorage.setItem('ganesha_puja_queue', JSON.stringify([]));
             localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             renderQueue();
 
-            const encodedVal = base64UrlEncode(JSON.stringify([]));
-            const writeUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${appKey}/${itemKey}/${encodedVal}`;
-            fetch(writeUrl, { method: 'POST' })
+            relayWriteQueue([])
                 .then(() => renderQueue())
                 .catch(err => console.warn("Background relay sync failed for clear (queue still cleared locally):", err));
         }
@@ -3528,23 +3561,80 @@ var QRCode;
         renderQueue();
         // Render the static song library list (item 3)
         renderSongLibrary();
-        // Devotee QR Code - only meaningful on the physical device, since
-        // /puja only exists on the ESP32's own web server (the standalone
-        // simulator has no real device for it to point to).
-        if (isPhysicalESP) {
-            const pujaUrl = window.location.origin + '/puja';
-            new QRCode(document.getElementById('qr-code-container'), {
-                text: pujaUrl,
-                width: 160,
-                height: 160,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.M
+        // Devotee QR Code - points to the puja page on Firebase Hosting
+        // (a fixed HTTPS address), not the ESP32's own web server. Moved
+        // there because Chrome's SpeechRecognition API (the speak-your-
+        // wish mic button) refuses to run at all on a plain-HTTP address
+        // like the ESP32's local IP, regardless of mic permission - this
+        // is a hard browser security rule, not something fixable in the
+        // page's own code. Fixed address also means the QR code never
+        // goes stale when the ESP32's local IP changes on reboot, and
+        // works for devotees outside the home Wi-Fi entirely, since the
+        // puja page only ever talked to Firebase and the AI backend
+        // anyway, never really needing the ESP32 itself. Shown
+        // regardless of isPhysicalESP now, since it no longer depends on
+        // a real device being present.
+        const pujaUrl = 'https://ganapatiai.web.app/puja';
+        new QRCode(document.getElementById('qr-code-container'), {
+            text: pujaUrl,
+            width: 160,
+            height: 160,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+        document.getElementById('qr-code-status').innerText = pujaUrl;
+
+        // Admin on/off switch for the puja page (see checkFestivalActive()
+        // in puja_page.h) - lets offerings be turned off, e.g. once the
+        // festival has ended, without taking the page down or reissuing a
+        // new QR code. Missing/null in Firebase means "on".
+        const FESTIVAL_ACTIVE_URL = 'https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/festival_active.json';
+
+        function refreshFestivalToggleBtn(active) {
+            const btn = document.getElementById('festival-toggle-btn');
+            if (active) {
+                btn.innerText = '🟢 Accepting Offerings (tap to close)';
+                btn.style.color = '#4caf50';
+            } else {
+                btn.innerText = '🔴 Offerings Closed (tap to reopen)';
+                btn.style.color = '#ff4b4b';
+            }
+        }
+
+        function fetchFestivalActive() {
+            return fetch(`${FESTIVAL_ACTIVE_URL}?_t=${Date.now()}`)
+                .then(res => { if (!res.ok) throw new Error('status ' + res.status); return res.json(); })
+                .then(active => active !== false); // null/missing = on
+        }
+
+        fetchFestivalActive()
+            .then(refreshFestivalToggleBtn)
+            .catch(err => {
+                console.warn('Could not load festival_active state:', err);
+                document.getElementById('festival-toggle-btn').innerText = '⚠️ Status unknown (tap to retry)';
             });
-            document.getElementById('qr-code-status').innerText = pujaUrl;
-        } else {
-            document.getElementById('qr-code-container').innerText = '(only available on the physical device)';
-            document.getElementById('qr-code-container').style.cssText = 'padding: 20px; color: #888; font-size: 10px;';
+
+        function toggleFestivalActive() {
+            const btn = document.getElementById('festival-toggle-btn');
+            btn.disabled = true;
+            fetchFestivalActive()
+                .then(currentlyActive => {
+                    const next = !currentlyActive;
+                    return fetch(FESTIVAL_ACTIVE_URL, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(next)
+                    }).then(res => {
+                        if (!res.ok) throw new Error('write status ' + res.status);
+                        refreshFestivalToggleBtn(next);
+                    });
+                })
+                .catch(err => {
+                    console.warn('Could not toggle festival_active:', err);
+                    alert("Couldn't update the offerings toggle - check your internet connection and try again.");
+                })
+                .finally(() => { btn.disabled = false; });
         }
         // Poll online database queue every 4 seconds
         setInterval(renderQueue, 4000);
@@ -3557,8 +3647,29 @@ var QRCode;
         // status display (updateUI + control values) - it does not replay
         // audio/LED side effects locally, since /api/state doesn't say which
         // track is playing.
+        // Consecutive poll failures before showing "DEVICE OFFLINE". 1 is too
+        // trigger-happy (a single dropped Wi-Fi packet every couple of
+        // minutes is normal); 3 x 2s = 6s of total silence is a genuine
+        // disconnect, not noise - tonight's actual debugging problem was
+        // the OPPOSITE of a false alarm: the empty catch() below gave NO
+        // indication at all, ever, no matter how long the device was gone,
+        // while the blessing text kept visually scrolling on its own
+        // animation - looking alive while showing data that could be
+        // minutes stale.
+        let devicePollFailures = 0;
+        const DEVICE_OFFLINE_THRESHOLD = 3;
+
+        function setDeviceOfflineBadge(offline) {
+            const badge = document.getElementById('device-offline-badge');
+            if (badge) badge.style.display = offline ? 'block' : 'none';
+        }
+
         function pollDeviceState() {
             fetch('/api/state').then(r => r.json()).then(data => {
+                devicePollFailures = 0;
+                setDeviceOfflineBadge(false);
+                const fwTag = document.getElementById('firmware-version-tag');
+                if (fwTag && data.firmware) fwTag.textContent = 'Firmware: ' + data.firmware;
                 const prevState = state;
                 const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "AARTI_MODE");
                 const nowIdle = (data.state === "STANDBY" || data.state === "AMBIENT" || data.state === "TEMPLE_CLOSED");
@@ -3584,6 +3695,21 @@ var QRCode;
                 if (pirToggle) pirToggle.checked = pirEnabled;
                 if (langSelect) langSelect.value = selectedLang;
                 if (themeSelect) themeSelect.value = selectedTheme;
+
+                // Same sync pattern as pirToggle above, for the other
+                // admin-toggleable components - keeps the dashboard
+                // showing the device's REAL current state even if it was
+                // last changed from a different browser tab/device.
+                const displayToggle = document.getElementById('display-toggle');
+                const ledToggle = document.getElementById('led-toggle');
+                const touchFeetToggle = document.getElementById('touch-feet-toggle');
+                const touchBackToggle = document.getElementById('touch-back-toggle');
+                const wishPadToggle = document.getElementById('wish-pad-toggle');
+                if (displayToggle && typeof data.displayEnabled === 'boolean') displayToggle.checked = data.displayEnabled;
+                if (ledToggle && typeof data.ledEnabled === 'boolean') ledToggle.checked = data.ledEnabled;
+                if (touchFeetToggle && typeof data.touchFeetEnabled === 'boolean') touchFeetToggle.checked = data.touchFeetEnabled;
+                if (touchBackToggle && typeof data.touchBackEnabled === 'boolean') touchBackToggle.checked = data.touchBackEnabled;
+                if (wishPadToggle && typeof data.wishPadEnabled === 'boolean') wishPadToggle.checked = data.wishPadEnabled;
 
                 // The real device already left playback on its own (its
                 // onboard AMBIENT timeout is 30s, well ahead of this
@@ -3653,7 +3779,10 @@ var QRCode;
                 }
 
                 updateUI();
-            }).catch(() => {});
+            }).catch(() => {
+                devicePollFailures++;
+                if (devicePollFailures >= DEVICE_OFFLINE_THRESHOLD) setDeviceOfflineBadge(true);
+            });
         }
         if (isPhysicalESP) {
             pollDeviceState();
@@ -3662,4 +3791,3 @@ var QRCode;
     </script>
 </body>
 </html>
-
