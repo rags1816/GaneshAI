@@ -5,6 +5,52 @@ sensors, wish pad) paired with a Firebase backend (Claude blessing
 generation + Google TTS) and two browser-facing pages (admin dashboard,
 devotee puja/offering form).
 
+## Version history
+
+`config.h`'s FIRMWARE_VERSION is the source of truth for what's on the
+board (see the Firmware section below) - this list is a running summary
+of what each recent version actually changed and why, kept here so the
+reasoning survives even when the git log scrolls out of context.
+
+- **r86** - Reverb DSP (Schroeder comb+allpass) added to generateBlessing/
+  synthesizeAudio server-side; deeper/slower voice; sentiment-aware LED
+  mood via X-Blessing-Mood header.
+- **r87** - Hardened mood parsing (two different wishes were getting the
+  same LED color).
+- **r88** - Correctly-shaped Indic script rendering on the OLED via
+  `@napi-rs/canvas` (renderTextImage Cloud Function) - never successfully
+  deployed until the r93/r94 debugging session found the real
+  package.json drift blocking it.
+- **r89** - Added an `AMP: connecting...` log line before the TLS
+  handshake/POST in postAndStreamAudioToAmp() - the silence in that gap
+  (several seconds, real on ESP32) was being misread as a hang.
+- **r90** - Raised the phone-side AI-blessing-upgrade timeout 15s->25s;
+  r86's reverb DSP added real latency the old timeout never accounted
+  for, so offerings were timing out before the translated/personalized
+  text arrived and got stuck showing raw text permanently.
+- **r91** - `WISH_PAD_CONNECTED` flipped false->true in config.h - the
+  pad's own onboard LED lighting on touch is independent hardware; the
+  firmware was still gated off and never read the pin at all.
+- **r92** - Wish pad now speaks in the dashboard's selected language
+  instead of always English.
+- **r93** - Fixed the hardcoded "Puja page: r88" footer label that
+  didn't update when r90 shipped; added this file.
+- **r94** - Fixed `blessingTaskActive` getting stuck `true` forever if
+  the amp's background network call hung (a real ESP32
+  WiFiClientSecure/TLS risk) - every future offering/wish-pad touch
+  would silently skip the spoken blessing (bell still rang, unrelated
+  flag) until a physical reboot. Now self-heals after 120s via
+  checkBlessingTaskHealth(), polled from loop().
+- **r95** - Fixed a real double-approval race: renderQueue()'s 4s relay
+  poll could redraw an already-tapped Approve button before that tap's
+  own relay write landed, inviting a second tap that fired a real second
+  bell+blessing on the physical device. Also gave Marathi its own
+  language code (3) instead of sharing code 1 with Sanskrit/Hindi -
+  selecting Marathi on the dashboard was silently playing the wish pad's
+  blessing in Hindi instead. (Punjabi was never a wish-pad option at
+  all - it only exists on puja.html's separate 9-language per-offering
+  picker, unrelated to the wish pad's 4-option dashboard setting.)
+
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
 Several pages exist as multiple near-identical copies because the same

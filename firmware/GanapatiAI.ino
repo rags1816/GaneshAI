@@ -320,8 +320,11 @@ bool wishPadEnabled = true;
 unsigned long ledOpeningTransitionStart = 0;
 #define LED_OPENING_TRANSITION_MS 1200
 
-// Language Settings: 0 = English, 1 = Marathi/Sanskrit, 2 = Tamil
-int selectedLang = 1; 
+// Language Settings: 0 = English, 1 = Sanskrit/Hindi, 2 = Tamil, 3 = Marathi
+// (Marathi used to share code 1 with Sanskrit/Hindi - see LANG_TO_CODE in
+// web_dashboard.h - split out to its own code so the wish pad can
+// actually speak Marathi instead of always falling back to Hindi.)
+int selectedLang = 1;
 // Theme of the Day: 0 = Tue (Ganesha), 1 = Mon (Shiva), 2 = Wed (Wisdom), 3 = Thu (Guru), 4 = Fri (Shakti), 5 = Sat (Discipline), 6 = Sun (Sun)
 int selectedTheme = 0;
 
@@ -2593,13 +2596,15 @@ void triggerWishPadBlessing() {
   // Reuses the dashboard's own language setting (selectedLang, 0/1/2 -
   // see its declaration above) rather than always English - the wish pad
   // has no language picker of its own, unlike puja.html's 9-language
-  // dropdown, but devotees touching it still hear it in whatever language
-  // the altar is currently set to. Code 1 covers Marathi AND Sanskrit
-  // combined on the dashboard (they share one firmware slot, see
-  // LANG_TO_CODE in web_dashboard.h) - mapped to Hindi here since the
-  // backend's LANGUAGE_CONFIG has no dedicated Sanskrit voice at all,
-  // and Hindi is the closer of the two actually-available voices.
-  const char *wishPadLang = (selectedLang == 1) ? "hi" : (selectedLang == 2) ? "ta" : "en";
+  // dropdown (which also includes Punjabi/Gujarati/etc - none of those
+  // reach the wish pad, only this 4-option dashboard setting does), but
+  // devotees touching it still hear it in whatever language the altar is
+  // currently set to. Code 1 (Sanskrit/Hindi) maps to Hindi since the
+  // backend's LANGUAGE_CONFIG has no dedicated Sanskrit voice; code 3
+  // (Marathi) maps to the backend's real Marathi voice - these used to
+  // both be code 1, which meant Marathi silently played as Hindi
+  // (confirmed on hardware) until LANG_TO_CODE gave Marathi its own code.
+  const char *wishPadLang = (selectedLang == 1) ? "hi" : (selectedLang == 2) ? "ta" : (selectedLang == 3) ? "mr" : "en";
   speakGenericBlessingOnAmpAsync(wishPadLang);
 }
 

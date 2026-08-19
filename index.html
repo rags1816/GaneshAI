@@ -1530,11 +1530,14 @@ var QRCode;
         };
         // /api/settings and /api/state use numeric codes for language/theme;
         // the dashboard UI uses string codes. Keep the two mappings in one
-        // place. Sanskrit and Marathi share firmware code 1 (Marathi/Sanskrit
-        // combined) - polling back from the device can't distinguish them,
-        // so it defaults to "sa".
-        const LANG_TO_CODE = { en: 0, sa: 1, mr: 1, ta: 2 };
-        const CODE_TO_LANG = { 0: "en", 1: "sa", 2: "ta" };
+        // place. Sanskrit and Marathi used to share firmware code 1, which
+        // meant selecting Marathi made the wish pad speak Hindi instead -
+        // confirmed on hardware as a real bug, not just an edge case. Code
+        // 3 gives Marathi its own value so the wish pad can actually use
+        // the backend's real Marathi voice (see triggerWishPadBlessing()
+        // in GanapatiAI.ino).
+        const LANG_TO_CODE = { en: 0, sa: 1, mr: 3, ta: 2 };
+        const CODE_TO_LANG = { 0: "en", 1: "sa", 2: "ta", 3: "mr" };
         const THEME_ORDER = ["tue", "mon", "wed", "thu", "fri", "sat", "sun"];
 
         // How long AMBIENT stays awake before returning to STANDBY. Must be
@@ -3347,6 +3350,23 @@ var QRCode;
         // Priest Queue Logic
         let lastQueueCount = -1; // Track queue count for audio notifications
 
+        // IDs currently being approved/rejected - see approveQueueItem()/
+        // rejectQueueItem() below. renderQueue() polls the shared relay
+        // every 4s (setInterval below), independently of any approve/reject
+        // click. approveQueueItem() removes the item locally right away but
+        // the relay WRITE that removes it online is a separate async round
+        // trip - if that 4s poll's relay READ lands in the gap before the
+        // write completes, it still sees the item online and redraws its
+        // Approve button, even though it was already tapped. Confirmed on
+        // hardware as a real bug, not a hypothetical one: the priest sees
+        // the button "come back", taps it again thinking the first tap
+        // didn't register, and genuinely double/triple-approves the same
+        // offering - each tap plays a real bell and spoken blessing on the
+        // physical device. Any ID in here is skipped by renderQueue()'s
+        // render regardless of what the relay still says, until the
+        // approve/reject's own relay round trip actually finishes.
+        let processingQueueIds = new Set();
+
         function renderQueue() {
             const queueList = document.getElementById('queue-list');
             const queueStatus = document.getElementById('queue-status');
@@ -3360,13 +3380,19 @@ var QRCode;
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
 
                     // Deduplicate items based on ID
-                    const mergedQueue = [...onlineQueue];
+                    let mergedQueue = [...onlineQueue];
                     localQueue.forEach(l => {
                         if (!mergedQueue.some(o => o.id === l.id)) {
                             mergedQueue.push(l);
                         }
                     });
-                    
+                    // Never re-render an item whose approve/reject is still
+                    // in flight - see processingQueueIds above. Without
+                    // this, an item already tapped Approve on can briefly
+                    // reappear (the relay hasn't caught up yet) with a
+                    // fresh, clickable Approve button.
+                    mergedQueue = mergedQueue.filter(item => !processingQueueIds.has(item.id));
+
                     // 🔔 Audio Notification: Play Ganesha's bell tone if a new item arrives in queue
                     if (mergedQueue.length > lastQueueCount) {
                         if (lastQueueCount !== -1) { // Avoid ringing on initial page load
@@ -3482,6 +3508,13 @@ var QRCode;
         }
 
         function approveQueueItem(id) {
+            // Guard against a double-tap (mobile "ghost click", or an
+            // impatient second tap before the relay catches up) triggering
+            // a real second bell+blessing on the physical device for the
+            // same offering - see processingQueueIds above.
+            if (processingQueueIds.has(id)) return;
+            processingQueueIds.add(id);
+
             // Act locally FIRST and immediately - a priest tapping Approve
             // should always work even if the network relay is slow,
             // unreachable, or down. Network sync happens afterward, best-effort.
@@ -3514,12 +3547,23 @@ var QRCode;
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
                     return relayWriteQueue(onlineQueue);
                 })
-                .then(() => renderQueue())
-                .catch(err => console.warn("Background relay sync failed for approve (item still removed locally):", err));
+                .catch(err => console.warn("Background relay sync failed for approve (item still removed locally):", err))
+                .finally(() => {
+                    // Only now is it safe to let this ID render again - the
+                    // relay write has either landed (item genuinely gone) or
+                    // failed (logged above, local removal still stands).
+                    // Clearing it before this would reopen the exact race
+                    // this guard exists for.
+                    processingQueueIds.delete(id);
+                    renderQueue();
+                });
         }
 
         function rejectQueueItem(id) {
-            // Same local-first pattern as approve.
+            // Same local-first pattern and same double-tap guard as approve.
+            if (processingQueueIds.has(id)) return;
+            processingQueueIds.add(id);
+
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             const indexLocal = localQueue.findIndex(item => item.id === id);
             if (indexLocal !== -1) localQueue.splice(indexLocal, 1);
@@ -3534,8 +3578,11 @@ var QRCode;
                     if (indexOnline !== -1) onlineQueue.splice(indexOnline, 1);
                     return relayWriteQueue(onlineQueue);
                 })
-                .then(() => renderQueue())
-                .catch(err => console.warn("Background relay sync failed for reject (item still removed locally):", err));
+                .catch(err => console.warn("Background relay sync failed for reject (item still removed locally):", err))
+                .finally(() => {
+                    processingQueueIds.delete(id);
+                    renderQueue();
+                });
         }
 
         function clearAllQueue() {
