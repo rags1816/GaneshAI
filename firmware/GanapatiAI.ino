@@ -113,6 +113,21 @@ bool ampReady = false;
 // overlapping when the network call ran long.
 volatile bool blessingTaskActive = false;
 
+// Timestamp of the most recent blessingTaskActive=true - see
+// checkBlessingTaskHealth() below. Every background task that sets the
+// flag true is supposed to set it back to false itself when done
+// (fetchBlessingImage()/postAndStreamAudioToAmp() all have their own
+// internal timeouts), but https.POST() hanging past its own configured
+// timeout is a real, documented ESP32 WiFiClientSecure/TLS-handshake
+// failure mode, not just a theoretical one. If that ever happens, the
+// task never reaches its own "set false" line, and with no safety net
+// EVERY future offering/wish-pad touch would silently skip the spoken
+// blessing forever (bell still rings - it isn't gated on this flag -
+// but speakBlessingOnAmpAsync() etc. all bail out on
+// "a blessing is already playing") until the board is physically
+// rebooted. checkBlessingTaskHealth() is that safety net.
+unsigned long blessingTaskStartMs = 0;
+
 // One-off hardware sanity check for the physical INMP441 mic - see
 // micTestTaskFn() below and the /api/test?mic=1 route. Separate I2S
 // instance from ampI2S (RX vs TX, and the ESP32 has two independent I2S
@@ -499,6 +514,7 @@ void handleWebRoutes();
 void checkSensors();
 void checkWiFiHealth();
 void checkHeapHealth();
+void checkBlessingTaskHealth();
 void updateStateMachine();
 void animateLeds();
 void playLedClosingSweep();
@@ -878,6 +894,7 @@ void loop() {
   server.handleClient();
   checkWiFiHealth();
   checkHeapHealth();
+  checkBlessingTaskHealth();
   lastStage = 2;
   checkSensors();
   lastStage = 3;
@@ -1100,6 +1117,7 @@ void handleWebRoutes() {
       }
       micTestRunning = true;
       blessingTaskActive = true;
+      blessingTaskStartMs = millis();
       BaseType_t created = xTaskCreatePinnedToCore(micRecordPlaybackTaskFn, "micPlayback", 8192, NULL, 1, NULL, 1);
       if (created != pdPASS) {
         micTestRunning = false;
@@ -1235,6 +1253,27 @@ void checkHeapHealth() {
   lastHeapLog = now;
   Serial.printf("HEAP: %lu bytes free, %lu min-ever-free (uptime %lus)\n",
                 (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), now / 1000);
+}
+
+// Safety net for blessingTaskActive getting stuck true forever - see its
+// declaration/comment near ampReady above. 120s is deliberately generous:
+// legitimate calls can legitimately take a while (image fetch + Claude +
+// Google TTS + reverb DSP + streaming a slow-paced ~500-char blessing's
+// audio can genuinely add up to a large chunk of that), and clearing the
+// flag while the task is STILL actually running and about to write to
+// ampI2S risks exactly the concurrent-write collision blessingTaskActive
+// exists to prevent in the first place - so this only ever fires well
+// after any real call would have finished, not as a normal-case timeout.
+// The task itself, if it later does return from whatever hung, just sets
+// blessingTaskActive = false again redundantly - harmless.
+#define BLESSING_TASK_STUCK_MS 120000UL
+void checkBlessingTaskHealth() {
+  if (!blessingTaskActive) return;
+  if (millis() - blessingTaskStartMs < BLESSING_TASK_STUCK_MS) return;
+  Serial.println("AMP: blessing task has been active for 120s+ without finishing - "
+                  "assuming it's hung (likely a stalled network call) and force-clearing "
+                  "blessingTaskActive so future offerings aren't silently skipped forever.");
+  blessingTaskActive = false;
 }
 
 // ==========================================
@@ -2231,6 +2270,7 @@ void speakBlessingOnAmpAsync(const String &text, const String &lang) {
 
   BlessingTaskParams *params = new BlessingTaskParams{text, lang};
   blessingTaskActive = true;
+  blessingTaskStartMs = millis();
   BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 1);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
@@ -2265,6 +2305,7 @@ void speakOfferingFallbackBlessingOnAmpAsync(const String &name, const String &o
 
   OfferingFallbackTaskParams *params = new OfferingFallbackTaskParams{name, offeringType, lang};
   blessingTaskActive = true;
+  blessingTaskStartMs = millis();
   BaseType_t created = xTaskCreatePinnedToCore(speakOfferingFallbackTaskFn, "offeringFallback", 8192, params, 1, NULL, 1);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
@@ -2299,6 +2340,7 @@ void speakGenericBlessingOnAmpAsync(const String &lang) {
 
   GenericBlessingTaskParams *params = new GenericBlessingTaskParams{lang};
   blessingTaskActive = true;
+  blessingTaskStartMs = millis();
   BaseType_t created = xTaskCreatePinnedToCore(speakGenericBlessingTaskFn, "wishPadBlessing", 8192, params, 1, NULL, 1);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
