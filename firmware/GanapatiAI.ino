@@ -585,11 +585,22 @@ void setup() {
   pinMode(PIR_PIN, INPUT);
   Serial.printf("DEBUG: PIR on GPIO%d, PIR_CONNECTED=%s\n",
                 PIR_PIN, PIR_CONNECTED ? "true" : "false");
-  pinMode(TOUCH_FEET_PIN, INPUT);
+  // INPUT_PULLDOWN, not plain INPUT - confirmed on hardware tonight as a
+  // real problem, not a theoretical one: WISH PAD RAW logged GPIO4
+  // flipping HIGH/LOW on its own with nobody touching it, clustering
+  // right around unrelated activity (a feet touch on a different pin).
+  // A plain high-impedance INPUT floats and picks up ambient/coupled
+  // noise the moment its connection is even slightly marginal; the
+  // ESP32's own internal pull-down holds the pin firmly LOW whenever
+  // nothing is actively driving it, without blocking a genuinely
+  // connected TP223 (push-pull output) from still driving HIGH normally.
+  // Applied to all three touch pins since the same risk applies equally
+  // to each - not just the one that happened to show it first.
+  pinMode(TOUCH_FEET_PIN, INPUT_PULLDOWN);
   Serial.println("DEBUG: TOUCH_FEET_PIN configured.");
-  pinMode(TOUCH_BACK_PIN, INPUT);
+  pinMode(TOUCH_BACK_PIN, INPUT_PULLDOWN);
   Serial.println("DEBUG: TOUCH_BACK_PIN configured.");
-  pinMode(WISH_PAD_PIN, INPUT);
+  pinMode(WISH_PAD_PIN, INPUT_PULLDOWN);
   Serial.printf("DEBUG: WISH_PAD_PIN configured, WISH_PAD_CONNECTED=%s\n",
                 WISH_PAD_CONNECTED ? "true" : "false");
   Serial.println("DEBUG: Sensor pins configured successfully.");
