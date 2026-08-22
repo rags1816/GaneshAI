@@ -90,6 +90,18 @@ reasoning survives even when the git log scrolls out of context.
   Telugu, Gujarati, Gurmukhi, Malayalam, Bengali) to all 3 puja page
   copies, matching the fonts already used for the OLED's Indic
   rendering - puja.html previously only declared Latin system fonts.
+- **r102** - Added Urdu, Thai, and Mandarin Chinese as full languages
+  (voice + OLED script rendering + web fonts + RTL handling for Urdu).
+  Google has no ur-PK voice at all - only ur-IN exists, confirmed
+  against Google's own current voice list, so one India-recorded voice
+  covers both India and Pakistan. Along the way, found and fixed a
+  real pre-existing gap: Farsi and Sindhi have been in the backend's
+  LANGUAGE_CONFIG for a while but were NEVER in SCRIPT_FONTS at all -
+  their OLED rendering had been silently falling back to plain text
+  with zero Arabic-script glyphs available this whole time, not just
+  lower quality. Fixed for all three (Urdu/Farsi/Sindhi) at once,
+  including setting ctx.direction = "rtl" in renderTextToXbm(), which
+  had never been set for any right-to-left language before this.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
