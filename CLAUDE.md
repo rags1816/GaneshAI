@@ -50,6 +50,22 @@ reasoning survives even when the git log scrolls out of context.
   blessing in Hindi instead. (Punjabi was never a wish-pad option at
   all - it only exists on puja.html's separate 9-language per-offering
   picker, unrelated to the wish pad's 4-option dashboard setting.)
+- **r96** - Added a BACK PAD RAW diagnostic (same pattern as WISH PAD
+  RAW) after the mouse-back pad produced zero TOUCH lines across 14s of
+  continuous touching - both TOUCH_BACK_CONNECTED and touchBackEnabled
+  were already true, and wiring was confirmed physically correct
+  (D23, not the old D15), so this was needed to see what was actually
+  happening on the pin itself.
+- **r97** - Root cause of the above, and of a separate "wish pad fires
+  with nobody touching it" report: all three touch pins (feet/back/
+  wish) were plain high-impedance INPUT with no pull resistor at all.
+  Switched to INPUT_PULLDOWN. This fixed BOTH symptoms from the same
+  underlying cause - a floating/marginal connection doesn't just pick
+  up noise and misfire (the wish pad's symptom), it can also sit in an
+  indeterminate state that never cleanly registers a real touch (the
+  mouse-back pad's symptom) - confirmed on hardware immediately after
+  reflashing: mouse-back went from total silence to working end-to-end
+  (touch detected, bell, mantra audible) with no rewiring needed at all.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
