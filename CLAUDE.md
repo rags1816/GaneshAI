@@ -78,6 +78,18 @@ reasoning survives even when the git log scrolls out of context.
   Confirmed on hardware via exact log timestamps. All three touch
   triggers now check blessingTaskActive first and drop the touch while
   a blessing is actively speaking, rather than queuing or interrupting it.
+- **r100** - Added a WISH PAD RAW EDGE diagnostic (event-triggered, not
+  periodic like the old removed one) after the dashboard's Wish Pad
+  toggle was confirmed on and the module's own LED was confirmed
+  lighting on a real touch, yet nothing reached the firmware at all -
+  needed to see whether GPIO4 was actually moving on the ESP32 side.
+  Root cause turned out to be physical: a bad connector contact between
+  the JST connector and the sensor module (confirmed by the user after
+  reseating/fixing the connection - no further firmware change needed).
+- **r101** - Added real Noto Sans <Script> webfonts (Devanagari, Tamil,
+  Telugu, Gujarati, Gurmukhi, Malayalam, Bengali) to all 3 puja page
+  copies, matching the fonts already used for the OLED's Indic
+  rendering - puja.html previously only declared Latin system fonts.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
