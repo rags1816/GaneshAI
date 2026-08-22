@@ -18,7 +18,26 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     
     <link rel="icon" type="image/png" sizes="512x512" href="ganesha.png">
     <link rel="apple-touch-icon" sizes="512x512" href="ganesha.png">
-    
+
+    <!-- Real Noto Sans <Script> webfonts for every non-Latin language this
+         page's own dropdown offers (Hindi/Marathi share Devanagari; Tamil,
+         Telugu, Gujarati, Punjabi/Gurmukhi, Malayalam, Bengali each get
+         their own family). Same fonts already used for the OLED's Indic
+         rendering (see indic_fonts.h/renderTextToXbm in the backend) -
+         without this, any Indic text on this page (a devotee's own name,
+         a blessing reply) falls back to whatever the phone's own system
+         font happens to cover, which is usually fine on modern phones but
+         not guaranteed. Fails gracefully if this device's own AP-fallback
+         mode has no internet uplink at all (see WiFi.softAP() in
+         GanapatiAI.ino) - the link just never loads and the font-family
+         stack's plain sans-serif fallback below takes over, same as
+         today. Sindhi/Farsi use Arabic script, not covered here - Noto
+         Sans Arabic would be the equivalent addition if that becomes
+         visible text on this page rather than just spoken audio. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&family=Noto+Sans+Tamil&family=Noto+Sans+Telugu&family=Noto+Sans+Gujarati&family=Noto+Sans+Gurmukhi&family=Noto+Sans+Malayalam&family=Noto+Sans+Bengali&display=swap" rel="stylesheet">
+
     <style>
         :root {
             --bg-color: #030812;
@@ -34,7 +53,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Malayalam', 'Noto Sans Bengali', sans-serif;
             margin: 0;
             padding: 15px;
             display: flex;
@@ -337,7 +356,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-19-r93</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r101</div>
     </div>
 
     <script>
