@@ -102,6 +102,15 @@ reasoning survives even when the git log scrolls out of context.
   lower quality. Fixed for all three (Urdu/Farsi/Sindhi) at once,
   including setting ctx.direction = "rtl" in renderTextToXbm(), which
   had never been set for any right-to-left language before this.
+- **r103** - Real bug in r102, found on hardware within minutes of going
+  live: Chirp3-HD voices (Telugu/Urdu/Thai/Mandarin) reject Google TTS's
+  pitch parameter entirely - every request for those 4 languages was
+  failing with HTTP 502. synthesizeSpeech() now only sends pitch for
+  non-Chirp voices; speakingRate is still applied to all of them. Also
+  made postAndStreamAudioToAmp() log the actual response body on a
+  non-200, not just the status code - this diagnosis had to be guessed
+  from a bare "502" since the firmware was discarding the real error
+  text the whole time.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

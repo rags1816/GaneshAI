@@ -2175,7 +2175,14 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
 
   int code = https.POST(jsonBody);
   if (code != 200) {
-    Serial.printf("AMP: backend returned HTTP %d\n", code);
+    // The body on a failure is the actual error text (e.g. "Speech
+    // synthesis failed: Google TTS returned 400: ...") - logging only
+    // the numeric code meant a real diagnosis (the Chirp3-HD pitch
+    // rejection found tonight) needed guessing instead of just reading
+    // it. Bounded to 200 chars so a large/unexpected body can't flood
+    // the monitor.
+    String errBody = https.getString();
+    Serial.printf("AMP: backend returned HTTP %d: %s\n", code, errBody.substring(0, 200).c_str());
     https.end();
     return;
   }

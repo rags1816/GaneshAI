@@ -594,18 +594,32 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
 
 async function synthesizeSpeech(text, langConfig) {
   const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_API_KEY.value()}`;
+
+  // Chirp3-HD voices (Telugu/Urdu/Thai/Mandarin, added tonight) do NOT
+  // support the pitch parameter at all - Google's API rejects the whole
+  // request with an error if it's present, confirmed on hardware as a
+  // real 502 (AMP: backend returned HTTP 502) for Urdu and Thai the
+  // moment they went live, not a hypothetical concern. speakingRate is
+  // still accepted, so only pitch is conditionally dropped here - the
+  // reverb DSP applied afterward (applyReverb(), unaffected by this)
+  // still gives these languages some of the "temple" quality even
+  // without the pitch-lowering TTS itself provides for every other voice.
+  const audioConfig = {
+    audioEncoding: "LINEAR16",
+    sampleRateHertz: 16000,
+    speakingRate: SPEAKING_RATE,
+  };
+  if (!langConfig.voice.name.includes("Chirp")) {
+    audioConfig.pitch = PITCH_SEMITONES;
+  }
+
   const response = await fetch(url, {
     method: "POST",
     headers: {"content-type": "application/json"},
     body: JSON.stringify({
       input: {text},
       voice: langConfig.voice,
-      audioConfig: {
-        audioEncoding: "LINEAR16",
-        sampleRateHertz: 16000,
-        speakingRate: SPEAKING_RATE,
-        pitch: PITCH_SEMITONES,
-      },
+      audioConfig,
     }),
   });
 
