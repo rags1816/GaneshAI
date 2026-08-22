@@ -1414,42 +1414,11 @@ void checkSensors() {
     }
   }
 
-  // TEMPORARY DIAGNOSTIC (remove once mouse-back is confirmed working):
-  // same pattern as the wish pad's own raw log below - unconditional,
-  // ignores TOUCH_BACK_CONNECTED/touchBackEnabled and settleTouch()
-  // entirely, so it shows ground truth on GPIO23 even if a flag or the
-  // debounce logic is the actual problem. Added after a report of the
-  // mouse-back pad producing literally zero TOUCH lines across 14s of
-  // touching - this settles whether GPIO23 itself ever moves at all
-  // (a physical/wiring question) without needing anyone to open a
-  // browser tab - it just shows up in the same Serial Monitor already
-  // open for everything else.
-  static unsigned long lastBackPadRawLog = 0;
-  if (now - lastBackPadRawLog > 1000) {
-    lastBackPadRawLog = now;
-    Serial.printf("BACK PAD RAW: GPIO%d=%s  TOUCH_BACK_CONNECTED=%s  touchBackEnabled=%s\n",
-                  TOUCH_BACK_PIN, digitalRead(TOUCH_BACK_PIN) == HIGH ? "HIGH" : "LOW",
-                  TOUCH_BACK_CONNECTED ? "true" : "false", touchBackEnabled ? "true" : "false");
-  }
-
   // Wish pad: deliberately self-contained, NOT wired into feetTouched/
   // backTouched or the wake/resume state-machine logic those feed - a
   // silent prayer touch shouldn't need to understand mantra playback
   // state at all. Own debounce state, own trigger, calls
   // triggerWishPadBlessing() directly (see below).
-  //
-  // TEMPORARY DIAGNOSTIC (remove once the pad is confirmed working): logs
-  // the RAW pin level once a second, unconditionally - ignores
-  // WISH_PAD_CONNECTED/wishPadEnabled and bypasses settleTouch() entirely,
-  // so it shows ground truth even if those flags or the debounce logic
-  // are the actual problem.
-  static unsigned long lastWishPadRawLog = 0;
-  if (now - lastWishPadRawLog > 1000) {
-    lastWishPadRawLog = now;
-    Serial.printf("WISH PAD RAW: GPIO%d=%s  WISH_PAD_CONNECTED=%s  wishPadEnabled=%s\n",
-                  WISH_PAD_PIN, digitalRead(WISH_PAD_PIN) == HIGH ? "HIGH" : "LOW",
-                  WISH_PAD_CONNECTED ? "true" : "false", wishPadEnabled ? "true" : "false");
-  }
   bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
   bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
   if (wishPadEdge && wishPadStable && now - lastWishPadTrigger > TOUCH_DEBOUNCE) {
