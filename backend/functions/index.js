@@ -207,7 +207,14 @@ const LANGUAGE_CONFIG = {
   },
   te: {
     claudeInstruction: "Reply entirely in Telugu (Telugu script), from start to finish, never switching to English.",
-    voice: {languageCode: "te-IN", name: "te-IN-Standard-B", ssmlGender: "MALE"},
+    // Upgraded from te-IN-Standard-B - Telugu has no Wavenet tier at all
+    // (unlike every other Indic language here), so it was stuck on the
+    // lowest quality tier while the rest used Wavenet. Confirmed via
+    // Google's own current voice list that te-IN now has a whole
+    // Chirp3-HD (Premium tier, same price bracket as Wavenet) voice
+    // family - Charon chosen for a deep/mature register matching the
+    // "godly" voice direction (r86) already applied to every language.
+    voice: {languageCode: "te-IN", name: "te-IN-Chirp3-HD-Charon", ssmlGender: "MALE"},
   },
   ml: {
     claudeInstruction: "Reply entirely in Malayalam (Malayalam script), from start to finish, never switching to English.",
