@@ -211,6 +211,16 @@ bool wishPadLastRead = false, wishPadStable = false;
 unsigned long wishPadChangedAt = 0;
 unsigned long lastWishPadTrigger = 0;
 
+// Separate, UNGATED tracking of the wish pad's raw pin - ignores
+// WISH_PAD_CONNECTED/wishPadEnabled entirely, unlike wishPadRead above.
+// See the event-triggered diagnostic in checkSensors() below: with the
+// dashboard's Wish Pad toggle confirmed ON and the module's own LED
+// confirmed lighting on a real touch, yet nothing reaching the firmware
+// at all (no trigger, no log line), the only way to see whether GPIO4
+// itself is actually moving is to watch the pin directly, gate-free.
+bool wishPadRawLastRead = false, wishPadRawStable = false;
+unsigned long wishPadRawChangedAt = 0;
+
 // Advances one pad's debounce. Returns true only on the reading a pad's
 // stable level actually CHANGES, so callers see one event per real
 // press or release rather than a continuous "still HIGH" every pass.
@@ -1435,6 +1445,21 @@ void checkSensors() {
   // silent prayer touch shouldn't need to understand mantra playback
   // state at all. Own debounce state, own trigger, calls
   // triggerWishPadBlessing() directly (see below).
+  //
+  // EVENT-TRIGGERED DIAGNOSTIC (not periodic - only prints when GPIO4
+  // actually changes level, so it won't flood the monitor the way the
+  // old once-a-second WISH PAD RAW did): with the dashboard's Wish Pad
+  // toggle confirmed on and the module's own LED confirmed lighting on a
+  // real touch, yet nothing at all reaching the firmware, this is the
+  // only way left to see whether the pin itself is really moving.
+  bool wishPadRawNow = (digitalRead(WISH_PAD_PIN) == HIGH);
+  bool wishPadRawEdge = settleTouch(wishPadRawNow, wishPadRawLastRead, wishPadRawChangedAt, wishPadRawStable, now);
+  if (wishPadRawEdge) {
+    Serial.printf("WISH PAD RAW EDGE: GPIO%d now %s  WISH_PAD_CONNECTED=%s  wishPadEnabled=%s\n",
+                  WISH_PAD_PIN, wishPadRawStable ? "HIGH" : "LOW",
+                  WISH_PAD_CONNECTED ? "true" : "false", wishPadEnabled ? "true" : "false");
+  }
+
   bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
   bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
   if (wishPadEdge && wishPadStable) {
