@@ -1395,8 +1395,22 @@ void checkSensors() {
   // pad's debounce on any pass the other pad reported an edge.
   bool feetEdge = settleTouch(feetRead, feetLastRead, feetChangedAt, feetStable, now);
   bool backEdge = settleTouch(backRead, backLastRead, backChangedAt, backStable, now);
+  // Both gated on !blessingTaskActive - confirmed on hardware as a real
+  // overlap, not hypothetical: a devotee's spoken blessing (wish pad or
+  // an approved offering) plays through the I2S amp on its own speaker,
+  // completely independent of the DFPlayer mantra speaker, so nothing
+  // previously stopped a FRESH feet/back touch from immediately starting
+  // a brand-new mantra right on top of a still-playing blessing. (This is
+  // different from the existing blessingTaskActive check elsewhere, which
+  // only delays RESUMING a mantra that was already interrupted - it never
+  // covered a new touch arriving mid-blessing.) Simply dropping the touch
+  // here, rather than queuing it, matches the same "skip this one" choice
+  // speakBlessingOnAmpAsync() already makes for a colliding AMP request -
+  // the devotee can just touch again once the blessing finishes.
   if (feetEdge && feetStable) {
-    if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
+    if (blessingTaskActive) {
+      Serial.println("TOUCH: feet pad pressed but a blessing is speaking - ignoring so it doesn't play over it");
+    } else if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
       feetTouched = true;
       lastTouchTrigger = now;
       // A TOUCH line with nobody touching means that pad's lead is not
@@ -1406,7 +1420,9 @@ void checkSensors() {
       feetTouchCount++;
     }
   } else if (backEdge && backStable) {
-    if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
+    if (blessingTaskActive) {
+      Serial.println("TOUCH: mouse-back pad pressed but a blessing is speaking - ignoring so it doesn't play over it");
+    } else if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
       backTouched = true;
       lastTouchTrigger = now;
       Serial.printf("TOUCH: mouse-back pad pressed (GPIO%d) while %s\n", TOUCH_BACK_PIN, stateName(currentState));
@@ -1421,10 +1437,20 @@ void checkSensors() {
   // triggerWishPadBlessing() directly (see below).
   bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
   bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
-  if (wishPadEdge && wishPadStable && now - lastWishPadTrigger > TOUCH_DEBOUNCE) {
-    lastWishPadTrigger = now;
-    Serial.printf("TOUCH: wish pad pressed (GPIO%d) while %s\n", WISH_PAD_PIN, stateName(currentState));
-    triggerWishPadBlessing();
+  if (wishPadEdge && wishPadStable) {
+    // Same !blessingTaskActive gate as the feet/back touches above -
+    // triggerWishPadBlessing() itself unconditionally restarts the bell
+    // and display even though speakGenericBlessingOnAmpAsync() already
+    // refuses to double up the actual spoken audio, so a repeat touch
+    // mid-blessing would still audibly re-ring the bell over the
+    // still-playing blessing without this.
+    if (blessingTaskActive) {
+      Serial.println("TOUCH: wish pad pressed but a blessing is speaking - ignoring so it doesn't play over it");
+    } else if (now - lastWishPadTrigger > TOUCH_DEBOUNCE) {
+      lastWishPadTrigger = now;
+      Serial.printf("TOUCH: wish pad pressed (GPIO%d) while %s\n", WISH_PAD_PIN, stateName(currentState));
+      triggerWishPadBlessing();
+    }
   }
 
   // A pad stuck HIGH for a long stretch is almost always a wiring/solder
