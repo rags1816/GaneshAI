@@ -66,6 +66,11 @@ reasoning survives even when the git log scrolls out of context.
   mouse-back pad's symptom) - confirmed on hardware immediately after
   reflashing: mouse-back went from total silence to working end-to-end
   (touch detected, bell, mantra audible) with no rewiring needed at all.
+- **r98** - Removed the WISH PAD RAW / BACK PAD RAW once-a-second Serial
+  diagnostics now that r97 confirmed both pads fixed - both were
+  explicitly marked "remove once confirmed working" in their own
+  comments, and were flooding the monitor, making real TOUCH/WAKE lines
+  hard to spot while testing.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
