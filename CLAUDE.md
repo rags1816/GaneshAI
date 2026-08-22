@@ -71,6 +71,13 @@ reasoning survives even when the git log scrolls out of context.
   explicitly marked "remove once confirmed working" in their own
   comments, and were flooding the monitor, making real TOUCH/WAKE lines
   hard to spot while testing.
+- **r99** - Fixed a real audio overlap, not hypothetical: a fresh feet/
+  back/wish-pad touch could immediately start a new mantra or bell right
+  on top of an already-playing spoken blessing (two different speakers -
+  DFPlayer vs the I2S amp - so nothing native stopped them colliding).
+  Confirmed on hardware via exact log timestamps. All three touch
+  triggers now check blessingTaskActive first and drop the touch while
+  a blessing is actively speaking, rather than queuing or interrupting it.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
