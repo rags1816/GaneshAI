@@ -314,6 +314,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="ur">Urdu</option>
                     <option value="th">Thai</option>
                     <option value="zh">Chinese (Mandarin)</option>
+                    <option value="ms">Malay</option>
                 </select>
             </div>
 
@@ -358,7 +359,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r102</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r104</div>
     </div>
 
     <script>
@@ -509,7 +510,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // this API's own ur-IN is the same here, but zh-CN is this
             // API's Mandarin code vs TTS's cmn-CN - genuinely different
             // schemes, not a typo).
-            ur: 'ur-IN', th: 'th-TH', zh: 'zh-CN'
+            ur: 'ur-IN', th: 'th-TH', zh: 'zh-CN', ms: 'ms-MY'
         };
         const SPEECH_TIMEOUT_MS = 15000;
 

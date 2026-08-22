@@ -111,6 +111,15 @@ reasoning survives even when the git log scrolls out of context.
   non-200, not just the status code - this diagnosis had to be guessed
   from a bare "502" since the firmware was discarding the real error
   text the whole time.
+- **r104** - Added Malay (Bahasa Melayu, ms-MY-Wavenet-B) - Latin
+  script, so unlike every other language added tonight this needed no
+  new OLED font work at all, and no Chirp3-HD tier exists for it either
+  so r103's pitch fix doesn't apply. Also strengthened the blessing
+  prompt to explicitly forbid mixing English words into a non-English
+  reply (only the devotee's own name may stay in its original script) -
+  a response to Thai/Chinese blessings reportedly containing English,
+  though unconfirmed whether that was genuine code-switching or just
+  the devotee's name staying untransliterated.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

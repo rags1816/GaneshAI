@@ -283,6 +283,15 @@ const LANGUAGE_CONFIG = {
     claudeInstruction: "Reply entirely in Mandarin Chinese (Simplified Chinese script), from start to finish, never switching to English.",
     voice: {languageCode: "cmn-CN", name: "cmn-CN-Chirp3-HD-Charon", ssmlGender: "MALE"},
   },
+  ms: {
+    claudeInstruction: "Reply entirely in Malay (Bahasa Melayu), from start to finish, never switching to English.",
+    // Latin script (Rumi), same as English/Latin-alphabet Indic
+    // romanizations - no SCRIPT_FONTS/OLED font work needed at all,
+    // unlike every other language added tonight. No Chirp3-HD tier
+    // for ms-MY at all (confirmed against Google's voice list), so
+    // r103's pitch-stripping fix doesn't apply here either.
+    voice: {languageCode: "ms-MY", name: "ms-MY-Wavenet-B", ssmlGender: "MALE"},
+  },
 };
 
 // Pushed further after real feedback: family listening to the first
@@ -545,7 +554,10 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
 
   let prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
     `and directly to a devotee named ${name}, ${situationText} Under 40 words. Plain ` +
-    `spoken text only - no stage directions, no quotation marks, no markdown. Remember: ` +
+    `spoken text only - no stage directions, no quotation marks, no markdown. Do not mix ` +
+    `in any English words or phrases anywhere in the reply - always use the target ` +
+    `language's own equivalent, even for common expressions; the devotee's own name is ` +
+    `the only thing that may stay in its original script. Remember: ` +
     `${langConfig.claudeInstruction}`;
   if (!deterministicMood) {
     prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
