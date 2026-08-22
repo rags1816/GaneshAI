@@ -57,6 +57,21 @@ const SCRIPT_FONTS = {
   pa: {file: "NotoSansGurmukhi-Regular.ttf", family: "GanapatiGurmukhi"},
   ml: {file: "NotoSansMalayalam-Regular.ttf", family: "GanapatiMalayalam"},
   bn: {file: "NotoSansBengali-Regular.ttf", family: "GanapatiBengali"},
+  // Urdu, Farsi, and Sindhi all share the Arabic script - one font
+  // covers all three. Farsi/Sindhi have been in LANGUAGE_CONFIG for a
+  // while but were NEVER in this map at all (confirmed while adding
+  // Urdu) - meaning their OLED rendering has always silently fallen
+  // back to plain scrolling text with no Arabic-script glyphs available
+  // at all, not just lower quality. This fixes all three at once.
+  ur: {file: "NotoSansArabic-Regular.ttf", family: "GanapatiArabic"},
+  fa: {file: "NotoSansArabic-Regular.ttf", family: "GanapatiArabic"},
+  sd: {file: "NotoSansArabic-Regular.ttf", family: "GanapatiArabic"},
+  th: {file: "NotoSansThai-Regular.ttf", family: "GanapatiThai"},
+  // Simplified Chinese (Mandarin/mainland) - this font alone is ~17MB
+  // (real CJK coverage is thousands of glyphs, unavoidable), noticeably
+  // larger than every other font here combined. Worth knowing if Cloud
+  // Function cold-start time or deploy size ever becomes a concern.
+  zh: {file: "NotoSansSC-Regular.ttf", family: "GanapatiChineseSC"},
 };
 
 // Cold-start-only: each font gets registered once per Cloud Function
@@ -78,15 +93,24 @@ function ensureFontRegistered(langKey) {
 // each byte, 1 = draw/lit pixel). Returns null if the language has no
 // dedicated font (English doesn't need this path at all - the existing
 // scrolling text/logisoso20 font already renders it correctly).
+// Urdu/Farsi/Sindhi are the only right-to-left scripts this renders -
+// without explicitly setting ctx.direction, fillText's bidi/alignment
+// behavior for an RTL run isn't guaranteed the same way across canvas
+// implementations, even though Arabic's per-letter joining/shaping
+// happens either way (that part's handled by the font shaper, not this).
+const RTL_LANG_KEYS = new Set(["ur", "fa", "sd"]);
+
 function renderTextToXbm(text, langKey) {
   const family = ensureFontRegistered(langKey);
   if (!family) return null;
+  const isRtl = RTL_LANG_KEYS.has(langKey);
 
   // Measure first (a throwaway small canvas is enough for measureText),
   // then build the real canvas at exactly the width needed - no point
   // shipping a wider image than the text actually is.
   const measure = createCanvas(10, 10).getContext("2d");
   measure.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  measure.direction = isRtl ? "rtl" : "ltr";
   const textWidth = Math.ceil(measure.measureText(text).width) + 8; // small horizontal margin
 
   const canvas = createCanvas(textWidth, RENDER_FONT_HEIGHT_PX);
@@ -95,10 +119,14 @@ function renderTextToXbm(text, langKey) {
   ctx.fillRect(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
   ctx.fillStyle = "black";
   ctx.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  ctx.direction = isRtl ? "rtl" : "ltr";
   ctx.textBaseline = "alphabetic";
   // Baseline near the bottom of the canvas, leaving headroom above for
-  // tall matras/ascenders that sit above the main letter body.
-  ctx.fillText(text, 4, RENDER_FONT_HEIGHT_PX - 6);
+  // tall matras/ascenders that sit above the main letter body. RTL text
+  // anchors from the right edge instead of the left (textAlign follows
+  // direction here since it's left at its "start" default) so it still
+  // reads correctly rather than starting from the wrong side.
+  ctx.fillText(text, isRtl ? textWidth - 4 : 4, RENDER_FONT_HEIGHT_PX - 6);
 
   const {data} = ctx.getImageData(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
   const bytesPerRow = Math.ceil(textWidth / 8);
@@ -239,6 +267,21 @@ const LANGUAGE_CONFIG = {
   fa: {
     claudeInstruction: "Reply entirely in Persian/Farsi (Persian script), from start to finish, never switching to English.",
     voice: {languageCode: "fa-IR", name: "fa-IR-Wavenet-B", ssmlGender: "MALE"},
+  },
+  ur: {
+    claudeInstruction: "Reply entirely in Urdu (Perso-Arabic script), from start to finish, never switching to English.",
+    // Google only offers ur-IN (India) - no ur-PK (Pakistan) voice exists
+    // at all, confirmed against Google's own current voice list. Same
+    // India-recorded voice serves both; there's no dialect choice to make.
+    voice: {languageCode: "ur-IN", name: "ur-IN-Chirp3-HD-Charon", ssmlGender: "MALE"},
+  },
+  th: {
+    claudeInstruction: "Reply entirely in Thai (Thai script), from start to finish, never switching to English.",
+    voice: {languageCode: "th-TH", name: "th-TH-Chirp3-HD-Charon", ssmlGender: "MALE"},
+  },
+  zh: {
+    claudeInstruction: "Reply entirely in Mandarin Chinese (Simplified Chinese script), from start to finish, never switching to English.",
+    voice: {languageCode: "cmn-CN", name: "cmn-CN-Chirp3-HD-Charon", ssmlGender: "MALE"},
   },
 };
 

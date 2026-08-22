@@ -14,18 +14,17 @@
 
     <!-- Real Noto Sans <Script> webfonts for every non-Latin language this
          page's own dropdown offers (Hindi/Marathi share Devanagari; Tamil,
-         Telugu, Gujarati, Punjabi/Gurmukhi, Malayalam, Bengali each get
-         their own family). Same fonts already used for the OLED's Indic
-         rendering (see indic_fonts.h/renderTextToXbm in the backend) -
-         without this, any Indic text on this page (a devotee's own name,
-         a blessing reply) falls back to whatever the phone's own system
-         font happens to cover, which is usually fine on modern phones but
-         not guaranteed. Sindhi/Farsi use Arabic script, not covered here -
-         Noto Sans Arabic would be the equivalent addition if that becomes
-         visible text on this page rather than just spoken audio. -->
+         Telugu, Gujarati, Punjabi/Gurmukhi, Malayalam, Bengali, Urdu/Farsi/
+         Sindhi share Arabic, Thai, and Chinese each get their own family).
+         Same fonts already used for the OLED's Indic rendering (see
+         indic_fonts.h/renderTextToXbm in the backend) - without this, any
+         non-Latin text on this page (a devotee's own name, a blessing
+         reply) falls back to whatever the phone's own system font happens
+         to cover, which is usually fine on modern phones but not
+         guaranteed. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&family=Noto+Sans+Tamil&family=Noto+Sans+Telugu&family=Noto+Sans+Gujarati&family=Noto+Sans+Gurmukhi&family=Noto+Sans+Malayalam&family=Noto+Sans+Bengali&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&family=Noto+Sans+Tamil&family=Noto+Sans+Telugu&family=Noto+Sans+Gujarati&family=Noto+Sans+Gurmukhi&family=Noto+Sans+Malayalam&family=Noto+Sans+Bengali&family=Noto+Sans+Arabic&family=Noto+Sans+Thai&family=Noto+Sans+SC&display=swap" rel="stylesheet">
 
     <style>
         :root {
@@ -42,7 +41,7 @@
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Malayalam', 'Noto Sans Bengali', sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Malayalam', 'Noto Sans Bengali', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans SC', sans-serif;
             margin: 0;
             padding: 15px;
             display: flex;
@@ -291,7 +290,7 @@
                  here always wins over the auto-detect from then on. -->
             <div class="form-group">
                 <label for="lang-select">Bappa's Reply Language</label>
-                <select id="lang-select" class="select-input" onchange="langManuallySet = true;">
+                <select id="lang-select" class="select-input" onchange="langManuallySet = true; updateTextDirection();">
                     <option value="en" selected>English</option>
                     <option value="hi">Hindi</option>
                     <option value="mr">Marathi</option>
@@ -301,6 +300,9 @@
                     <option value="gu">Gujarati</option>
                     <option value="ml">Malayalam</option>
                     <option value="bn">Bengali</option>
+                    <option value="ur">Urdu</option>
+                    <option value="th">Thai</option>
+                    <option value="zh">Chinese (Mandarin)</option>
                 </select>
             </div>
 
@@ -338,7 +340,7 @@
             <button class="btn-back" onclick="resetForm()">Make Another Offering</button>
         </div>
 
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r101</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r102</div>
     </div>
 
     <script>
@@ -427,8 +429,21 @@
             { lang: 'gu', re: /[઀-૿]/ },
             { lang: 'pa', re: /[਀-੿]/ },
             { lang: 'ml', re: /[ഀ-ൿ]/ },
-            { lang: 'bn', re: /[ঀ-৿]/ }
+            { lang: 'bn', re: /[ঀ-৿]/ },
+            // Arabic block also covers Farsi/Sindhi - can't tell them
+            // apart from script alone either, same as Hindi/Marathi above.
+            // Defaults to Urdu since that's the only one of the three
+            // actually on this page's dropdown.
+            { lang: 'ur', re: /[؀-ۿݐ-ݿ]/ },
+            { lang: 'th', re: /[฀-๿]/ },
+            { lang: 'zh', re: /[一-鿿]/ }
         ];
+
+        // Languages written right-to-left - only Urdu is reachable from
+        // this page's dropdown today, but keeping this as a set (not a
+        // single check) means Farsi/Sindhi get the same treatment for
+        // free if they're ever added to the dropdown too.
+        const RTL_LANGS = new Set(['ur']);
 
         function detectScriptLanguage(text) {
             for (const { lang, re } of SCRIPT_RANGES) {
@@ -437,13 +452,27 @@
             return null;
         }
 
-        function autoDetectLanguage() {
-            if (langManuallySet) return;
+        // Flips the wish textarea to right-to-left when the selected reply
+        // language is written that way - without this, Urdu text a
+        // devotee types renders left-aligned with the wrong reading order,
+        // which is wrong for the script even though the characters
+        // themselves are individually correct.
+        function updateTextDirection() {
+            const lang = document.getElementById('lang-select').value;
             const wishInput = document.getElementById('wish-input');
-            const detected = detectScriptLanguage(wishInput.value);
-            if (!detected) return;
-            const langSelect = document.getElementById('lang-select');
-            if (langSelect.value !== detected) langSelect.value = detected;
+            wishInput.dir = RTL_LANGS.has(lang) ? 'rtl' : 'ltr';
+        }
+
+        function autoDetectLanguage() {
+            if (!langManuallySet) {
+                const wishInput = document.getElementById('wish-input');
+                const detected = detectScriptLanguage(wishInput.value);
+                if (detected) {
+                    const langSelect = document.getElementById('lang-select');
+                    if (langSelect.value !== detected) langSelect.value = detected;
+                }
+            }
+            updateTextDirection();
         }
 
         // Speech-to-text for devotees who'd rather speak their wish than
@@ -456,7 +485,13 @@
         // telling the devotee to type instead rather than failing silently.
         const SPEECH_LANG_MAP = {
             en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', ta: 'ta-IN',
-            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN', bn: 'bn-IN'
+            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN', bn: 'bn-IN',
+            // Web Speech API's own BCP-47 codes, not the same code scheme
+            // Google Cloud TTS uses for the actual spoken reply (ur-IN vs
+            // this API's own ur-IN is the same here, but zh-CN is this
+            // API's Mandarin code vs TTS's cmn-CN - genuinely different
+            // schemes, not a typo).
+            ur: 'ur-IN', th: 'th-TH', zh: 'zh-CN'
         };
         const SPEECH_TIMEOUT_MS = 15000;
 
