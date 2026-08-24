@@ -283,8 +283,8 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {15, 28400}  // Ganeshmantra13.mp3 (28s)
 };
 
-// Dynamic Playlist Counters
-int mouseStep = 0;
+// Dynamic Playlist Counter - feet touch only now; mouse-back plays a
+// fixed chant (MOUSE_CHANT_TRACK in config.h), no longer rotates.
 int feetStep = 0;
 
 // The DFPlayer folder-track number (matches mantraTracks[].dfTrack, or
@@ -1871,15 +1871,16 @@ void triggerMantra() {
   feetDisplayLocked = true;
   feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
 
-  // Get track from struct array
-  int trackIndex = mouseStep;
-  int dfTrack = mantraTracks[trackIndex].dfTrack;
-  unsigned long duration = mantraTracks[trackIndex].duration;
+  // Fixed chant (MOUSE_CHANT_TRACK/_DURATION in config.h) - no longer
+  // rotates through mantraTracks[] like feet touch still does. Every
+  // mouse-back touch plays the same "Ganapati Bappa Morya..." chant.
+  int dfTrack = MOUSE_CHANT_TRACK;
+  unsigned long duration = MOUSE_CHANT_DURATION;
 
-  // Alternate child and adult blessings based on track index parity,
-  // same as Feet Touch.
+  // Same random child/adult blessing text as before - unrelated to
+  // which track plays, just what shows on the OLED while it does.
   int r;
-  if (trackIndex % 2 == 0) {
+  if (random(0, 2) == 0) {
     r = random(0, 26);
     snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
   } else {
@@ -1890,8 +1891,6 @@ void triggerMantra() {
   setSystemState(STATE_MANTRA_ACTIVE, duration);
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
-
-  mouseStep = (mouseStep + 1) % NUM_TRACKS;
 }
 
 void triggerFeetMantra() {

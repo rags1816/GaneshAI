@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-22-r104"
+#define FIRMWARE_VERSION "2026-08-22-r105"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -288,5 +288,21 @@ enum SystemState {
 #define BELL_TRACK       3      // Ganapathibell.mp3 - the only track not in mantraTracks[]/AARTI_TRACK
 #define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
 #define AARTI_DURATION   240000 // ~4 min, matches web dashboard's AARTI_FALLBACK_DURATION_MS
+
+// Mouse-back pad's own fixed chant ("Ganapati Bappa Morya, Mangala
+// Murti Morya" + a short Vakratunda Maha Kaya) - deliberately NOT part
+// of mantraTracks[]/the rotating playlist, so it always plays this one
+// specific track on every mouse-back touch instead of cycling through
+// the shared library. Feet touch and the wish pad are both untouched -
+// they still work exactly as before. 17 is the next free DFPlayer
+// track number (1-16 are already used - see mantraTracks[]/BELL_TRACK/
+// AARTI_TRACK above). File must be placed as 0017.mp3 in the SD card's
+// MP3 folder. Duration is the user's own ~30s estimate - re-measure the
+// actual file via /api/test?track=17 + a stopwatch once it's really on
+// the card, and correct this if it's meaningfully different; too short
+// cuts the chant off, too long leaves the display stuck showing nothing
+// new while the mantra rotation waits behind it.
+#define MOUSE_CHANT_TRACK    17
+#define MOUSE_CHANT_DURATION 30000
 
 #endif // CONFIG_H

@@ -120,6 +120,17 @@ reasoning survives even when the git log scrolls out of context.
   a response to Thai/Chinese blessings reportedly containing English,
   though unconfirmed whether that was genuine code-switching or just
   the devotee's name staying untransliterated.
+- **r105** - Mouse-back pad now plays one fixed chant ("Ganapati Bappa
+  Morya, Mangala Murti Morya" + a short Vakratunda Maha Kaya, ~30s -
+  MOUSE_CHANT_TRACK/_DURATION in config.h, track 17) on every touch,
+  instead of rotating through mantraTracks[] like it used to. Feet
+  touch and the wish pad are both untouched - feetStep still rotates
+  the shared playlist exactly as before; mouseStep (now unused) was
+  removed. Track 17 doesn't exist on the SD card yet - the user still
+  needs to record/source the actual audio and place it as 0017.mp3 in
+  the DFPlayer's MP3 folder; duration is their own ~30s estimate,
+  needs re-measuring via /api/test?track=17 once the real file is on
+  the card.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
