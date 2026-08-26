@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-22-r105"
+#define FIRMWARE_VERSION "2026-08-26-r106"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -70,6 +70,22 @@
 #define WISH_PAD_PIN        4
 #define WISH_PAD_CONNECTED  true
 
+// Mouse Eye LEDs (fiber-optic coupled) - two high-intensity 5mm LEDs at
+// the altar base, each butted against its own 2mm end-glow fiber running
+// into one of the mouse idol's eyes; the idol carries only bare fiber,
+// nothing electrical (see the mouse-eye-led diagram from this build's
+// planning). Both LED anodes (each through its own 120ohm resistor) tie
+// to this single GPIO; cathodes share GND. GPIO16 is printed "RX2" on
+// most DevKit boards, not "D16" - wire to the pin marked RX2. Genuinely
+// free: every other GPIO is already claimed (see the amp/mic/touch/OLED
+// definitions above and below), and 16 was only ever reserved for the
+// SPI-wired OLED mode, which this build does not use.
+// FALSE until the breadboard test confirms the circuit and brightness
+// through the real fiber length - not yet wired into the sketch's state
+// machine (no digitalWrite() calls reference this pin yet).
+#define EYE_LED_PIN         16   // printed "RX2" on the board silkscreen
+#define EYE_LED_CONNECTED   false
+
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
 #define NUM_LEDS         24   // 24 LEDs in the ring
@@ -130,7 +146,7 @@
 #define OLED_SSD1309_SPI  1
 #define OLED_SSD1309_I2C  2
 
-#define OLED_MODEL       OLED_SH1106_I2C
+#define OLED_MODEL       OLED_SSD1309_I2C
 
 // SSD1309 panels ship with one of two init sequences. If the 2.42" comes
 // up blank, garbled, or shifted sideways by a few pixels, change this 0

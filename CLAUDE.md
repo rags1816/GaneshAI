@@ -131,6 +131,19 @@ reasoning survives even when the git log scrolls out of context.
   the DFPlayer's MP3 folder; duration is their own ~30s estimate,
   needs re-measuring via /api/test?track=17 once the real file is on
   the card.
+- **r106** - `OLED_MODEL` switched to `OLED_SSD1309_I2C` now that the
+  2.4" panel is physically reinstalled and confirmed working by the
+  user (the earlier lock to the 1.3" SH1106 driver dated back to r33,
+  when the 2.4" never lit up on hardware - see r94-era archaeology).
+  Also reserved `EYE_LED_PIN` (GPIO16, printed "RX2" on the board) and
+  `EYE_LED_CONNECTED` (false) for the new fiber-optic mouse-eye LEDs:
+  two high-intensity 5mm LEDs at the altar base, each coupled to its
+  own 2mm end-glow fiber running into one eye, sharing this one GPIO
+  through their own 120ohm resistors. Not yet wired into the sketch's
+  state machine - the user is bench-testing the LED+fiber circuit on
+  the breadboard first; the real digitalWrite() logic (planned to tie
+  into the mouse-back chant) comes once that test confirms brightness
+  through the real fiber length.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
