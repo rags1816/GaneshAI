@@ -40,8 +40,21 @@ const GOOGLE_TTS_API_KEY = defineSecret("GOOGLE_TTS_API_KEY");
 // text. The ESP32's job shrinks to "draw these pixels" - something
 // u8g2's own drawXBMP() already does natively, no new device-side
 // intelligence needed.
-const RENDER_FONT_HEIGHT_PX = 30; // canvas height per rendered line - see renderTextToXbm()
 const RENDER_FONT_SIZE_PX = 24; // font size fed to the canvas - leaves margin above/below for matras/descenders
+// Canvas height per rendered line is fontSizePx + 6 (see renderTextToXbm()) -
+// computed per-call from whichever size actually applies (RENDER_FONT_SIZE_PX
+// or a RENDER_FONT_SIZE_OVERRIDES entry), not a fixed constant, so an
+// override's canvas/returned height always matches what was actually drawn.
+
+// Chinese needs its own larger size: Devanagari/Thai/Arabic-script glyphs
+// are alphabetic/abugida (simple per-glyph stroke count), but Chinese is
+// logographic - a single character can have 15+ strokes packed into the
+// same box. At the shared 24px size those strokes blur together on the
+// OLED's 1-bit monochrome bitmap (confirmed: legible on the dashboard's
+// anti-aliased screen, not on the physical display). Bigger glyphs mean
+// fewer characters visible per scroll pass - an acceptable trade for
+// actually being readable.
+const RENDER_FONT_SIZE_OVERRIDES = {zh: 30};
 
 // lang code -> {file, family}. Font files live in fonts/ alongside this
 // file (bundled into the Cloud Function deploy automatically - nothing
@@ -104,21 +117,23 @@ function renderTextToXbm(text, langKey) {
   const family = ensureFontRegistered(langKey);
   if (!family) return null;
   const isRtl = RTL_LANG_KEYS.has(langKey);
+  const fontSizePx = RENDER_FONT_SIZE_OVERRIDES[langKey] || RENDER_FONT_SIZE_PX;
+  const fontHeightPx = fontSizePx + 6; // matches the default's 24+6 margin, scales with any override
 
   // Measure first (a throwaway small canvas is enough for measureText),
   // then build the real canvas at exactly the width needed - no point
   // shipping a wider image than the text actually is.
   const measure = createCanvas(10, 10).getContext("2d");
-  measure.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  measure.font = `${fontSizePx}px "${family}"`;
   measure.direction = isRtl ? "rtl" : "ltr";
   const textWidth = Math.ceil(measure.measureText(text).width) + 8; // small horizontal margin
 
-  const canvas = createCanvas(textWidth, RENDER_FONT_HEIGHT_PX);
+  const canvas = createCanvas(textWidth, fontHeightPx);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "white";
-  ctx.fillRect(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
+  ctx.fillRect(0, 0, textWidth, fontHeightPx);
   ctx.fillStyle = "black";
-  ctx.font = `${RENDER_FONT_SIZE_PX}px "${family}"`;
+  ctx.font = `${fontSizePx}px "${family}"`;
   ctx.direction = isRtl ? "rtl" : "ltr";
   ctx.textBaseline = "alphabetic";
   // Baseline near the bottom of the canvas, leaving headroom above for
@@ -126,13 +141,13 @@ function renderTextToXbm(text, langKey) {
   // anchors from the right edge instead of the left (textAlign follows
   // direction here since it's left at its "start" default) so it still
   // reads correctly rather than starting from the wrong side.
-  ctx.fillText(text, isRtl ? textWidth - 4 : 4, RENDER_FONT_HEIGHT_PX - 6);
+  ctx.fillText(text, isRtl ? textWidth - 4 : 4, fontHeightPx - 6);
 
-  const {data} = ctx.getImageData(0, 0, textWidth, RENDER_FONT_HEIGHT_PX);
+  const {data} = ctx.getImageData(0, 0, textWidth, fontHeightPx);
   const bytesPerRow = Math.ceil(textWidth / 8);
-  const packed = Buffer.alloc(bytesPerRow * RENDER_FONT_HEIGHT_PX);
+  const packed = Buffer.alloc(bytesPerRow * fontHeightPx);
   const DARK_THRESHOLD = 128;
-  for (let y = 0; y < RENDER_FONT_HEIGHT_PX; y++) {
+  for (let y = 0; y < fontHeightPx; y++) {
     for (let x = 0; x < textWidth; x++) {
       const r = data[(y * textWidth + x) * 4]; // pure black/white render - red channel alone is enough
       if (r < DARK_THRESHOLD) {
@@ -140,7 +155,7 @@ function renderTextToXbm(text, langKey) {
       }
     }
   }
-  return {width: textWidth, height: RENDER_FONT_HEIGHT_PX, bytesPerRow, data: packed};
+  return {width: textWidth, height: fontHeightPx, bytesPerRow, data: packed};
 }
 
 const OFFERING_NAMES = {
@@ -190,12 +205,17 @@ const WISH_PAD_THEMES = [
 // on it directly with no fuzzy string matching.
 const MOODS = ["joyful", "hopeful", "comforting", "peaceful", "empowering", "grateful"];
 
-// Deterministic theme->mood mapping for the wish pad's touchOnly path -
-// that path has no real prayer text for Claude to read sentiment from
-// (silent touch, no words), but it DOES already pick a random theme from
-// WISH_PAD_THEMES above, so mapping that same theme to a mood keeps the
-// LED color and the spoken blessing's actual content in sync, with no
-// extra LLM call or parsing risk. Index-aligned with WISH_PAD_THEMES.
+// Fallback theme->mood mapping for the wish pad's touchOnly path, used
+// only if Claude ever omits the [mood] tag it's asked for (see
+// moodFallback in askClaudeForBlessing/extractMood's fallback param).
+// Used to be the ONLY source of mood for touchOnly - since there's no
+// prayer text on this path, Claude's mood was never read at all, just
+// looked up from the randomly-chosen theme. Changed because Claude does
+// generate a real, unique blessing for every touch (built around that
+// theme) with its own genuine tone, so it's just as able to self-report
+// mood here as on every other path - the old approach meant the LED
+// color was fixed per theme regardless of what was actually written.
+// Index-aligned with WISH_PAD_THEMES.
 const THEME_TO_MOOD = [
   "empowering", "peaceful", "empowering", "joyful", "peaceful", "hopeful",
   "hopeful", "peaceful", "empowering", "joyful", "empowering", "peaceful",
@@ -487,11 +507,13 @@ exports.generateBlessing = onRequest(
 //   3. A bare mood word, no brackets, anywhere in the first 60
 //      characters (Claude wrote the mood as English rather than
 //      formatting it as instructed).
-// Only truly gives up (constant "peaceful") if none of those find
-// anything - and logs the raw text either way, so a real Claude
-// formatting drift shows up in Firebase Functions logs immediately
-// instead of silently blending into "working, just always peaceful".
-function extractMood(text) {
+// Only truly gives up (the fallback param, "peaceful" unless the caller
+// has something better - see moodFallback in askClaudeForBlessing) if
+// none of those find anything - and logs the raw text either way, so a
+// real Claude formatting drift shows up in Firebase Functions logs
+// immediately instead of silently blending into "working, just always
+// falling back".
+function extractMood(text, fallback = "peaceful") {
   const head = text.slice(0, 60);
 
   let match = head.match(/^\[(\w+)\]\s*/i);
@@ -514,23 +536,29 @@ function extractMood(text) {
     return {mood: wordMatch[1].toLowerCase(), cleanText: text};
   }
 
-  return {mood: "peaceful", cleanText: text};
+  return {mood: fallback, cleanText: text};
 }
 
 // Returns {text, mood} - mood drives the LED ring's color for the
-// duration of this blessing (see MOODS/THEME_TO_MOOD above). touchOnly
-// gets its mood deterministically from the theme already chosen (no
-// prayer text exists for Claude to read sentiment from); every other
-// case asks Claude to self-classify by prefixing its reply with the
-// mood word in brackets, which is then parsed out and stripped before
-// the text is spoken/displayed - the devotee never sees the tag itself.
+// duration of this blessing (see MOODS/THEME_TO_MOOD above). Every case,
+// touchOnly included, asks Claude to self-classify by prefixing its
+// reply with the mood word in brackets, which is then parsed out and
+// stripped before the text is spoken/displayed - the devotee never sees
+// the tag itself. touchOnly used to skip this and take its mood
+// deterministically from the random theme instead - that meant the LED
+// color was fixed per theme regardless of what Claude actually wrote,
+// even though a silent touch gets a real, freshly-generated blessing
+// just like every other path, with its own genuine emotional tone to
+// read. THEME_TO_MOOD is kept as moodFallback below, used only if Claude
+// ever omits the tag (see extractMood's fallback parameter), instead of
+// falling back to a generic "peaceful" the way every other path does.
 async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
   let situationText;
-  let deterministicMood = null;
+  let moodFallback = "peaceful";
   if (touchOnly) {
     const themeIdx = Math.floor(Math.random() * WISH_PAD_THEMES.length);
     const theme = WISH_PAD_THEMES[themeIdx];
-    deterministicMood = THEME_TO_MOOD[themeIdx];
+    moodFallback = THEME_TO_MOOD[themeIdx];
     situationText = `who has come before you at the altar and gently touched the wish pad - ` +
       `the way one would touch a deity's feet - offering no words, only a silent prayer held ` +
       `in their heart. Reply with a short, warm blessing that acknowledges their silent prayer ` +
@@ -559,13 +587,11 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
     `language's own equivalent, even for common expressions; the devotee's own name is ` +
     `the only thing that may stay in its original script. Remember: ` +
     `${langConfig.claudeInstruction}`;
-  if (!deterministicMood) {
-    prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
-      `classifying its emotional mood - exactly one of: ${MOODS.join(", ")}. Format that ` +
-      `first line as [mood] with square brackets, e.g. [hopeful], then a line break, then ` +
-      `the blessing text itself (still in ${langConfig.claudeInstruction.includes("English") ? "English" : "the language above"}, ` +
-      `the mood word is the only exception).`;
-  }
+  prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
+    `classifying its emotional mood - exactly one of: ${MOODS.join(", ")}. Format that ` +
+    `first line as [mood] with square brackets, e.g. [hopeful], then a line break, then ` +
+    `the blessing text itself (still in ${langConfig.claudeInstruction.includes("English") ? "English" : "the language above"}, ` +
+    `the mood word is the only exception).`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -592,14 +618,11 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
     throw new Error("Claude returned no text");
   }
 
-  let mood = deterministicMood;
-  if (!mood) {
-    const rawStart = text.slice(0, 60);
-    const extracted = extractMood(text);
-    mood = extracted.mood;
-    text = extracted.cleanText;
-    console.log(`MOOD: raw start="${rawStart}" -> parsed=${mood}`);
-  }
+  const rawStart = text.slice(0, 60);
+  const extracted = extractMood(text, moodFallback);
+  const mood = extracted.mood;
+  text = extracted.cleanText;
+  console.log(`MOOD: raw start="${rawStart}" -> parsed=${mood}`);
 
   return {text, mood};
 }

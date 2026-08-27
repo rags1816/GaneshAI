@@ -144,6 +144,22 @@ reasoning survives even when the git log scrolls out of context.
   the breadboard first; the real digitalWrite() logic (planned to tie
   into the mouse-back chant) comes once that test confirms brightness
   through the real fiber length.
+- **r107** - Wish pad's silent-touch blessing now gets its LED mood from
+  Claude self-classifying its own generated blessing (the same `[mood]`
+  tag every other path already uses), instead of a fixed theme->mood
+  lookup table decided before Claude ever wrote anything. The old table
+  (`THEME_TO_MOOD`) is kept only as a fallback if Claude ever omits the
+  tag, in place of the generic "peaceful" every other path falls back
+  to. Also gave Chinese its own larger OLED render size (30px vs the
+  shared 24px) - confirmed on hardware as legible on the dashboard but
+  not on the physical display, unlike Bengali/Thai/Urdu on the same
+  redeploy; Chinese's logographic glyphs (15+ strokes each) need more
+  pixels than alphabetic/abugida scripts do to stay readable on a 1-bit
+  monochrome bitmap. A real bug was caught and fixed while wiring this
+  in: renderTextToXbm()'s returned height had been left pointing at the
+  old fixed constant even after the canvas itself switched to the
+  per-language size, which would have told the firmware the image was
+  6 rows shorter than the data actually packed for it.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
