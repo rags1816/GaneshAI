@@ -175,6 +175,19 @@ reasoning survives even when the git log scrolls out of context.
   Chosen over scattering an off-call into every individual trigger
   function specifically to be robust against interruption paths without
   having to enumerate them all by hand.
+- **r109** - Two real regressions caught on hardware right after r107
+  shipped. (1) The wish pad's self-classified mood (r107) skewed hard
+  toward "hopeful" regardless of theme - reverted to the deterministic
+  theme->mood table for touchOnly specifically (kept self-classification
+  for every other path, which wasn't reported as wrong): a silent touch
+  has no real devotee sentiment behind the theme WE randomly assigned
+  it, so there was nothing genuine for Claude to read, unlike a typed
+  prayer. (2) The 6 mood LED colors weren't visually distinct enough -
+  hopeful and peaceful were both blue-family, joyful and grateful were
+  both gold-family - so two different, correctly-classified moods could
+  look like no change at all on the ring. Redesigned all 6 to anchor on
+  a distinct hue family (gold/magenta, teal, purple, green, red/orange,
+  warm amber-white).
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

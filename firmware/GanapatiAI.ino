@@ -2792,25 +2792,32 @@ void stopAudioAndStandby() {
 // or the backend call failed - or a future backend change this build
 // predates) returns false and the caller keeps the plain saffron/gold
 // default, same as before this feature existed.
+// Redesigned after real hardware feedback: the original 6 pairs put
+// hopeful/peaceful both in the blue family and joyful/grateful both in
+// the gold family, so two moods often looked like "no difference at
+// all" on the ring even when classified correctly. Every mood below now
+// anchors on its own distinct hue family - gold/magenta, teal, purple,
+// green, red/orange, warm amber-white - so any two moods are
+// distinguishable at a glance, not just on paper.
 bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2) {
   if (strcmp(mood, "joyful") == 0) {
     c1 = CRGB(255, 200, 0);   // bright gold
-    c2 = CRGB(255, 105, 180); // festive pink
+    c2 = CRGB(255, 20, 147);  // hot magenta - was a soft pink, too close to comforting's
   } else if (strcmp(mood, "hopeful") == 0) {
-    c1 = CRGB(135, 206, 250); // sky blue - dawn light
-    c2 = CRGB(255, 255, 255); // white
+    c1 = CRGB(64, 224, 208);  // turquoise - was sky blue, too close to peaceful's
+    c2 = CRGB(255, 255, 153); // pale yellow
   } else if (strcmp(mood, "comforting") == 0) {
     c1 = CRGB(147, 112, 219); // soft purple
-    c2 = CRGB(255, 182, 193); // soft pink
+    c2 = CRGB(221, 160, 221); // lavender/plum - was soft pink, too close to joyful's
   } else if (strcmp(mood, "peaceful") == 0) {
-    c1 = CRGB(0, 191, 255);   // deep sky blue
-    c2 = CRGB(144, 238, 144); // light green
+    c1 = CRGB(46, 139, 87);   // sea green - was deep sky blue, too close to hopeful's
+    c2 = CRGB(152, 251, 152); // pale mint
   } else if (strcmp(mood, "empowering") == 0) {
     c1 = CRGB(220, 20, 60);   // crimson
     c2 = CRGB(255, 140, 0);   // orange
   } else if (strcmp(mood, "grateful") == 0) {
-    c1 = CRGB(255, 215, 0);   // gold
-    c2 = CRGB(255, 255, 255); // white
+    c1 = CRGB(255, 191, 0);   // warm amber - was bright gold, too close to joyful's
+    c2 = CRGB(255, 244, 214); // warm white
   } else {
     return false;
   }

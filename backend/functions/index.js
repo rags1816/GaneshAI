@@ -205,16 +205,17 @@ const WISH_PAD_THEMES = [
 // on it directly with no fuzzy string matching.
 const MOODS = ["joyful", "hopeful", "comforting", "peaceful", "empowering", "grateful"];
 
-// Fallback theme->mood mapping for the wish pad's touchOnly path, used
-// only if Claude ever omits the [mood] tag it's asked for (see
-// moodFallback in askClaudeForBlessing/extractMood's fallback param).
-// Used to be the ONLY source of mood for touchOnly - since there's no
-// prayer text on this path, Claude's mood was never read at all, just
-// looked up from the randomly-chosen theme. Changed because Claude does
-// generate a real, unique blessing for every touch (built around that
-// theme) with its own genuine tone, so it's just as able to self-report
-// mood here as on every other path - the old approach meant the LED
-// color was fixed per theme regardless of what was actually written.
+// Deterministic theme->mood mapping for the wish pad's touchOnly path -
+// that path has no real prayer text for Claude to read sentiment from
+// (silent touch, no words), but it DOES already pick a random theme from
+// WISH_PAD_THEMES above, so mapping that same theme to a mood keeps the
+// LED color and the spoken blessing's actual content in sync, with no
+// extra LLM call or parsing risk. Briefly replaced with Claude
+// self-classifying instead (reasoning: it does write a real, unique
+// blessing around this theme, so why not read its own tone the same way
+// every other path does) - reverted after confirming on hardware that it
+// skewed hard toward "hopeful" regardless of theme, since there's no
+// actual devotee sentiment behind a theme WE assigned for it to read.
 // Index-aligned with WISH_PAD_THEMES.
 const THEME_TO_MOOD = [
   "empowering", "peaceful", "empowering", "joyful", "peaceful", "hopeful",
@@ -540,18 +541,20 @@ function extractMood(text, fallback = "peaceful") {
 }
 
 // Returns {text, mood} - mood drives the LED ring's color for the
-// duration of this blessing (see MOODS/THEME_TO_MOOD above). Every case,
-// touchOnly included, asks Claude to self-classify by prefixing its
-// reply with the mood word in brackets, which is then parsed out and
-// stripped before the text is spoken/displayed - the devotee never sees
-// the tag itself. touchOnly used to skip this and take its mood
-// deterministically from the random theme instead - that meant the LED
-// color was fixed per theme regardless of what Claude actually wrote,
-// even though a silent touch gets a real, freshly-generated blessing
-// just like every other path, with its own genuine emotional tone to
-// read. THEME_TO_MOOD is kept as moodFallback below, used only if Claude
-// ever omits the tag (see extractMood's fallback parameter), instead of
-// falling back to a generic "peaceful" the way every other path does.
+// duration of this blessing (see MOODS/THEME_TO_MOOD above). Every case
+// EXCEPT touchOnly asks Claude to self-classify by prefixing its reply
+// with the mood word in brackets, which is then parsed out and stripped
+// before the text is spoken/displayed - the devotee never sees the tag
+// itself. touchOnly briefly did this too (self-classifying its own
+// theme-based blessing instead of using the deterministic theme->mood
+// table), on the reasoning that a silent touch still gets a real,
+// freshly-generated blessing with its own genuine tone to read - but
+// confirmed on hardware to classify badly (skewing hard toward
+// "hopeful" regardless of theme): unlike a typed prayer, there's no
+// actual devotee sentiment behind a theme WE randomly assigned, so
+// there's nothing distinguishing for Claude to read, and it drifts to a
+// safe default instead. Reverted to the deterministic table, which at
+// least guarantees real variety tied to the theme actually chosen.
 async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
   let situationText;
   let moodFallback = "peaceful";
@@ -587,11 +590,13 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
     `language's own equivalent, even for common expressions; the devotee's own name is ` +
     `the only thing that may stay in its original script. Remember: ` +
     `${langConfig.claudeInstruction}`;
-  prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
-    `classifying its emotional mood - exactly one of: ${MOODS.join(", ")}. Format that ` +
-    `first line as [mood] with square brackets, e.g. [hopeful], then a line break, then ` +
-    `the blessing text itself (still in ${langConfig.claudeInstruction.includes("English") ? "English" : "the language above"}, ` +
-    `the mood word is the only exception).`;
+  if (!touchOnly) {
+    prompt += ` Before the blessing itself, on the very first line, write ONLY one word ` +
+      `classifying its emotional mood - exactly one of: ${MOODS.join(", ")}. Format that ` +
+      `first line as [mood] with square brackets, e.g. [hopeful], then a line break, then ` +
+      `the blessing text itself (still in ${langConfig.claudeInstruction.includes("English") ? "English" : "the language above"}, ` +
+      `the mood word is the only exception).`;
+  }
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -618,11 +623,19 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
     throw new Error("Claude returned no text");
   }
 
-  const rawStart = text.slice(0, 60);
-  const extracted = extractMood(text, moodFallback);
-  const mood = extracted.mood;
-  text = extracted.cleanText;
-  console.log(`MOOD: raw start="${rawStart}" -> parsed=${mood}`);
+  let mood;
+  if (touchOnly) {
+    // No [mood] tag was requested above, so nothing to strip - Claude's
+    // text is used exactly as returned, and mood comes straight from the
+    // theme that was actually chosen (moodFallback), not a self-report.
+    mood = moodFallback;
+  } else {
+    const rawStart = text.slice(0, 60);
+    const extracted = extractMood(text, moodFallback);
+    mood = extracted.mood;
+    text = extracted.cleanText;
+    console.log(`MOOD: raw start="${rawStart}" -> parsed=${mood}`);
+  }
 
   return {text, mood};
 }
