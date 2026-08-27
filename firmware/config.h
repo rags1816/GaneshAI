@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-27-r107"
+#define FIRMWARE_VERSION "2026-08-27-r108"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -80,11 +80,16 @@
 // free: every other GPIO is already claimed (see the amp/mic/touch/OLED
 // definitions above and below), and 16 was only ever reserved for the
 // SPI-wired OLED mode, which this build does not use.
-// FALSE until the breadboard test confirms the circuit and brightness
-// through the real fiber length - not yet wired into the sketch's state
-// machine (no digitalWrite() calls reference this pin yet).
+// Bench-tested and confirmed working (Green, 100ohm, GPIO16) - wired into
+// the sketch's state machine ahead of the idol build finishing, at the
+// user's explicit request. Lights for the duration of the mouse-back
+// chant (triggerMantra()) only - not the feet mantra, not the wish pad,
+// not the temple-reopening welcome mantra (openTempleFromClosed() also
+// uses STATE_MANTRA_ACTIVE, but never turns this pin on). See
+// setSystemState() (turns it off on every state change, unconditionally)
+// and triggerMantra() (the only place that turns it on) below.
 #define EYE_LED_PIN         16   // printed "RX2" on the board silkscreen
-#define EYE_LED_CONNECTED   false
+#define EYE_LED_CONNECTED   true
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

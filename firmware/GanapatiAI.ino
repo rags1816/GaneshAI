@@ -613,6 +613,11 @@ void setup() {
   pinMode(WISH_PAD_PIN, INPUT_PULLDOWN);
   Serial.printf("DEBUG: WISH_PAD_PIN configured, WISH_PAD_CONNECTED=%s\n",
                 WISH_PAD_CONNECTED ? "true" : "false");
+  if (EYE_LED_CONNECTED) {
+    pinMode(EYE_LED_PIN, OUTPUT);
+    digitalWrite(EYE_LED_PIN, LOW);
+    Serial.println("DEBUG: EYE_LED_PIN configured.");
+  }
   Serial.println("DEBUG: Sensor pins configured successfully.");
   // Printed explicitly because these two config.h flags being left false
   // is the single most common reason touch "does nothing" after wiring a
@@ -1807,6 +1812,18 @@ void setSystemState(SystemState newState, unsigned long duration) {
   stateTimer = millis();
   stateDuration = duration;
   scrollX = 128;
+
+  // Eye LEDs (mouse's eyes, fiber-coupled) - off on every single state
+  // change, unconditionally, since this is the one place that always
+  // knows a transition just happened. triggerMantra() is the only place
+  // that turns this back on, immediately after its own call into this
+  // function - every other trigger (feet, offerings, wish pad, Aarti,
+  // reopening from closed) leaves it off, without needing its own
+  // explicit reset. Simpler and more robust than trying to catch every
+  // possible interruption path individually.
+  if (EYE_LED_CONNECTED) {
+    digitalWrite(EYE_LED_PIN, LOW);
+  }
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
   // THIS text has had its own chance to fully scroll across the screen.
@@ -1889,6 +1906,14 @@ void triggerMantra() {
   }
 
   setSystemState(STATE_MANTRA_ACTIVE, duration);
+  // Eyes glow for exactly this chant's duration - setSystemState() just
+  // turned this off unconditionally above; this is the only place in the
+  // sketch that ever turns it back on, so a feet touch, an offering, or
+  // the temple-reopening welcome mantra (which also uses
+  // STATE_MANTRA_ACTIVE, via openTempleFromClosed()) never light it.
+  if (EYE_LED_CONNECTED) {
+    digitalWrite(EYE_LED_PIN, HIGH);
+  }
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
 }

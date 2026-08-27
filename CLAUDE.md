@@ -160,6 +160,21 @@ reasoning survives even when the git log scrolls out of context.
   old fixed constant even after the canvas itself switched to the
   per-language size, which would have told the firmware the image was
   6 rows shorter than the data actually packed for it.
+- **r108** - Mouse eye LEDs (fiber-optic, GPIO16/RX2, bench-tested and
+  confirmed as Green + 100ohm) wired into the sketch's actual state
+  machine, ahead of the idol build finishing, at the user's explicit
+  request. `EYE_LED_CONNECTED` flipped true; `setSystemState()` now
+  turns the pin off unconditionally on every single state change
+  (comment there: "the one place that always knows a transition just
+  happened"), and `triggerMantra()` (the mouse-back touch handler) is
+  the only place that turns it back on, right after its own call into
+  setSystemState() - so it lights for exactly the ~30s the mouse-back
+  chant plays, and nothing else (feet touch, offerings, the wish pad,
+  Aarti, or the temple-reopening welcome mantra - which also lands in
+  STATE_MANTRA_ACTIVE via openTempleFromClosed() - never light it).
+  Chosen over scattering an off-call into every individual trigger
+  function specifically to be robust against interruption paths without
+  having to enumerate them all by hand.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
