@@ -201,6 +201,21 @@ afterthought, or vice versa - they need to be identical.**
   `package.json` makes `npm install` silently report "up to date" while
   actually installing nothing, which then crashes the deploy's source
   analysis step with no useful error message.
+- **The machine running `firebase deploy` must use Node 20, not whatever
+  is newest.** Confirmed on the user's Windows machine: with the system
+  Node at v24.15.0 (functions target Node 20 per `package.json`'s
+  `engines`, unrelated to this), `firebase deploy --only functions`
+  went all the way to "Loading and analyzing source code..." and then
+  died completely silently - no error, no stack trace, even with
+  `--debug`. `node -e "require('./index.js')"` worked fine standalone,
+  which pointed away from a broken dependency and toward the Firebase
+  CLI's own child-process function-discovery step not tolerating a
+  very new local Node major version. Installing Node 20 via
+  `nvm-windows` (`nvm install 20 && nvm use 20`) and redeploying from
+  that shell fixed it immediately - same files, same command, only the
+  local Node version changed. If a deploy from a fresh machine ever
+  goes silent at that exact "Loading and analyzing source code" line
+  again, check `node --version` first before suspecting the code.
 - Shared offering queue lives in Firebase Realtime Database at
   `https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/ganesha_queue.json`
   (public read/write, plain JSON, no auth) - both puja pages and the
