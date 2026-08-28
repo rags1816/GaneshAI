@@ -316,6 +316,13 @@ reasoning survives even when the git log scrolls out of context.
   these are replaced by a single `ledcAttach(pin, freq, resolution)` -
   a compile error naming `ledcSetup`/`ledcAttachPin` as undefined is the
   sign to make that swap.
+- **r119** - Confirmed real: the user's installed ESP32 board package is
+  3.1.3 (core 3.x), so r118's `ledcSetup()`/`ledcAttachPin()` needed the
+  swap flagged in its own comment. Switched to core 3.x's single-call
+  `ledcAttach(pin, freq, resolution)`, and `ledcWrite()`/`ledcRead()` now
+  take the PIN number directly rather than a channel number -
+  `EYE_LED_PWM_CHANNEL` no longer exists as a concept on this core,
+  removed entirely rather than left unused.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

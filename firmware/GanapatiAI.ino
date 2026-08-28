@@ -663,11 +663,10 @@ void setup() {
                 WISH_PAD_CONNECTED ? "true" : "false");
   if (EYE_LED_CONNECTED) {
     // LEDC PWM, not plain digitalWrite - see the breathing animation
-    // comment in config.h for why, and the fallback API note if this
-    // line fails to compile on a newer core.
-    ledcSetup(EYE_LED_PWM_CHANNEL, EYE_LED_PWM_FREQ_HZ, EYE_LED_PWM_RESOLUTION);
-    ledcAttachPin(EYE_LED_PIN, EYE_LED_PWM_CHANNEL);
-    ledcWrite(EYE_LED_PWM_CHANNEL, 0);
+    // comment in config.h. Core 3.x single-call API (confirmed on the
+    // user's installed 3.1.3 board package).
+    ledcAttach(EYE_LED_PIN, EYE_LED_PWM_FREQ_HZ, EYE_LED_PWM_RESOLUTION);
+    ledcWrite(EYE_LED_PIN, 0);
     Serial.println("DEBUG: EYE_LED_PIN configured (PWM).");
   }
   Serial.println("DEBUG: Sensor pins configured successfully.");
@@ -1930,14 +1929,14 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // the PWM channel is already at 0, no delay added.
   if (EYE_LED_CONNECTED) {
     if (eyeLedBreathingActive) {
-      int startB = ledcRead(EYE_LED_PWM_CHANNEL);
+      int startB = ledcRead(EYE_LED_PIN);
       for (int b = startB; b >= 0; b -= 15) {
-        ledcWrite(EYE_LED_PWM_CHANNEL, b);
+        ledcWrite(EYE_LED_PIN, b);
         delay(15);
       }
       eyeLedBreathingActive = false;
     }
-    ledcWrite(EYE_LED_PWM_CHANNEL, 0);
+    ledcWrite(EYE_LED_PIN, 0);
   }
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
@@ -3111,7 +3110,7 @@ void updateEyeLedBreathing() {
     float phase = (elapsed - 800) / 3000.0f * 2.0f * PI;
     brightness = (uint8_t)(90.0f + sinf(phase) * 90.0f);
   }
-  ledcWrite(EYE_LED_PWM_CHANNEL, brightness);
+  ledcWrite(EYE_LED_PIN, brightness);
 }
 
 void animateLeds() {

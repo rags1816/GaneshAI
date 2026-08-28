@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-28-r118"
+#define FIRMWARE_VERSION "2026-08-28-r119"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -96,12 +96,12 @@
 // of plain digitalWrite() so brightness can fade smoothly rather than
 // snap on/off, matching the calm/no-abrupt-transition feel used
 // elsewhere (the mood LED closure pulse, the generic fade sweep).
-// NOTE: ledcSetup()/ledcAttachPin() are the classic ESP32 Arduino core
-// (2.x) LEDC API. If your installed core has moved to the newer 3.x
-// API, these two calls are replaced by a single ledcAttach(pin, freq,
-// resolution) instead - a compile error naming ledcSetup/ledcAttachPin
-// as undefined is the sign to make that swap.
-#define EYE_LED_PWM_CHANNEL     0
+// Confirmed on the user's installed ESP32 board package (3.1.3, core
+// 3.x): that core replaced the old channel-based ledcSetup()/
+// ledcAttachPin()/ledcWrite(channel, ...) API with a single
+// ledcAttach(pin, freq, resolution) call, and ledcWrite()/ledcRead() now
+// take the PIN number directly instead of a channel number - no
+// EYE_LED_PWM_CHANNEL constant needed at all on this core.
 #define EYE_LED_PWM_FREQ_HZ  5000
 #define EYE_LED_PWM_RESOLUTION  8   // 8-bit: brightness range 0-255
 
