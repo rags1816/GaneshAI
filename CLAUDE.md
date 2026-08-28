@@ -277,6 +277,16 @@ reasoning survives even when the git log scrolls out of context.
   `bootCrashedStage` are new globals capturing what setup()'s crash-
   check already computed locally, since stageMagic/lastStage themselves
   get overwritten moments later for the current run's own tracking.
+- **r116** - V2 Phase 6: manual Temple Atmosphere toggle (Day/Evening/
+  Night/Festival) on the dashboard, via `selectedAtmosphere` and a new
+  `applyAtmosphere()` color wash layered on top of whatever Theme of the
+  Day already picked - AMBIENT only, doesn't touch Mantra/Feet/Aarti/
+  mood colors. Deliberately manual, no NTP/time-of-day automation - per
+  the reviewed V2 feedback, auto-switching by clock time can surprise a
+  devotee with the wrong mode after a Wi-Fi outage or wrong timezone.
+  Known minor gap: the dashboard's own browser-side LED ring preview
+  (`previewLeds()`) still shows the base Theme colors without the
+  atmosphere wash - only the real device's ring reflects it for now.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
