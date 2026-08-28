@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-28-r117"
+#define FIRMWARE_VERSION "2026-08-28-r118"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -90,6 +90,20 @@
 // and triggerMantra() (the only place that turns it on) below.
 #define EYE_LED_PIN         16   // printed "RX2" on the board silkscreen
 #define EYE_LED_CONNECTED   true
+
+// Breathing animation (not a flat on/off) - see updateEyeLedBreathing()
+// in GanapatiAI.ino. Driven via the ESP32's LEDC PWM peripheral instead
+// of plain digitalWrite() so brightness can fade smoothly rather than
+// snap on/off, matching the calm/no-abrupt-transition feel used
+// elsewhere (the mood LED closure pulse, the generic fade sweep).
+// NOTE: ledcSetup()/ledcAttachPin() are the classic ESP32 Arduino core
+// (2.x) LEDC API. If your installed core has moved to the newer 3.x
+// API, these two calls are replaced by a single ledcAttach(pin, freq,
+// resolution) instead - a compile error naming ledcSetup/ledcAttachPin
+// as undefined is the sign to make that swap.
+#define EYE_LED_PWM_CHANNEL     0
+#define EYE_LED_PWM_FREQ_HZ  5000
+#define EYE_LED_PWM_RESOLUTION  8   // 8-bit: brightness range 0-255
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

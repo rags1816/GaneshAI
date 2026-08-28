@@ -300,6 +300,22 @@ reasoning survives even when the git log scrolls out of context.
   while (pre-existing, not from tonight) - comment-only, not a
   functional difference, but worth a proper re-sync pass at some point
   per this repo's usual duplicated-file discipline.
+- **r118** - Mouse eye LED changed from a flat on/off to a gentle
+  breathing animation (fade in ~800ms, then a ~3s breathing cycle
+  capped around 70% brightness) for the same ~30s the mouse-back chant
+  plays - same single Green LED, no color change, no new hardware.
+  Driven via the ESP32's LEDC PWM peripheral (`ledcSetup`/
+  `ledcAttachPin`/`ledcWrite`) instead of plain `digitalWrite()`, so
+  brightness can fade smoothly. `setSystemState()`'s existing
+  unconditional "eyes off on every state change" now fades out over
+  ~250ms instead of an instant cut, but only when breathing was
+  actually active - every other transition is unaffected.
+  **Real compile risk flagged, not yet confirmed on hardware:**
+  `ledcSetup()`/`ledcAttachPin()` are the classic ESP32 Arduino core
+  (2.x) LEDC API; if the installed core has moved to the newer 3.x API,
+  these are replaced by a single `ledcAttach(pin, freq, resolution)` -
+  a compile error naming `ledcSetup`/`ledcAttachPin` as undefined is the
+  sign to make that swap.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

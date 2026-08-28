@@ -315,6 +315,14 @@ unsigned long lastOfflineFallbackMs = 0;
 bool bootCrashedLastRun = false;
 int bootCrashedStage = 0;
 
+// Eye LED breathing animation state - see updateEyeLedBreathing() below.
+// eyeLedBreathingActive is the only thing triggerMantra()/setSystemState()
+// touch directly; the actual brightness curve is computed continuously
+// from eyeLedBreathingStartMs each loop() pass, same non-blocking pattern
+// as animateLeds()'s animHue.
+bool eyeLedBreathingActive = false;
+unsigned long eyeLedBreathingStartMs = 0;
+
 // Customization & Settings
 int blessingCounter = 0;
 int currentBrightness = DEFAULT_BRIGHT;
@@ -577,6 +585,7 @@ void playOfflineBlessingFallback(const String &lang);
 ExperienceScene getCurrentScene();
 bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
 void playMoodClosurePulse(const char *mood);
+void updateEyeLedBreathing();
 
 // ==========================================
 // Setup Function
@@ -653,9 +662,13 @@ void setup() {
   Serial.printf("DEBUG: WISH_PAD_PIN configured, WISH_PAD_CONNECTED=%s\n",
                 WISH_PAD_CONNECTED ? "true" : "false");
   if (EYE_LED_CONNECTED) {
-    pinMode(EYE_LED_PIN, OUTPUT);
-    digitalWrite(EYE_LED_PIN, LOW);
-    Serial.println("DEBUG: EYE_LED_PIN configured.");
+    // LEDC PWM, not plain digitalWrite - see the breathing animation
+    // comment in config.h for why, and the fallback API note if this
+    // line fails to compile on a newer core.
+    ledcSetup(EYE_LED_PWM_CHANNEL, EYE_LED_PWM_FREQ_HZ, EYE_LED_PWM_RESOLUTION);
+    ledcAttachPin(EYE_LED_PIN, EYE_LED_PWM_CHANNEL);
+    ledcWrite(EYE_LED_PWM_CHANNEL, 0);
+    Serial.println("DEBUG: EYE_LED_PIN configured (PWM).");
   }
   Serial.println("DEBUG: Sensor pins configured successfully.");
   // Printed explicitly because these two config.h flags being left false
@@ -969,6 +982,7 @@ void loop() {
   updateStateMachine();
   lastStage = 4;
   animateLeds();
+  updateEyeLedBreathing();
   lastStage = 5;
   drawOLED();
   delay(10);
@@ -1910,9 +1924,20 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // function - every other trigger (feet, offerings, wish pad, Aarti,
   // reopening from closed) leaves it off, without needing its own
   // explicit reset. Simpler and more robust than trying to catch every
-  // possible interruption path individually.
+  // possible interruption path individually. A brief (~250ms) blocking
+  // fade-out, not an instant cut, but ONLY when breathing was actually
+  // active - every other state change (the vast majority) just confirms
+  // the PWM channel is already at 0, no delay added.
   if (EYE_LED_CONNECTED) {
-    digitalWrite(EYE_LED_PIN, LOW);
+    if (eyeLedBreathingActive) {
+      int startB = ledcRead(EYE_LED_PWM_CHANNEL);
+      for (int b = startB; b >= 0; b -= 15) {
+        ledcWrite(EYE_LED_PWM_CHANNEL, b);
+        delay(15);
+      }
+      eyeLedBreathingActive = false;
+    }
+    ledcWrite(EYE_LED_PWM_CHANNEL, 0);
   }
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
@@ -2022,13 +2047,16 @@ void triggerMantra() {
   }
 
   setSystemState(STATE_MANTRA_ACTIVE, duration);
-  // Eyes glow for exactly this chant's duration - setSystemState() just
-  // turned this off unconditionally above; this is the only place in the
-  // sketch that ever turns it back on, so a feet touch, an offering, or
-  // the temple-reopening welcome mantra (which also uses
+  // Eyes breathe for exactly this chant's duration - setSystemState()
+  // just turned this off unconditionally above; this is the only place
+  // in the sketch that ever turns it back on, so a feet touch, an
+  // offering, or the temple-reopening welcome mantra (which also uses
   // STATE_MANTRA_ACTIVE, via openTempleFromClosed()) never light it.
+  // updateEyeLedBreathing() (called from loop()) does the actual
+  // animating from here - this just starts the clock.
   if (EYE_LED_CONNECTED) {
-    digitalWrite(EYE_LED_PIN, HIGH);
+    eyeLedBreathingActive = true;
+    eyeLedBreathingStartMs = millis();
   }
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
@@ -3063,6 +3091,27 @@ void applyAtmosphere(CRGB &c1, CRGB &c2) {
     default: // 0 = Day - Theme of the Day's own colors, unmodified
       break;
   }
+}
+
+// Mouse eye LED breathing - fades in (~800ms) then breathes gently
+// (~3s cycle) for as long as eyeLedBreathingActive stays true, using the
+// same single Green LED, no color change. Called every loop() pass
+// (see loop() above), same non-blocking pattern as animateLeds().
+// Capped around 180/255 (~70%) even at its brightest - deliberately not
+// full brightness, so it reads as a soft glow rather than a blinking
+// indicator.
+void updateEyeLedBreathing() {
+  if (!EYE_LED_CONNECTED) return;
+  if (!eyeLedBreathingActive) return;
+  unsigned long elapsed = millis() - eyeLedBreathingStartMs;
+  uint8_t brightness;
+  if (elapsed < 800) {
+    brightness = (uint8_t)((elapsed / 800.0f) * 180.0f);
+  } else {
+    float phase = (elapsed - 800) / 3000.0f * 2.0f * PI;
+    brightness = (uint8_t)(90.0f + sinf(phase) * 90.0f);
+  }
+  ledcWrite(EYE_LED_PWM_CHANNEL, brightness);
 }
 
 void animateLeds() {
