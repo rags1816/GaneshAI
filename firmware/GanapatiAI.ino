@@ -556,6 +556,8 @@ void openTempleFromClosed();
 void stopAudioAndStandby();
 void playOfflineBlessingFallback(const String &lang);
 ExperienceScene getCurrentScene();
+bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
+void playMoodClosurePulse(const char *mood);
 
 // ==========================================
 // Setup Function
@@ -1875,6 +1877,15 @@ void setSystemState(SystemState newState, unsigned long duration) {
     currentPlayingTrack = 0;
     if (LED_CONNECTED) {
       if (!wasClosed && ledEnabled) {
+        // V2 Phase 3: a mood-driven blessing (offering/wish-pad, not a
+        // plain mantra/feet touch) gets one gentle pulse of its own
+        // color first - a clear completion cue - before the existing
+        // generic fade takes over.
+        bool wasMoodBearing = (oldState == STATE_MANTRA_ACTIVE || oldState == STATE_FEET_ACTIVE) &&
+                               currentMoodTag[0] != '\0';
+        if (wasMoodBearing) {
+          playMoodClosurePulse(currentMoodTag);
+        }
         playLedClosingSweep(); // fade out whatever was showing, rather than an abrupt cut to black
       }
       FastLED.clear();
@@ -2946,6 +2957,31 @@ bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2) {
     return false;
   }
   return true;
+}
+
+// V2 Phase 3: LED scene phases - Closure. One gentle brightness pulse in
+// the blessing's own mood color (rises then eases back to dark, ~400ms),
+// called from setSystemState() right before the existing generic
+// playLedClosingSweep() fade - so a mood-driven blessing gets a clear,
+// warm "signing off" cue instead of just fading from whatever colors
+// happened to be showing. Deliberately narrow: only fires for a REAL
+// mood, not a plain mantra/feet touch (saffron/gold, no distinct mood)
+// - same reasoning as why that plain touch never picks up mood colors
+// at all (r109: "a mantra touch should always feel the same and
+// special"). No-op if the mood string isn't one of the 6 known moods.
+void playMoodClosurePulse(const char *mood) {
+  CRGB c1, c2;
+  if (!moodColorsFor(mood, c1, c2)) return;
+  for (int step = 0; step <= 20; step++) {
+    uint8_t b = (uint8_t)(sinf(step / 20.0f * PI) * 255); // rises then eases back to 0
+    for (int i = 0; i < NUM_LEDS; i++) {
+      CRGB c = (i % 2 == 0) ? c1 : c2;
+      c.nscale8(b);
+      leds[i] = c;
+    }
+    FastLED.show();
+    delay(20);
+  }
 }
 
 void animateLeds() {

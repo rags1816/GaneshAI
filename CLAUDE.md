@@ -244,6 +244,22 @@ reasoning survives even when the git log scrolls out of context.
   hierarchy or event-driven architecture, which was reviewed and
   rejected as over-engineered for a single ESP32 running one state
   machine.
+- **r114** - V2 Phase 3 (first slice): a "Closure" LED scene phase for
+  mood-driven blessings - `playMoodClosurePulse()` plays one gentle
+  brightness pulse in the blessing's own mood color (rises then eases
+  back to dark, ~400ms) right before the existing generic
+  `playLedClosingSweep()` fade, called from `setSystemState()` only when
+  leaving MANTRA_ACTIVE/FEET_ACTIVE with a real mood set - a plain
+  mantra/feet touch (saffron/gold, no distinct mood) is untouched, same
+  reasoning as why that path never picks up mood colors at all (r109).
+  Deliberately scoped to just Closure for this first slice rather than
+  all 4 scene phases (Recognition/Blessing/Presence/Closure) from the
+  reviewed spec at once - Presence is effectively already the existing
+  continuous animation, and Recognition already has a partial analog
+  (the neutral saffron/gold shown while mood is still pending); adding a
+  new distinct flash there risked working against the calm, non-flashy
+  feel wanted for the wish pad specifically. Can add a real Recognition
+  cue as a follow-up once this pulse is confirmed on hardware.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
