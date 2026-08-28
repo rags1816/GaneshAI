@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-27-r110"
+#define FIRMWARE_VERSION "2026-08-28-r111"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -327,16 +327,15 @@ enum SystemState {
 #define MOUSE_CHANT_DURATION 30000
 
 // Phase 1: Offline Blessing Fallback - see playOfflineBlessingFallback()
-// in GanapatiAI.ino. A small set of pre-recorded, generic blessing
-// chants played instead of a live AI blessing whenever Wi-Fi or the
-// backend is unreachable - deliberately NOT personalized/translated
-// like every other spoken blessing on this device, just something real
-// instead of silence. Files must be placed as 0018.mp3/0019.mp3/0020.mp3
-// in the DFPlayer's MP3 folder - 18 is the next free track number after
-// MOUSE_CHANT_TRACK (17). The user still needs to record/source the
-// actual audio; add more entries here (and more files) later if a wider
-// rotation is wanted.
+// in GanapatiAI.ino. Plays instead of a live AI blessing whenever Wi-Fi
+// or the backend is unreachable, so a devotee gets something real
+// instead of silence. Deliberately reuses 3 of the EXISTING, already-
+// recorded mantraTracks[] entries (the shortest ones, closest in length
+// to a typical ~15-20s spoken blessing) rather than requiring brand new
+// recordings - no new SD card files needed at all. Swap these for
+// dedicated recordings later if a more tailored offline message is
+// wanted, but this needs nothing further to work today.
 #define OFFLINE_BLESSING_TRACK_COUNT 3
-static const int OFFLINE_BLESSING_TRACKS[OFFLINE_BLESSING_TRACK_COUNT] = {18, 19, 20};
+static const int OFFLINE_BLESSING_TRACKS[OFFLINE_BLESSING_TRACK_COUNT] = {1, 2, 4};
 
 #endif // CONFIG_H

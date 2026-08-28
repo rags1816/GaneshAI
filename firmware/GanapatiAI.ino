@@ -2288,9 +2288,9 @@ bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
 // silent. NOT personalized or translated like every other spoken
 // blessing on this device - these are fixed recordings, so a devotee
 // still gets a real spoken blessing when the network can't reach
-// Claude/Google TTS at all, rather than silence. Files must be placed
-// as 00NN.mp3 in the DFPlayer's MP3 folder - see OFFLINE_BLESSING_TRACKS
-// in config.h; the user still needs to record/source the actual audio.
+// Claude/Google TTS at all, rather than silence. Reuses 3 of the
+// existing mantraTracks[] recordings already on the SD card (see
+// OFFLINE_BLESSING_TRACKS in config.h) - no new recordings needed.
 // offlineFallbackCount/lastOfflineFallbackMs (declared up near
 // blessingCounter) are plumbing for the dashboard health panel
 // (Phase 5) - not surfaced there yet, only in /api/state for now.

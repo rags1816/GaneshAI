@@ -214,6 +214,13 @@ reasoning survives even when the git log scrolls out of context.
   needing to actually kill Wi-Fi. offlineFallbackCount is exposed on
   `/api/state` now, ahead of the Phase 5 dashboard health panel that
   will actually surface it.
+- **r111** - `OFFLINE_BLESSING_TRACKS` (r110) changed from 3 new,
+  not-yet-recorded track numbers (18-20) to 3 of the existing
+  mantraTracks[] entries already on the SD card (1, 2, 4 - the
+  shortest ones, closest in length to a typical spoken blessing) -
+  recording 3 new dedicated chants was real friction for the user with
+  no real benefit over reusing what's already there. No SD card changes
+  needed at all now; the fallback works immediately on reflash.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
