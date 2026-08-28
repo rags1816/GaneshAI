@@ -260,6 +260,23 @@ reasoning survives even when the git log scrolls out of context.
   new distinct flash there risked working against the calm, non-flashy
   feel wanted for the wish pad specifically. Can add a real Recognition
   cue as a follow-up once this pulse is confirmed on hardware.
+- **r115** - V2 Phase 5: Guardian-style dashboard health panel. New
+  `/api/health` endpoint plus a "Device Health" section on both
+  dashboard copies (`index.html`/`web_dashboard.h`) surfacing Wi-Fi
+  status/RSSI, free heap, amp readiness, offline-fallback usage
+  (r110-112), and the crash tracer's last-boot status - all of which
+  already existed as Serial-only logging (`checkWiFiHealth()`,
+  `checkHeapHealth()`, `checkBlessingTaskHealth()`'s r94 self-heal, the
+  stageMagic/lastStage crash tracer) and was invisible unless someone
+  happened to be watching the monitor at the right moment. Deliberately
+  read-only - per the reviewed V2 feedback, this reports on existing
+  conservative recovery (Wi-Fi reconnect, the 120s blessing-task self-
+  heal) rather than adding any new automatic "fix" behavior; broader
+  self-healing was explicitly flagged as something that can hide real
+  faults instead of surfacing them. `bootCrashedLastRun`/
+  `bootCrashedStage` are new globals capturing what setup()'s crash-
+  check already computed locally, since stageMagic/lastStage themselves
+  get overwritten moments later for the current run's own tracking.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

@@ -878,6 +878,22 @@
         </div>
         </details>
 
+        <!-- V2 Phase 5: Guardian-style health panel. Read-only - reports
+             what already exists (checkWiFiHealth/checkHeapHealth/
+             checkBlessingTaskHealth/the crash tracer, all Serial-only
+             until now), does not add any new automatic recovery. -->
+        <details class="collapsible-section">
+        <summary class="section-title">&#129649; Device Health</summary>
+        <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; font-size: 11px; color: #a8b2d1; line-height: 1.9;">
+            <div>Wi-Fi: <span id="health-wifi" style="color:#fff;">-</span></div>
+            <div>Uptime: <span id="health-uptime" style="color:#fff;">-</span></div>
+            <div>Free memory: <span id="health-heap" style="color:#fff;">-</span></div>
+            <div>Amp: <span id="health-amp" style="color:#fff;">-</span></div>
+            <div>Offline fallback: <span id="health-offline" style="color:#fff;">-</span></div>
+            <div>Last boot: <span id="health-crash" style="color:#fff;">-</span></div>
+        </div>
+        </details>
+
         <footer>
             Lord of Wisdom &bull; 2026 Theme
             <div id="firmware-version-tag" style="font-size:10px; opacity:0.6; margin-top:4px;"></div>
@@ -3835,6 +3851,44 @@ var QRCode;
             pollDeviceState();
             setInterval(pollDeviceState, 2000);
         }
+
+        // V2 Phase 5: separate, slower poll (health data doesn't need
+        // 2s granularity) - purely for display, mirrors nothing back
+        // into device control the way pollDeviceState() does, and a
+        // failed fetch here just leaves the panel showing its last
+        // known values rather than raising the device-offline badge
+        // (pollDeviceState already owns that signal).
+        function formatUptime(sec) {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            return h > 0 ? (h + 'h ' + m + 'm') : (m + 'm');
+        }
+
+        function pollDeviceHealth() {
+            fetch('/api/health').then(r => r.json()).then(data => {
+                const wifiEl = document.getElementById('health-wifi');
+                if (wifiEl) wifiEl.textContent = data.wifiConnected ? ('Connected (' + data.wifiRSSI + ' dBm)') : 'Disconnected';
+                const uptimeEl = document.getElementById('health-uptime');
+                if (uptimeEl) uptimeEl.textContent = formatUptime(data.uptimeSec);
+                const heapEl = document.getElementById('health-heap');
+                if (heapEl) heapEl.textContent = Math.round(data.freeHeap / 1024) + ' KB (min ' + Math.round(data.minFreeHeap / 1024) + ' KB)';
+                const ampEl = document.getElementById('health-amp');
+                if (ampEl) ampEl.textContent = data.ampReady ? 'Ready' : 'Not ready';
+                const offlineEl = document.getElementById('health-offline');
+                if (offlineEl) {
+                    offlineEl.textContent = data.offlineFallbackCount === 0
+                        ? 'Never used'
+                        : (data.offlineFallbackCount + 'x so far, last ' + Math.round(data.lastOfflineFallbackAgoSec / 60) + ' min ago');
+                }
+                const crashEl = document.getElementById('health-crash');
+                if (crashEl) crashEl.textContent = data.bootCrashedLastRun ? ('Crashed near stage ' + data.bootCrashedStage) : 'Clean boot';
+            }).catch(() => {});
+        }
+        if (isPhysicalESP) {
+            pollDeviceHealth();
+            setInterval(pollDeviceHealth, 10000);
+        }
     </script>
 </body>
 </html>
+

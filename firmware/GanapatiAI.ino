@@ -307,6 +307,14 @@ int currentPlayingTrack = 0;
 unsigned long offlineFallbackCount = 0;
 unsigned long lastOfflineFallbackMs = 0;
 
+// V2 Phase 5: captured once in setup() from the crash-tracer's local
+// prevRunCrashed/crashedStage (see the comment there) - stageMagic/
+// lastStage themselves get overwritten immediately after for THIS run's
+// own tracking, so these globals are the only way /api/health can report
+// on the previous run's crash status later.
+bool bootCrashedLastRun = false;
+int bootCrashedStage = 0;
+
 // Customization & Settings
 int blessingCounter = 0;
 int currentBrightness = DEFAULT_BRIGHT;
@@ -584,6 +592,13 @@ void setup() {
 
   bool prevRunCrashed = (stageMagic == CRASH_TRACER_MAGIC);
   int crashedStage = lastStage;
+  // V2 Phase 5: saved into globals (stageMagic/lastStage themselves get
+  // overwritten a few lines below, for THIS run's own tracking) so the
+  // dashboard health panel can report it later via /api/health - this
+  // was previously Serial-only, visible only if someone happened to be
+  // watching the monitor at the exact moment of reboot.
+  bootCrashedLastRun = prevRunCrashed;
+  bootCrashedStage = crashedStage;
   if (prevRunCrashed) {
     Serial.print("DEBUG: previous run crashed near stage ");
     Serial.println(crashedStage);
@@ -1054,6 +1069,32 @@ void handleWebRoutes() {
       "{\"state\":\"%s\",\"mood\":\"%s\",\"audioActive\":%s,\"displayLocked\":%s,\"elapsedMs\":%lu,\"durationMs\":%lu}",
       stateName(scene.state), scene.mood, scene.audioActive ? "true" : "false",
       scene.displayLocked ? "true" : "false", scene.elapsedMs, scene.durationMs);
+    server.send(200, "application/json", json);
+  });
+
+  // V2 Phase 5: Guardian-style health panel data. Deliberately just
+  // surfaces signals that already exist (checkWiFiHealth()'s reconnect,
+  // checkHeapHealth()'s logging, checkBlessingTaskHealth()'s 120s
+  // self-heal, the crash tracer) - this endpoint reports, it does not
+  // add any new automatic recovery behavior. Per the reviewed V2
+  // feedback: conservative recovery stays limited to Wi-Fi/API retry
+  // (already exactly what checkWiFiHealth() does); everything else here
+  // is for a human to read, not for the firmware to act on unprompted.
+  server.on("/api/health", HTTP_GET, []() {
+    unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
+    char json[512];
+    snprintf(json, sizeof(json),
+      "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
+      "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
+      "\"offlineFallbackCount\":%lu,\"lastOfflineFallbackAgoSec\":%ld,"
+      "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d}",
+      (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
+      (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
+      millis() / 1000, ampReady ? "true" : "false",
+      blessingTaskActive ? "true" : "false", blessingTaskMs,
+      offlineFallbackCount,
+      lastOfflineFallbackMs == 0 ? -1L : (long)((millis() - lastOfflineFallbackMs) / 1000),
+      bootCrashedLastRun ? "true" : "false", bootCrashedStage);
     server.send(200, "application/json", json);
   });
 
