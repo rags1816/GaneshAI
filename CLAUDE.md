@@ -229,6 +229,21 @@ reasoning survives even when the git log scrolls out of context.
   live blessing) rather than either a human recording or a repurposed
   chant. User needs to run the 3 generation calls once and place the
   resulting files as 0018/19/20.mp3.
+- **r113** - V2 Phase 4: `ExperienceScene` struct (config.h) +
+  `getCurrentScene()` (GanapatiAI.ino) - a small, read-only snapshot of
+  state/mood/audio/display, so new code (starting with the next phase's
+  LED scene engine) has one thing to query instead of checking several
+  scattered globals separately. Deliberately additive, not a refactor -
+  reads existing globals (currentMoodTag, blessingTaskActive,
+  feetDisplayLocked, stateTimer/stateDuration) without changing how or
+  when any of them get set, so none of the ~15 interacting timers this
+  file already depends on were touched. Exposed at `/api/scene` for
+  manual verification, same testability convention as every other
+  `/api/*` route. This is the scoped-down version of the reviewed V2
+  spec's "AI Ritual Orchestrator" - a struct and a function, not a class
+  hierarchy or event-driven architecture, which was reviewed and
+  rejected as over-engineered for a single ESP32 running one state
+  machine.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

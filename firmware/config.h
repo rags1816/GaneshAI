@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-28-r112"
+#define FIRMWARE_VERSION "2026-08-28-r113"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -302,6 +302,33 @@ enum SystemState {
   STATE_TEMPLE_CLOSED   // Night mode after Aarti closes the temple - OLED/LEDs off like
                          // STANDBY, but deliberately only a touch (feet/mouse-back) wakes
                          // it, not PIR - matches the web dashboard's TEMPLE_CLOSED design.
+};
+
+// V2 Phase 4: ExperienceScene - a small, read-only snapshot of "what's
+// currently happening" across state/mood/audio/display, built via
+// getCurrentScene() in GanapatiAI.ino. Exists so new code (starting with
+// Phase 3's LED scene engine) has ONE thing to query instead of checking
+// half a dozen separate globals (currentMoodTag, blessingTaskActive,
+// feetDisplayLocked, stateTimer/stateDuration...) directly and
+// separately, the way animateLeds()/drawOLED() currently do.
+//
+// Deliberately NOT a class hierarchy or an event-driven orchestrator -
+// the full V2 spec's "AI Ritual Orchestrator" (InteractionEvent/
+// ExperiencePlan/Guardian/Renderer layers) was reviewed and rejected as
+// over-engineered for a single ESP32 running one state machine. This is
+// just a struct and one function that reads existing state - it does
+// not change how or when any existing global gets SET, only gives
+// read-side code one coherent view instead of several scattered checks.
+// Built specifically to prevent the class of bug r99 was: LED/OLED/audio
+// drifting out of sync because nothing had one shared picture of "what's
+// actually playing right now."
+struct ExperienceScene {
+  SystemState state;
+  const char *mood;         // currentMoodTag, or "none" if empty
+  bool audioActive;         // blessingTaskActive || a DFPlayer track is set
+  bool displayLocked;       // feetDisplayLocked
+  unsigned long elapsedMs;  // millis() - stateTimer
+  unsigned long durationMs; // stateDuration
 };
 
 // DFPlayer Mini SD card layout: all tracks live in a folder literally named

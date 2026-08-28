@@ -555,6 +555,7 @@ void triggerAartiThenClose();
 void openTempleFromClosed();
 void stopAudioAndStandby();
 void playOfflineBlessingFallback(const String &lang);
+ExperienceScene getCurrentScene();
 
 // ==========================================
 // Setup Function
@@ -1038,6 +1039,19 @@ void handleWebRoutes() {
     }
     n += snprintf(json + n, sizeof(json) - n, "\"}");
 
+    server.send(200, "application/json", json);
+  });
+
+  // V2 Phase 4: exposes ExperienceScene (see config.h/getCurrentScene())
+  // for manual verification that the snapshot actually matches reality -
+  // same testability convention as every other /api/* route here.
+  server.on("/api/scene", HTTP_GET, []() {
+    ExperienceScene scene = getCurrentScene();
+    char json[200];
+    snprintf(json, sizeof(json),
+      "{\"state\":\"%s\",\"mood\":\"%s\",\"audioActive\":%s,\"displayLocked\":%s,\"elapsedMs\":%lu,\"durationMs\":%lu}",
+      stateName(scene.state), scene.mood, scene.audioActive ? "true" : "false",
+      scene.displayLocked ? "true" : "false", scene.elapsedMs, scene.durationMs);
     server.send(200, "application/json", json);
   });
 
@@ -1885,6 +1899,23 @@ void setSystemState(SystemState newState, unsigned long duration) {
       lastAmbientBlessingRotate = stateTimer;
     }
   }
+}
+
+// V2 Phase 4: ExperienceScene - see the struct's own comment in config.h.
+// Pure read - takes a snapshot of existing globals, changes nothing.
+// currentPlayingTrack != 0 is used as a proxy for "some audio is set to
+// be playing" alongside blessingTaskActive, since a plain mantra/feet/
+// Aarti track plays without ever setting blessingTaskActive (that flag
+// only covers the background AI-blessing network task).
+ExperienceScene getCurrentScene() {
+  ExperienceScene scene;
+  scene.state = currentState;
+  scene.mood = (currentMoodTag[0] != '\0') ? currentMoodTag : "none";
+  scene.audioActive = blessingTaskActive || (currentPlayingTrack != 0);
+  scene.displayLocked = feetDisplayLocked;
+  scene.elapsedMs = millis() - stateTimer;
+  scene.durationMs = stateDuration;
+  return scene;
 }
 
 void triggerMantra() {
