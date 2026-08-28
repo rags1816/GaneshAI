@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-28-r111"
+#define FIRMWARE_VERSION "2026-08-28-r112"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -329,13 +329,17 @@ enum SystemState {
 // Phase 1: Offline Blessing Fallback - see playOfflineBlessingFallback()
 // in GanapatiAI.ino. Plays instead of a live AI blessing whenever Wi-Fi
 // or the backend is unreachable, so a devotee gets something real
-// instead of silence. Deliberately reuses 3 of the EXISTING, already-
-// recorded mantraTracks[] entries (the shortest ones, closest in length
-// to a typical ~15-20s spoken blessing) rather than requiring brand new
-// recordings - no new SD card files needed at all. Swap these for
-// dedicated recordings later if a more tailored offline message is
-// wanted, but this needs nothing further to work today.
+// instead of silence. Briefly reused 3 of the existing mantraTracks[]
+// entries to avoid asking for new recordings - reverted because a
+// mantra/chant isn't the same kind of content as a blessing acknowledging
+// someone's prayer, and playing one in its place was a genre mismatch,
+// not just a lower-quality stand-in. Fixed properly instead: these 3
+// tracks are real spoken blessings generated ONCE via the existing
+// synthesizeAudio endpoint (same Google TTS voice as every live
+// blessing) and saved as static files - no live AI dependency, and no
+// human voice recording needed either. Files must be placed as
+// 0018.mp3/0019.mp3/0020.mp3 in the DFPlayer's MP3 folder.
 #define OFFLINE_BLESSING_TRACK_COUNT 3
-static const int OFFLINE_BLESSING_TRACKS[OFFLINE_BLESSING_TRACK_COUNT] = {1, 2, 4};
+static const int OFFLINE_BLESSING_TRACKS[OFFLINE_BLESSING_TRACK_COUNT] = {18, 19, 20};
 
 #endif // CONFIG_H

@@ -221,6 +221,14 @@ reasoning survives even when the git log scrolls out of context.
   recording 3 new dedicated chants was real friction for the user with
   no real benefit over reusing what's already there. No SD card changes
   needed at all now; the fallback works immediately on reflash.
+- **r112** - r111 reverted: a mantra/chant is a genre mismatch for a
+  fallback meant to acknowledge a devotee's silent prayer, not just
+  lower quality than a dedicated recording. Fixed properly instead -
+  tracks 18-20 are real spoken blessings, generated ONCE via the
+  existing synthesizeAudio endpoint (same Google TTS voice as every
+  live blessing) rather than either a human recording or a repurposed
+  chant. User needs to run the 3 generation calls once and place the
+  resulting files as 0018/19/20.mp3.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
