@@ -287,6 +287,19 @@ reasoning survives even when the git log scrolls out of context.
   Known minor gap: the dashboard's own browser-side LED ring preview
   (`previewLeds()`) still shows the base Theme colors without the
   atmosphere wash - only the real device's ring reflects it for now.
+- **r117** - V2 Phase 7: explicit intent picker on the puja pages
+  (all 3 copies) - a small closed dropdown (comfort/focus/celebration/
+  general), NOT automatic AI classification, per the reviewed V2
+  feedback. Sent through to `generateBlessing` as `intent`, mapped
+  server-side to one added sentence appended to the existing prompt
+  (`INTENT_PHRASES` in index.js) - a no-op when left as "General prayer"
+  or absent entirely (e.g. the wish pad's touchOnly path, which never
+  sends this field). Also noticed while syncing the puja pages for this
+  change: `firmware/puja_page.h` has carried some extra explanatory
+  comments not present in `puja.html`/`backend/hosting/puja.html` for a
+  while (pre-existing, not from tonight) - comment-only, not a
+  functional difference, but worth a proper re-sync pass at some point
+  per this repo's usual duplicated-file discipline.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

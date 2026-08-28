@@ -318,6 +318,20 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 </select>
             </div>
 
+            <!-- V2 Phase 7: optional explicit intent - a small, closed set
+                 the devotee can pick from directly, NOT automatic AI
+                 classification. Sent to the backend as-is if chosen; left
+                 blank/general does nothing new. -->
+            <div class="form-group">
+                <label for="intent-select">What is this prayer about? (optional)</label>
+                <select id="intent-select" class="select-input">
+                    <option value="" selected>General prayer</option>
+                    <option value="comfort">Comfort</option>
+                    <option value="focus">Focus</option>
+                    <option value="celebration">Celebration</option>
+                </select>
+            </div>
+
             <!-- 4. Free Text wish/prayer - type it, or tap the mic to speak it -->
             <div class="form-group">
                 <label for="wish-input">Personal Prayer Wish (Max 20 words)</label>
@@ -359,7 +373,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-22-r104</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-28-r117</div>
     </div>
 
     <script>
@@ -686,11 +700,13 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const wishInput = document.getElementById('wish-input');
             const standardWishSelect = document.getElementById('standard-wish-select');
             const langSelect = document.getElementById('lang-select');
+            const intentSelect = document.getElementById('intent-select');
 
             const name = nameInput.value.trim() !== "" ? nameInput.value.trim() : "Anonymous Devotee";
             const offering = offeringSelect.value;
             const standardWish = standardWishSelect.value;
             const lang = langSelect.value;
+            const intent = intentSelect ? intentSelect.value : "";
 
             // updateWordCount() already truncates live as the devotee
             // types or speaks (see r63) - this is just a defensive
@@ -749,7 +765,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             // branches its prompt on whether prayer/standardWish are
             // present - see askClaudeForBlessing() in index.js.
             const playOnPhone = document.getElementById('phone-playback-opt-in').checked;
-            requestAiBlessing(name, offering, wishText, standardWish, lang, newRequest.id, playOnPhone);
+            requestAiBlessing(name, offering, wishText, standardWish, lang, newRequest.id, playOnPhone, intent);
         }
 
         // Best-effort: upgrades the already-submitted offering's text with
@@ -761,7 +777,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // real ritual moment, not a default phone auto-play that would
         // undercut it. Never blocks or delays the offering itself (see
         // submitPuja() above).
-        function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId, playOnPhone) {
+        function requestAiBlessing(name, offering, wishText, standardWish, lang, requestId, playOnPhone, intent) {
             // 25s, not 15s (see r86) - generateBlessing now runs a real
             // Schroeder reverb DSP pass over the full PCM buffer server-side
             // on top of the existing Claude + Google TTS calls, so the old
@@ -775,7 +791,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             fetch(GENERATE_BLESSING_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, offering: offering, prayer: wishText, standardWish: standardWish, lang: lang }),
+                body: JSON.stringify({ name: name, offering: offering, prayer: wishText, standardWish: standardWish, lang: lang, intent: intent }),
                 signal: controller.signal
             })
                 .then(res => {

@@ -449,6 +449,20 @@ exports.generateBlessing = onRequest(
       // a deity's feet in silent prayer. Distinct from the puja.html
       // "silent wish" case, which still has a real offering attached.
       const touchOnly = req.body.touchOnly === true;
+      // V2 Phase 7: optional, explicit intent picked directly by the
+      // devotee (puja.html's intent-select) - NOT automatic AI
+      // classification, per the reviewed V2 feedback ("defer automatic
+      // classification... permit only a few explicit app selections").
+      // A small closed allow-list; anything else (empty, "general", an
+      // unrecognized value, or simply absent - e.g. the wish pad's
+      // touchOnly path never sends this field at all) is treated as no
+      // intent, leaving the prompt exactly as it was before this existed.
+      const INTENT_PHRASES = {
+        comfort: "They have indicated this prayer is specifically about seeking comfort.",
+        focus: "They have indicated this prayer is specifically about finding focus and clarity.",
+        celebration: "They have indicated this prayer is specifically about celebration and joy.",
+      };
+      const intentPhrase = INTENT_PHRASES[(req.body.intent || "").toString()] || "";
       const langKey = (req.body.lang || "en").toString();
       const langConfig = LANGUAGE_CONFIG[langKey] || LANGUAGE_CONFIG.en;
       // Voice can be requested separately from the text language - e.g.
@@ -469,7 +483,7 @@ exports.generateBlessing = onRequest(
       let blessingMood;
       try {
         ({text: blessingText, mood: blessingMood} =
-          await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly));
+          await askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly, intentPhrase));
       } catch (err) {
         console.error("Claude call failed:", err);
         res.status(502).send(`Blessing generation failed (Claude): ${err.message}`);
@@ -555,7 +569,7 @@ function extractMood(text, fallback = "peaceful") {
 // there's nothing distinguishing for Claude to read, and it drifts to a
 // safe default instead. Reverted to the deterministic table, which at
 // least guarantees real variety tied to the theme actually chosen.
-async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly) {
+async function askClaudeForBlessing(name, offeringText, prayer, standardWish, langConfig, touchOnly, intentPhrase = "") {
   let situationText;
   let moodFallback = "peaceful";
   if (touchOnly) {
@@ -583,8 +597,14 @@ async function askClaudeForBlessing(name, offeringText, prayer, standardWish, la
       `wish for, as if spoken aloud to them.`;
   }
 
+  // Appended (not blended into situationText itself) so it applies the
+  // same way regardless of which branch above ran - naturally a no-op
+  // for touchOnly, which never receives an intent at all (see its caller
+  // in exports.generateBlessing).
+  const intentSuffix = intentPhrase ? ` ${intentPhrase}` : "";
+
   let prompt = `${langConfig.claudeInstruction} You are Lord Ganesha, speaking warmly ` +
-    `and directly to a devotee named ${name}, ${situationText} Under 40 words. Plain ` +
+    `and directly to a devotee named ${name}, ${situationText}${intentSuffix} Under 40 words. Plain ` +
     `spoken text only - no stage directions, no quotation marks, no markdown. Do not mix ` +
     `in any English words or phrases anywhere in the reply - always use the target ` +
     `language's own equivalent, even for common expressions; the devotee's own name is ` +
