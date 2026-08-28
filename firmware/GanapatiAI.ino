@@ -298,6 +298,15 @@ int feetStep = 0;
 // triggerPersonalizedOffering() below.
 int currentPlayingTrack = 0;
 
+// Phase 1: Offline Blessing Fallback counters - see
+// playOfflineBlessingFallback() below and /api/state's offlineFallbackCount
+// field. Declared up here (not next to the function itself) since
+// /api/state's handler, registered in setup() well before that function's
+// definition later in the file, reads it directly - Arduino's automatic
+// function-prototype generation doesn't extend to global variables.
+unsigned long offlineFallbackCount = 0;
+unsigned long lastOfflineFallbackMs = 0;
+
 // Customization & Settings
 int blessingCounter = 0;
 int currentBrightness = DEFAULT_BRIGHT;
@@ -545,6 +554,7 @@ void triggerAarti();
 void triggerAartiThenClose();
 void openTempleFromClosed();
 void stopAudioAndStandby();
+void playOfflineBlessingFallback(const String &lang);
 
 // ==========================================
 // Setup Function
@@ -984,12 +994,12 @@ void handleWebRoutes() {
 
     char json[850];
     int n = snprintf(json, sizeof(json),
-      "{\"firmware\":\"%s\",\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"blessing\":\"",
+      "{\"firmware\":\"%s\",\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"offlineFallbackCount\":%lu,\"blessing\":\"",
       FIRMWARE_VERSION, stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
       pirEnabled ? "true" : "false", displayEnabled ? "true" : "false", ledEnabled ? "true" : "false",
       touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false", wishPadEnabled ? "true" : "false",
       selectedLang, selectedTheme, currentPlayingTrack,
-      stateElapsed, stateDuration);
+      stateElapsed, stateDuration, offlineFallbackCount);
 
     // Minimal JSON string escaping - none of today's ENGLISH blessing/
     // welcome text needs it, but a future text edit could introduce a
@@ -1172,8 +1182,17 @@ void handleWebRoutes() {
       snprintf(msg, sizeof(msg), "Total files on SD card: %d", count);
       Serial.println(msg);
       server.send(200, "text/plain", msg);
+    } else if (server.hasArg("offline")) {
+      // Manually previews the offline blessing fallback (Phase 1) without
+      // needing to actually kill Wi-Fi or the backend - picks a random
+      // OFFLINE_BLESSING_TRACKS entry, mood and OLED phrase exactly like a
+      // real failure would.
+      playOfflineBlessingFallback("en");
+      snprintf(msg, sizeof(msg), "Offline fallback preview triggered (count=%lu)", offlineFallbackCount);
+      Serial.println(msg);
+      server.send(200, "text/plain", msg);
     } else {
-      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1  or  /api/test?mic=1  or  /api/test?micplay=1  or  /api/test?oled=1");
+      server.send(400, "text/plain", "Usage: /api/test?track=N  or  /api/test?filecount=1  or  /api/test?mic=1  or  /api/test?micplay=1  or  /api/test?oled=1  or  /api/test?offline=1");
     }
   });
 
@@ -2174,7 +2193,15 @@ void fetchBlessingImage(const String &text, const String &lang) {
 // synthesizeAudio endpoint (speakBlessingOnAmp's fast path) never sets
 // this header at all, so outMood is left untouched for that caller,
 // which is fine since that caller doesn't pass one.
-void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *outMood = NULL) {
+//
+// Returns true if any real audio was actually heard, false otherwise -
+// callers use this to decide whether to fall back to
+// playOfflineBlessingFallback() (Phase 1: offline blessing library).
+// A stream that stalls AFTER some real bytes already played counts as
+// true (something genuine was heard, just cut short) - only a total
+// failure before any audio played triggers the fallback, so a devotee
+// never hears two different blessings back to back.
+bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *outMood = NULL) {
   // Logged before the TLS handshake/POST even starts, since both can take
   // several seconds on ESP32 (WiFiClientSecure re-handshakes every call,
   // even with setInsecure()) and that whole stretch was otherwise silent -
@@ -2189,7 +2216,7 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
   https.setTimeout(10000);
   if (!https.begin(client, url)) {
     Serial.println("AMP: https.begin() failed");
-    return;
+    return false;
   }
   https.addHeader("Content-Type", "application/json");
   if (outMood != NULL) {
@@ -2208,7 +2235,7 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
     String errBody = https.getString();
     Serial.printf("AMP: backend returned HTTP %d: %s\n", code, errBody.substring(0, 200).c_str());
     https.end();
-    return;
+    return false;
   }
 
   if (outMood != NULL && https.hasHeader("X-Blessing-Mood")) {
@@ -2220,7 +2247,7 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
   if (!skipToWavData(stream, millis() + 8000)) {
     Serial.println("AMP: could not find WAV data chunk, aborting playback");
     https.end();
-    return;
+    return false;
   }
 
   Serial.println("AMP: playing spoken blessing...");
@@ -2248,6 +2275,61 @@ void postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
 
   https.end();
   Serial.printf("AMP: playback finished, %d bytes played\n", bytesPlayed);
+  return bytesPlayed > 0;
+}
+
+// ==========================================
+// Phase 1: Offline Blessing Fallback
+// ==========================================
+// Fires whenever postAndStreamAudioToAmp() couldn't play any real audio
+// at all (Wi-Fi down, backend unreachable, or a hard failure before any
+// bytes streamed) - plays one of a small set of pre-recorded, generic
+// blessing chants from the SD card instead of leaving the temple
+// silent. NOT personalized or translated like every other spoken
+// blessing on this device - these are fixed recordings, so a devotee
+// still gets a real spoken blessing when the network can't reach
+// Claude/Google TTS at all, rather than silence. Files must be placed
+// as 00NN.mp3 in the DFPlayer's MP3 folder - see OFFLINE_BLESSING_TRACKS
+// in config.h; the user still needs to record/source the actual audio.
+// offlineFallbackCount/lastOfflineFallbackMs (declared up near
+// blessingCounter) are plumbing for the dashboard health panel
+// (Phase 5) - not surfaced there yet, only in /api/state for now.
+void playOfflineBlessingFallback(const String &lang) {
+  int track = OFFLINE_BLESSING_TRACKS[random(0, OFFLINE_BLESSING_TRACK_COUNT)];
+
+  // Same reasoning as the wish pad's deterministic mood pick (see
+  // THEME_TO_MOOD in index.js): there's no real sentiment behind a
+  // network failure for Claude to read even if it were reachable, so a
+  // random pick from the same 6 moods beats defaulting to one fixed
+  // color every time.
+  static const char *OFFLINE_MOODS[] = {"joyful", "hopeful", "comforting", "peaceful", "empowering", "grateful"};
+  strlcpy(currentMoodTag, OFFLINE_MOODS[random(0, 6)], sizeof(currentMoodTag));
+
+  // Same random child/adult flavor text already used for a plain mantra
+  // touch, so the OLED still shows something warm and varied instead of
+  // one fixed "offline" notice every single time (r109 planning: "local
+  // variation" without any AI/network dependency).
+  freeBlessingImage(); // always the fixed local text below, never a fetched image
+  int r;
+  if (random(0, 2) == 0) {
+    r = random(0, 26);
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
+  } else {
+    r = random(0, 22);
+    snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledAdultBlessingsList[r]);
+  }
+  strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
+
+  Serial.printf("OFFLINE: live blessing unavailable - playing local track %d instead (requested lang=%s, not translated)\n",
+                track, lang.c_str());
+
+  offlineFallbackCount++;
+  lastOfflineFallbackMs = millis();
+
+  dfStop();
+  delay(50);
+  dfPlay(track);
+  currentPlayingTrack = track;
 }
 
 // Speaks text that's ALREADY been decided (a blessing already shown/heard
@@ -2261,7 +2343,8 @@ void speakBlessingOnAmp(const String &text, const String &lang) {
   if (text.length() == 0) return;
 
   String body = "{\"text\":\"" + jsonEscape(text) + "\",\"lang\":\"" + lang + "\"}";
-  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/synthesizeAudio", body);
+  bool ok = postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/synthesizeAudio", body);
+  if (!ok) playOfflineBlessingFallback(lang);
 }
 
 // Fired by the wish pad (see triggerWishPadBlessing() below) - a devotee
@@ -2278,7 +2361,11 @@ void speakGenericBlessingOnAmp(const String &lang) {
 
   String body = "{\"name\":\"a devotee\",\"offering\":\"\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":true}";
   String mood;
-  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  bool ok = postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  if (!ok) {
+    playOfflineBlessingFallback(lang);
+    return;
+  }
   if (mood.length() > 0) strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
 }
 
@@ -2303,7 +2390,11 @@ void speakOfferingFallbackBlessingOnAmp(const String &name, const String &offeri
   String body = "{\"name\":\"" + jsonEscape(name) + "\",\"offering\":\"" + jsonEscape(offeringType) +
                 "\",\"prayer\":\"\",\"standardWish\":\"\",\"lang\":\"" + lang + "\",\"touchOnly\":false}";
   String mood;
-  postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  bool ok = postAndStreamAudioToAmp("https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing", body, &mood);
+  if (!ok) {
+    playOfflineBlessingFallback(lang);
+    return;
+  }
   if (mood.length() > 0) strlcpy(currentMoodTag, mood.c_str(), sizeof(currentMoodTag));
 }
 

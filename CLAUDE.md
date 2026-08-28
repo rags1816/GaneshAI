@@ -188,6 +188,32 @@ reasoning survives even when the git log scrolls out of context.
   look like no change at all on the ring. Redesigned all 6 to anchor on
   a distinct hue family (gold/magenta, teal, purple, green, red/orange,
   warm amber-white).
+- **r110** - V2 Phase 1: offline blessing fallback + local variation, per
+  the reviewed V2 spec and the follow-up developer feedback on it (both
+  agreed this should be top priority - it protects the core devotional
+  experience from internet dependency, not just "resilience"). Every
+  path that speaks a live AI blessing (`speakBlessingOnAmp()`,
+  `speakGenericBlessingOnAmp()` for the wish pad,
+  `speakOfferingFallbackBlessingOnAmp()`) now falls back to
+  `playOfflineBlessingFallback()` whenever `postAndStreamAudioToAmp()`
+  couldn't play any real audio at all - a small rotation of pre-recorded
+  generic chants (`OFFLINE_BLESSING_TRACKS` in config.h, tracks 18-20,
+  not yet on the SD card - user still needs to record/source them, same
+  as r105's mouse chant) instead of leaving the temple silent.
+  `postAndStreamAudioToAmp()` changed from void to bool return
+  (true = some real audio was actually heard, including a stream that
+  stalled AFTER genuine playback started - only a total failure before
+  any audio played triggers the fallback, so a devotee never hears two
+  different blessings back to back). The fallback also picks a local
+  mood (random from the same 6, same reasoning as the wish pad's
+  deterministic pick - no real sentiment for anything to read) and a
+  local OLED phrase (reusing the existing oledChildBlessingsList/
+  oledAdultBlessingsList arrays, same pattern as a plain mantra touch),
+  so the devotee gets a complete, varied, real experience even fully
+  offline - not just audio. Testable via `/api/test?offline=1` without
+  needing to actually kill Wi-Fi. offlineFallbackCount is exposed on
+  `/api/state` now, ahead of the Phase 5 dashboard health panel that
+  will actually surface it.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
