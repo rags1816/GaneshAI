@@ -689,6 +689,26 @@ reasoning survives even when the git log scrolls out of context.
   no firmware change, `/api/health`'s `bootCrashedStage` field already
   carried this number, it just wasn't explained anywhere the admin could
   see it.
+- **r141** - Removed the "Devotee Pitch" (Child/Adult) dropdown from the
+  dashboard, confirmed as clutter left over from the removed mic feature
+  (r133) - it never reached the real device at all, and per direct
+  question, was only ever driving the dashboard's own local demo (which
+  canned blessing text and which LED pattern the local Quick-Blessings
+  simulation showed). That simulation now always picks from the existing
+  `combinedBlessings` list and always shows Peacock Wave for a simulated
+  feet touch, instead of branching on a pitch nothing real ever measured.
+  Also answered directly, not changed: the dashboard's 4-option "Active
+  Language" (en/Sanskrit-Hindi/Marathi/Tamil) is real (synced to the
+  device, controls the wish pad's spoken language) and could be extended
+  to more languages - the backend already supports far more (see
+  puja.html's own 12-language picker) - but would need new numeric codes
+  wired through `LANG_TO_CODE`/`CODE_TO_LANG` here and
+  `triggerWishPadBlessing()`'s language mapping in `GanapatiAI.ino`; the
+  priest always picks it manually, there's no auto-detection for a
+  silent wish-pad touch (nothing to detect language from). The wish
+  pad's OLED text is also always the fixed English "Your silent prayer
+  is heard..." regardless of which spoken language is selected - never
+  translated to match.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

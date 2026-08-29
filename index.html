@@ -656,7 +656,6 @@
         </div>
         </details>
 
-        <!-- Advanced Pitch Simulator Config -->
         <!-- r133: "One-Directional Mic" (browser getUserMedia wake-on-clap
              + crowd-reactive Aarti) removed - it could never actually work
              in real use. getUserMedia is a secure-context-only browser API
@@ -665,26 +664,25 @@
              CLAUDE.md), the exact same hard browser rule already documented
              elsewhere in this file for why the puja page's own speech
              feature had to move off the ESP32 entirely. Removed as dead
-             weight rather than left toggleable-but-broken. -->
+             weight rather than left toggleable-but-broken.
+             r141: "Devotee Pitch" removed too, per direct follow-up once
+             it was confirmed to be leftover clutter from that same removed
+             mic feature - it never reached the real device at all, only
+             picked which canned blessing text/LED pattern this dashboard's
+             own local Quick-Blessings simulation showed. That simulation
+             now just always uses the combined blessing list/Peacock Wave
+             (see formatPersonalizedBlessing()/drawLeds() below) instead of
+             branching on a pitch nothing real ever measured. -->
         <div style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 8px; margin-bottom: 12px; border: 1px dashed var(--border-color);">
-            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">PITCH &amp; LANGUAGE</div>
-            <div style="display: flex; gap: 8px; margin-top: 4px;">
-                <div style="flex: 1;">
-                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Devotee Pitch</span>
-                    <select id="voice-pitch-select" class="select-input" style="padding: 4px; font-size: 10px;">
-                        <option value="child">Child (High Pitch, >240Hz)</option>
-                        <option value="adult" selected>Adult (Low Pitch, <240Hz)</option>
-                    </select>
-                </div>
-                <div style="flex: 1;">
-                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Active Language</span>
-                    <select id="lang-select" class="select-input" style="padding: 4px; font-size: 10px;" onchange="updateLanguage()">
-                        <option value="en">English</option>
-                        <option value="sa">Sanskrit / Hindi</option>
-                        <option value="mr">Marathi</option>
-                        <option value="ta">Tamil</option>
-                    </select>
-                </div>
+            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">LANGUAGE</div>
+            <div style="margin-top: 4px;">
+                <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Active Language</span>
+                <select id="lang-select" class="select-input" style="padding: 4px; font-size: 10px;" onchange="updateLanguage()">
+                    <option value="en">English</option>
+                    <option value="sa">Sanskrit / Hindi</option>
+                    <option value="mr">Marathi</option>
+                    <option value="ta">Tamil</option>
+                </select>
             </div>
         </div>
 
@@ -2437,7 +2435,6 @@ var QRCode;
                 let brightRatio = brightness / 255;
 
                 let activePattern = pattern;
-                let childRainbow = false;
                 const activeThemeColor = themes[selectedTheme];
                 let c1 = hexToRgb(activeThemeColor.primary);
                 let c2 = hexToRgb(activeThemeColor.secondary);
@@ -2462,12 +2459,7 @@ var QRCode;
                 }
 
                 if (state === "FEET_ACTIVE") {
-                    const pitch = document.getElementById('voice-pitch-select').value;
-                    if (pitch === "child") {
-                        childRainbow = true; // Child trigger: Rainbow!
-                    } else {
-                        activePattern = 0; // Adult trigger: Peacock wave!
-                    }
+                    activePattern = 0; // r141: always Peacock Wave now - the child/adult pitch branch here was removed clutter
                 } else if (state === "MANTRA_ACTIVE") {
                     activePattern = 1; // Circuit Pulse
                 } else if (state === "AARTI_MODE") {
@@ -2495,11 +2487,8 @@ var QRCode;
 
                 ledDots.forEach((dot, i) => {
                     let color = {r: 0, g: 0, b: 0};
-                    
-                    if (childRainbow) {
-                        color = rainbowDreamColor(i, hueOffset);
-                    } 
-                    else if (activePattern == 0) { // Peacock Wave
+
+                    if (activePattern == 0) { // Peacock Wave
                         color = peacockWaveColor(i, hueOffset, c1, c2);
                     } 
                     else if (activePattern == 1) { // Circuit Pulse
@@ -2617,11 +2606,11 @@ var QRCode;
             if (wishText && wishText.trim() !== "") {
                 blessingPart = `I bless you with ${wishText.trim()}.`;
             } else {
-                // Select a random standard blessing
-                const pitch = document.getElementById('voice-pitch-select') ? document.getElementById('voice-pitch-select').value : 'adult';
-                const list = pitch === "child" ? childBlessings : adultBlessings;
-                const rawBlessing = list[Math.floor(Math.random() * list.length)];
-                
+                // r141: random standard blessing from the combined list -
+                // used to branch on the removed Devotee Pitch dropdown
+                // (child/adult), which never reflected anything real.
+                const rawBlessing = combinedBlessings[Math.floor(Math.random() * combinedBlessings.length)];
+
                 blessingPart = rawBlessing.trim();
                 if (!blessingPart.endsWith('.') && !blessingPart.endsWith('!')) {
                     blessingPart += ".";
