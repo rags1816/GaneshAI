@@ -788,17 +788,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
         </details>
 
-        <!-- r134: "Temple Atmosphere" (formerly a separate control just
-             below this one) folded into this same dropdown as 3 more
-             entries - it was a manual color wash layered on top of
-             whichever Theme was already picked, applied only during
-             AMBIENT same as Theme itself, and two controls stacking into
-             one effect was confusing (Atmosphere alone kept reading as
-             "no visible effect"). Manual dropdown only, same as before -
-             no NTP/clock/day-of-week awareness at all, deliberately (a
-             Wi-Fi outage or wrong timezone would silently pick the wrong
-             entry) - "Theme of the Day" only ever meant a manually-chosen
-             weekday deity theme, never real automatic day tracking. -->
         <details class="collapsible-section">
         <summary class="section-title">Theme of the Day</summary>
         <div style="margin-bottom: 12px;">
@@ -810,9 +799,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 <option value="fri">Friday: Shakti Theme (Lotus Pink & Violet)</option>
                 <option value="sat">Saturday: Discipline Theme (Indigo & Purple)</option>
                 <option value="sun">Sunday: Sun Theme (Ruby Red & Gold)</option>
-                <option value="evening">Evening (warm gold)</option>
-                <option value="night">Night (dim, quiet blue-teal)</option>
-                <option value="festival">Festival (vibrant gold &amp; magenta)</option>
+            </select>
+        </div>
+        </details>
+
+        <!-- V2 Phase 6: manual atmosphere toggle - a color wash layered on
+             top of Theme of the Day above, applied only while idle
+             (AMBIENT). Deliberately manual, no time-of-day automation. -->
+        <details class="collapsible-section">
+        <summary class="section-title">Temple Atmosphere</summary>
+        <div style="margin-bottom: 12px;">
+            <select id="atmosphere-select" class="select-input" onchange="updateAtmosphere()">
+                <option value="0">Day (normal)</option>
+                <option value="1">Evening (warm gold)</option>
+                <option value="2">Night (dim, quiet blue-teal)</option>
+                <option value="3">Festival (vibrant gold &amp; magenta)</option>
             </select>
         </div>
         </details>
@@ -827,11 +828,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <input type="range" id="bright-slider" class="slider" min="0" max="255" value="150" oninput="updateBrightness()">
         </div>
         <div style="margin-bottom: 12px;">
-            <!-- r134: relabeled from "Default LED Pattern" - it only ever
-                 actually applies during AMBIENT (Feet/Mantra/Aarti always
-                 override with their own fixed pattern), which wasn't
-                 obvious from the old name. -->
-            <div class="slider-label">AMBIENT LED Pattern</div>
+            <div class="slider-label">Default LED Pattern</div>
             <select id="pattern-select" class="select-input" onchange="updatePattern()">
                 <option value="0">Peacock Wave</option>
                 <option value="1">Circuit Pulse</option>
@@ -1588,11 +1585,7 @@ var QRCode;
         // in GanapatiAI.ino).
         const LANG_TO_CODE = { en: 0, sa: 1, mr: 3, ta: 2 };
         const CODE_TO_LANG = { 0: "en", 1: "sa", 2: "ta", 3: "mr" };
-        // r134: evening/night/festival appended - must match GanapatiAI.ino's
-        // selectedTheme switch(...) case order (0-6 weekday, 7-9 the former
-        // Temple Atmosphere entries) exactly, since THEME_ORDER.indexOf(...)
-        // is what turns this string back into that same numeric wire value.
-        const THEME_ORDER = ["tue", "mon", "wed", "thu", "fri", "sat", "sun", "evening", "night", "festival"];
+        const THEME_ORDER = ["tue", "mon", "wed", "thu", "fri", "sat", "sun"];
 
         // How long AMBIENT stays awake before returning to STANDBY. Must be
         // generous enough for the blessings loop to actually roll through
@@ -1668,12 +1661,6 @@ var QRCode;
         };
 
         // Theme colors configurations
-        // r134: evening/night/festival added - former "Temple Atmosphere"
-        // wash colors (r116-r125), folded in here as fixed theme entries
-        // instead of a separate control. Exact same RGB as
-        // GanapatiAI.ino's selectedTheme cases 7-9 (night's is the already-
-        // dimmed nscale8(90) result, since that dimming was part of its
-        // deliberately dim/quiet identity, not a separate runtime step).
         const themes = {
             tue: { primary: "#800020", secondary: "#ffd700", name: "Tuesday Ganesha" }, // Maroon & Gold
             mon: { primary: "#00f2fe", secondary: "#4facfe", name: "Monday Shiva" }, // Cyan & Blue
@@ -1681,10 +1668,7 @@ var QRCode;
             thu: { primary: "#ffd700", secondary: "#ffa500", name: "Thursday Guru" }, // Gold & Orange
             fri: { primary: "#ec008c", secondary: "#b92b27", name: "Friday Shakti" }, // Pink & Magenta
             sat: { primary: "#4b0082", secondary: "#4facfe", name: "Saturday Discipline" }, // Indigo & Blue
-            sun: { primary: "#ff4b4b", secondary: "#ffd700", name: "Sunday Sun" }, // Red & Gold
-            evening: { primary: "#ffb43c", secondary: "#ff8214", name: "Evening" }, // Warm gold
-            night: { primary: "#030e15", secondary: "#031518", name: "Night" }, // Dim, quiet blue-teal
-            festival: { primary: "#ffc800", secondary: "#ff0096", name: "Festival" } // Vibrant gold & magenta
+            sun: { primary: "#ff4b4b", secondary: "#ffd700", name: "Sunday Sun" } // Red & Gold
         };
 
         // OLED animation variables
@@ -2878,9 +2862,17 @@ var QRCode;
             previewLeds();
         }
 
-        // r134: Temple Atmosphere (formerly here) removed - folded into
-        // the Theme of the Day dropdown as 3 more entries instead. See
-        // updateTheme() above and THEME_ORDER/themes{} for where it went.
+        // V2 Phase 6 - plain numeric value (0-3), no THEME_ORDER-style
+        // string mapping needed. Only visibly affects AMBIENT on the real
+        // device (see applyAtmosphere() in the firmware) - this browser's
+        // own previewLeds() simulator intentionally still shows the base
+        // Theme of the Day colors without the atmosphere wash, a known,
+        // minor cosmetic gap versus the real device.
+        let selectedAtmosphere = 0;
+        function updateAtmosphere() {
+            selectedAtmosphere = parseInt(document.getElementById('atmosphere-select').value, 10);
+            if (isPhysicalESP) espGet(`/api/settings?atmosphere=${selectedAtmosphere}`);
+        }
  
         // Triggers
         function triggerMantra() {
@@ -3808,6 +3800,13 @@ var QRCode;
                 if (pirToggle) pirToggle.checked = pirEnabled;
                 if (langSelect) langSelect.value = selectedLang;
                 if (themeSelect) themeSelect.value = selectedTheme;
+
+                // V2 Phase 6
+                const atmosphereSelect = document.getElementById('atmosphere-select');
+                if (atmosphereSelect && typeof data.atmosphere === 'number') {
+                    selectedAtmosphere = data.atmosphere;
+                    atmosphereSelect.value = data.atmosphere;
+                }
 
                 // Same sync pattern as pirToggle above, for the other
                 // admin-toggleable components - keeps the dashboard

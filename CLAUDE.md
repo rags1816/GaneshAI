@@ -587,32 +587,32 @@ reasoning survives even when the git log scrolls out of context.
   mic JS, the crowd-reactive brightness boost in the LED loop) rather
   than left toggleable-but-broken; the "Devotee Pitch"/"Active Language"
   selects it shared a box with are untouched and still work as before.
-- **r134** - Consolidated the 3 AMBIENT-only LED controls after
-  discussing that all three (Theme of the Day, Temple Atmosphere,
-  Default LED Pattern) only ever visibly affect the LED ring during the
-  brief PIR-triggered AMBIENT window - never Standby/Closed (ring forced
-  black), never Feet/Mantra/Aarti (fixed palettes) - which is most of
-  why Atmosphere kept reading as "no visible effect" even after r125.
-  Temple Atmosphere (V2 Phase 6, r116-r125 - a manual color wash layered
-  on top of whichever Theme was picked) is removed as a SEPARATE control
-  and folded into the Theme of the Day dropdown as 3 more fixed entries
-  (Evening/Night/Festival, same exact RGB values as the old wash) instead
-  - one dropdown instead of two stacking into one effect. `selectedTheme`
-  is now 0-9 (0-6 the original weekdays, 7-9 the folded-in entries);
-  `selectedAtmosphere`, `applyAtmosphere()`, `/api/settings?atmosphere=`,
-  and `/api/state`'s `atmosphere` field are all gone - `theme` alone now
-  covers the full range on the wire. `web_dashboard.h`/`index.html`'s
-  `THEME_ORDER`/`themes{}` extended to match, `atmosphere-select` and
-  `updateAtmosphere()` removed. Tradeoff accepted knowingly: a Theme and
-  an Atmosphere could previously be combined (e.g. Diwali colors + an
-  Evening wash together) - now it's one choice from one list. "Default
-  LED Pattern" kept as its own control (relabeled "AMBIENT LED Pattern")
-  since it does something distinct (motion, not color) - the rename just
-  makes its AMBIENT-only scope explicit instead of implying it's always
-  active. Confirmed still fully manual, no NTP/clock/day-of-week
-  awareness anywhere - "Theme of the Day" was always a misleading name
-  for a plain dropdown, never real day-of-week automation, same
-  deliberate reasoning as everything else time-related in this file.
+- **r135 - REVERTED r134** - Temple Atmosphere restored as its own
+  separate control from Theme of the Day, undoing r134's merge entirely
+  (`selectedAtmosphere`, `applyAtmosphere()`, the `/api/settings?atmosphere=`
+  handler, `/api/state`'s `atmosphere` field, the separate dropdown, and
+  `THEME_ORDER`/`themes{}` back to their original 7 weekday-only entries -
+  all restored via `git revert`). Direct correction after r134 shipped:
+  the two controls being separate was never accidental complexity - it
+  was deliberately built so they COMBINE (any Theme + any Atmosphere
+  together, e.g. Tuesday's Ganesha colors with a Night wash layered on
+  top), and collapsing them into one dropdown removed exactly that
+  combination the feature existed for, leaving only one selection at a
+  time. r134's underlying diagnosis (all three AMBIENT-only controls are
+  invisible most of the day since Standby/Closed force the ring fully
+  black) was correct and stands - r128 already addressed the closely
+  related "Aarti firing on every idle cycle" complaint from the same
+  root cause - but consolidating Theme+Atmosphere was the wrong fix for
+  it. "AMBIENT LED Pattern" (renamed from "Default LED Pattern", r134's
+  other change) is kept - Pattern is a real separate axis (motion, not
+  color) and the rename is uncontested; only the Theme/Atmosphere merge
+  is undone. Open follow-up from the same conversation, not yet decided:
+  Pattern currently sits as a third fully independent manual pick with no
+  relationship to Theme/Atmosphere/anything else, and should instead be
+  "linked to something other" per direct feedback - exactly what it
+  should link to (a specific Theme? the blessing mood palette used
+  elsewhere? something else entirely) still needs to be decided before
+  implementing.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

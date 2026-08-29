@@ -401,20 +401,19 @@ unsigned long ledOpeningTransitionStart = 0;
 // web_dashboard.h - split out to its own code so the wish pad can
 // actually speak Marathi instead of always falling back to Hindi.)
 int selectedLang = 1;
-// Theme of the Day: manual dashboard dropdown only (no NTP/clock/day-of-
-// week awareness at all - the ESP32 has no real-time clock and this is
-// deliberate, same reasoning as everything else in this file that isn't
-// time-based: a Wi-Fi outage or wrong timezone would silently pick the
-// wrong entry). Only ever visibly changes STATE_AMBIENT's LED colors -
-// Mantra/Feet/Aarti/mood-driven blessings all use their own fixed
-// palettes regardless of this setting.
-// 0=Tue(Ganesha) 1=Mon(Shiva) 2=Wed(Wisdom) 3=Thu(Guru) 4=Fri(Shakti)
-// 5=Sat(Discipline) 6=Sun(Sun). r134: 7=Evening 8=Night 9=Festival -
-// former "Temple Atmosphere" (V2 Phase 6, r116-r125) folded in here as
-// 3 more fixed entries instead of a second separate wash-on-top control,
-// per direct feedback that stacking two AMBIENT-only settings together
-// was confusing and Atmosphere alone kept reading as "no visible effect".
+// Theme of the Day: 0 = Tue (Ganesha), 1 = Mon (Shiva), 2 = Wed (Wisdom), 3 = Thu (Guru), 4 = Fri (Shakti), 5 = Sat (Discipline), 6 = Sun (Sun)
 int selectedTheme = 0;
+
+// V2 Phase 6: Temple Atmosphere - 0=Day, 1=Evening, 2=Night, 3=Festival.
+// A manual dashboard toggle only, deliberately no NTP/time-of-day
+// automation - per the reviewed V2 feedback, auto-switching by clock
+// time can surprise a devotee with the wrong mode after a Wi-Fi outage
+// or an incorrect timezone; a manual choice is predictable and the
+// operator stays in control. Applied in animateLeds() as a color wash
+// layered on top of whatever Theme of the Day already picked, for
+// STATE_AMBIENT specifically - it doesn't touch Mantra/Feet/Aarti/mood
+// colors, which stay exactly as before.
+int selectedAtmosphere = 0;
 
 // OLED Text Buffer
 // Fixed-size buffer, not String: drawOLED() runs ~30x/sec and continuous
@@ -1084,11 +1083,11 @@ void handleWebRoutes() {
 
     char json[850];
     int n = snprintf(json, sizeof(json),
-      "{\"firmware\":\"%s\",\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"offlineFallbackCount\":%lu,\"blessing\":\"",
+      "{\"firmware\":\"%s\",\"state\":\"%s\",\"blessings\":%d,\"brightness\":%d,\"pattern\":%d,\"volume\":%d,\"pirEnabled\":%s,\"displayEnabled\":%s,\"ledEnabled\":%s,\"touchFeetEnabled\":%s,\"touchBackEnabled\":%s,\"wishPadEnabled\":%s,\"lang\":%d,\"theme\":%d,\"atmosphere\":%d,\"track\":%d,\"elapsed\":%lu,\"duration\":%lu,\"offlineFallbackCount\":%lu,\"blessing\":\"",
       FIRMWARE_VERSION, stateStr, blessingCounter, currentBrightness, currentPattern, currentVolume,
       pirEnabled ? "true" : "false", displayEnabled ? "true" : "false", ledEnabled ? "true" : "false",
       touchFeetEnabled ? "true" : "false", touchBackEnabled ? "true" : "false", wishPadEnabled ? "true" : "false",
-      selectedLang, selectedTheme, currentPlayingTrack,
+      selectedLang, selectedTheme, selectedAtmosphere, currentPlayingTrack,
       stateElapsed, stateDuration, offlineFallbackCount);
 
     // Minimal JSON string escaping - none of today's ENGLISH blessing/
@@ -1368,6 +1367,9 @@ void handleWebRoutes() {
     }
     if (server.hasArg("theme")) {
       selectedTheme = server.arg("theme").toInt();
+    }
+    if (server.hasArg("atmosphere")) {
+      selectedAtmosphere = server.arg("atmosphere").toInt();
     }
     // Logged unconditionally on every toggle below (not just failures) -
     // reported on hardware that a dashboard toggle can show OFF in the
@@ -3223,6 +3225,37 @@ void playMoodClosurePulse(const char *mood) {
   }
 }
 
+// V2 Phase 6: Temple Atmosphere - a color wash layered on top of
+// whatever Theme of the Day already picked for STATE_AMBIENT, not a
+// replacement for it. Manual only (selectedAtmosphere, set via the
+// dashboard's /api/settings?atmosphere=N) - see its declaration for why
+// this deliberately isn't NTP/clock-driven.
+void applyAtmosphere(CRGB &c1, CRGB &c2) {
+  // r125: reported on hardware as "no visible effect" even while watching
+  // the correct AMBIENT window - the original blend amounts (100/180/120
+  // out of 255) left Theme of the Day's own colors dominant enough that
+  // the wash read as a minor tint, not a distinct atmosphere. Pushed all
+  // three well past the halfway point so the wash color clearly leads.
+  switch (selectedAtmosphere) {
+    case 1: // Evening - warm gold wash
+      c1 = blend(c1, CRGB(255, 180, 60), 200);
+      c2 = blend(c2, CRGB(255, 130, 20), 200);
+      break;
+    case 2: // Night - deep blue-teal, deliberately dim and quiet
+      c1 = blend(c1, CRGB(10, 40, 60), 220);
+      c2 = blend(c2, CRGB(10, 60, 70), 220);
+      c1.nscale8(90);
+      c2.nscale8(90);
+      break;
+    case 3: // Festival - vibrant gold+magenta wash, full energy
+      c1 = blend(c1, CRGB(255, 200, 0), 210);
+      c2 = blend(c2, CRGB(255, 0, 150), 210);
+      break;
+    default: // 0 = Day - Theme of the Day's own colors, unmodified
+      break;
+  }
+}
+
 // Mouse eye LED breathing - breathes gently (~3s cycle) for as long as
 // eyeLedBreathingActive stays true, using the same single Green LED, no
 // color change. Called every loop() pass (see loop() above), same
@@ -3313,13 +3346,6 @@ void animateLeds() {
       c1 = CRGB(180, 20, 0);   // deep ember red
       c2 = CRGB(255, 120, 0);  // bright flame orange
     } else {
-      // r134: Temple Atmosphere (r116-r125's separate wash-on-top control)
-      // folded into this same Theme dropdown as 3 more fixed entries
-      // (cases 7-9) instead of a second multiplying dimension - per
-      // direct feedback that two controls stacking into one AMBIENT-only
-      // effect was confusing and Atmosphere alone kept reading as "no
-      // visible effect". applyAtmosphere() is gone; these three reuse its
-      // exact last-tuned (r125) wash colors as their own theme identity.
       switch(selectedTheme) {
         case 0: c1 = CRGB(128, 0, 32);   c2 = CRGB(255, 215, 0); break;
         case 1: c1 = CRGB(0, 242, 254);  c2 = CRGB(79, 172, 254); break;
@@ -3328,17 +3354,8 @@ void animateLeds() {
         case 4: c1 = CRGB(236, 0, 140);  c2 = CRGB(185, 43, 39);   break;
         case 5: c1 = CRGB(75, 0, 130);   c2 = CRGB(79, 172, 254); break;
         case 6: c1 = CRGB(255, 75, 75);  c2 = CRGB(255, 215, 0); break;
-        case 7: // Evening (formerly Temple Atmosphere's "Evening" wash)
-          c1 = CRGB(255, 180, 60);  c2 = CRGB(255, 130, 20);
-          break;
-        case 8: // Night (formerly Temple Atmosphere's "Night" wash) - deliberately dim and quiet
-          c1 = CRGB(10, 40, 60);    c2 = CRGB(10, 60, 70);
-          c1.nscale8(90);           c2.nscale8(90);
-          break;
-        case 9: // Festival (formerly Temple Atmosphere's "Festival" wash)
-          c1 = CRGB(255, 200, 0);   c2 = CRGB(255, 0, 150);
-          break;
       }
+      applyAtmosphere(c1, c2); // V2 Phase 6 - AMBIENT only, doesn't touch Mantra/Feet/Aarti/mood colors above
     }
 
     // Same state->pattern overrides as the dashboard: Feet touch always
