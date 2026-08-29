@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r120"
+#define FIRMWARE_VERSION "2026-08-29-r121"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -89,16 +89,18 @@
 // setSystemState() (turns it off on every state change, unconditionally)
 // and triggerMantra() (the only place that turns it on) below.
 #define EYE_LED_PIN         16   // printed "RX2" on the board silkscreen
-// EMERGENCY ROLLBACK (r120): flipped back to false after r119 broke feet/
-// mouse touch, OLED, LED ring, and mantra playback on the user's live
-// device - everything that routes through setSystemState(), which calls
-// ledcWrite() on this pin unconditionally on every state change. Strong
-// suspect: ledcAttach() didn't succeed cleanly on GPIO16 on this specific
-// board (this project already saw one spare board where GPIO16 behaved
-// oddly). Wish pad kept working because its flow doesn't route through
-// setSystemState() the same way. Diagnose ON A SPARE BOARD, not the live
-// device, before re-enabling.
-#define EYE_LED_CONNECTED   false
+// r121: restored to true for a clean re-test - after r120's rollback,
+// the user discovered the ESP32 itself was not fully/properly seated in
+// its socket, likely since the last physical handling around the r119
+// flash. A loose board seating is a real, independent, equally-plausible
+// explanation for r119's broad "everything stopped working" symptom
+// (intermittent contact affecting multiple pins/peripherals at once),
+// separate from the ledcAttach()/GPIO16 theory in r120's comment above.
+// Re-testing with a confirmed-solid seating, on the live device, is the
+// only way to tell which explanation was actually correct. If the same
+// broad breakage recurs even with solid seating, revert to false
+// immediately and treat r120's ledcAttach/GPIO16 theory as confirmed.
+#define EYE_LED_CONNECTED   true
 
 // Breathing animation (not a flat on/off) - see updateEyeLedBreathing()
 // in GanapatiAI.ino. Driven via the ESP32's LEDC PWM peripheral instead

@@ -335,6 +335,15 @@ reasoning survives even when the git log scrolls out of context.
   didn't (the wish pad's flow, which doesn't route through it the same
   way). Not yet confirmed - diagnose the actual PWM/GPIO16 behavior on a
   SPARE board, never the live device, before attempting to re-enable.
+- **r121** - Re-enabled `EYE_LED_CONNECTED` for a clean re-test: after
+  r120's rollback, the user found the ESP32 itself was not fully seated
+  in its socket, likely from handling during the r119 flash - a real,
+  independent, equally-plausible explanation for r119's broad breakage
+  (intermittent contact hitting multiple peripherals) separate from
+  r120's ledcAttach()/GPIO16 crash theory. Testing with confirmed-solid
+  seating is the only way to tell which was actually true. If the same
+  breakage recurs even with solid seating, r120's theory is confirmed -
+  revert to false immediately.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
