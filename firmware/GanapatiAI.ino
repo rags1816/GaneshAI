@@ -666,7 +666,7 @@ void setup() {
     // comment in config.h. Core 3.x single-call API (confirmed on the
     // user's installed 3.1.3 board package).
     ledcAttach(EYE_LED_PIN, EYE_LED_PWM_FREQ_HZ, EYE_LED_PWM_RESOLUTION);
-    ledcWrite(EYE_LED_PIN, 0);
+    ledcWrite(EYE_LED_PIN, EYE_LED_BASE_BRIGHTNESS); // dim steady glow, never fully dark
     Serial.println("DEBUG: EYE_LED_PIN configured (PWM).");
   }
   Serial.println("DEBUG: Sensor pins configured successfully.");
@@ -1920,27 +1920,29 @@ void setSystemState(SystemState newState, unsigned long duration) {
   stateDuration = duration;
   scrollX = 128;
 
-  // Eye LEDs (mouse's eyes, fiber-coupled) - off on every single state
-  // change, unconditionally, since this is the one place that always
-  // knows a transition just happened. triggerMantra() is the only place
-  // that turns this back on, immediately after its own call into this
-  // function - every other trigger (feet, offerings, wish pad, Aarti,
-  // reopening from closed) leaves it off, without needing its own
-  // explicit reset. Simpler and more robust than trying to catch every
-  // possible interruption path individually. A brief (~250ms) blocking
-  // fade-out, not an instant cut, but ONLY when breathing was actually
-  // active - every other state change (the vast majority) just confirms
-  // the PWM channel is already at 0, no delay added.
+  // Eye LEDs (mouse's eyes, fiber-coupled) - settle to the dim steady
+  // EYE_LED_BASE_BRIGHTNESS glow on every single state change,
+  // unconditionally, since this is the one place that always knows a
+  // transition just happened - never fully dark, per direct feedback
+  // after seeing the original off/on version on real hardware.
+  // triggerMantra() is the only place that starts the brighter breathing
+  // pulse, immediately after its own call into this function - every
+  // other trigger (feet, offerings, wish pad, Aarti, reopening from
+  // closed) just settles back to the resting glow, without needing its
+  // own explicit reset. A brief (~250ms) blocking fade DOWN TO BASE, not
+  // an instant cut, but ONLY when breathing was actually active - every
+  // other state change (the vast majority) just confirms the PWM
+  // channel is already at the resting level, no delay added.
   if (EYE_LED_CONNECTED) {
     if (eyeLedBreathingActive) {
       int startB = ledcRead(EYE_LED_PIN);
-      for (int b = startB; b >= 0; b -= 15) {
+      for (int b = startB; b > EYE_LED_BASE_BRIGHTNESS; b -= 15) {
         ledcWrite(EYE_LED_PIN, b);
         delay(15);
       }
       eyeLedBreathingActive = false;
     }
-    ledcWrite(EYE_LED_PIN, 0);
+    ledcWrite(EYE_LED_PIN, EYE_LED_BASE_BRIGHTNESS);
   }
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
@@ -3100,19 +3102,26 @@ void applyAtmosphere(CRGB &c1, CRGB &c2) {
 // (~3s cycle) for as long as eyeLedBreathingActive stays true, using the
 // same single Green LED, no color change. Called every loop() pass
 // (see loop() above), same non-blocking pattern as animateLeds().
-// Capped around 180/255 (~70%) even at its brightest - deliberately not
-// full brightness, so it reads as a soft glow rather than a blinking
-// indicator.
+// Rises from the resting EYE_LED_BASE_BRIGHTNESS glow (never from fully
+// dark) up to EYE_LED_PEAK_BRIGHTNESS (~70%, deliberately not full, so
+// it reads as a soft glow rather than a blinking indicator), then
+// breathes between those same two levels for as long as this chant
+// plays - settling back to the resting glow, not off, is handled by
+// setSystemState() once the chant ends.
 void updateEyeLedBreathing() {
   if (!EYE_LED_CONNECTED) return;
   if (!eyeLedBreathingActive) return;
   unsigned long elapsed = millis() - eyeLedBreathingStartMs;
   uint8_t brightness;
+  const float lo = EYE_LED_BASE_BRIGHTNESS;
+  const float hi = EYE_LED_PEAK_BRIGHTNESS;
   if (elapsed < 800) {
-    brightness = (uint8_t)((elapsed / 800.0f) * 180.0f);
+    brightness = (uint8_t)(lo + (elapsed / 800.0f) * (hi - lo));
   } else {
     float phase = (elapsed - 800) / 3000.0f * 2.0f * PI;
-    brightness = (uint8_t)(90.0f + sinf(phase) * 90.0f);
+    float mid = (lo + hi) / 2.0f;
+    float amp = (hi - lo) / 2.0f;
+    brightness = (uint8_t)(mid + sinf(phase) * amp);
   }
   ledcWrite(EYE_LED_PIN, brightness);
 }

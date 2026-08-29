@@ -364,6 +364,16 @@ reasoning survives even when the git log scrolls out of context.
   this fills the gap after that. **Confirmed working after reflashing
   with solid board seating** - same root cause as r120/r121's broader
   investigation, not a separate PIR-specific bug.
+- **r123** - Mouse eye LED changed from a flat off/breathing-pulse/off
+  cycle to a dim, always-on resting glow (`EYE_LED_BASE_BRIGHTNESS`,
+  ~10%) that never goes fully dark, with the existing breathing pulse
+  (`EYE_LED_PEAK_BRIGHTNESS`, ~70%) rising out of and settling back into
+  that resting glow specifically while the mouse-back chant plays -
+  confirmed working end-to-end on real hardware, then refined per
+  direct feedback that the eyes should never actually shut off.
+  `setup()`'s initial write and `setSystemState()`'s per-transition
+  write both changed from 0 to the base level; `updateEyeLedBreathing()`
+  now oscillates between base and peak instead of 0 and peak.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
