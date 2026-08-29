@@ -492,6 +492,27 @@ reasoning survives even when the git log scrolls out of context.
   reached - and whether PIR should give a brief acknowledgment glow
   during closed without fully reopening the temple - is an open question
   raised in the same conversation, not yet decided or implemented.
+- **r129** - Confirmed decision on the MP3 folder question raised in r128's
+  conversation: keep one flat DFPlayer "MP3" folder (no real subfolders)
+  - track NUMBER RANGES already act as the de facto category grouping
+  (1-15 feet, 3 bell, 16 aarti, 17+ mouse, 18-20 offline blessings), and
+  splitting into real DFPlayer folders would mean rewriting every
+  `dfPlay()` call to `playFolder(folder, file)` for no functional gain.
+  Direct follow-up from the same conversation: mouse-back's single fixed
+  chant (r105) is now a small rotating pool, `mouseChantTracks[]`, kept
+  deliberately separate from `mantraTracks[]` (feet's own shared
+  playlist) per explicit request for chants "diff from feet". Reuses the
+  existing `MantraTrack` struct and the same rotation pattern as
+  `feetStep`, via a new `mouseStep` counter - r105 had removed `mouseStep`
+  when mouse-back stopped rotating at all; r129 reintroduces it now that
+  there's more than one mouse-specific chant to rotate through. Track 17
+  (the original single chant) is kept as the pool's first entry; two new
+  placeholder slots (21, 22 - 18-20 are already taken by the offline
+  fallback tracks) are added with ~30s placeholder durations, pending the
+  user recording/sourcing the actual files and re-measuring via
+  `/api/test?track=21`/`22` once they're really on the SD card, same
+  process as every other placeholder track this session. Add more slots
+  the same way - next free track number is 23.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

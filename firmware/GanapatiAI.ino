@@ -296,9 +296,22 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {15, 28400}  // Ganeshmantra13.mp3 (28s)
 };
 
-// Dynamic Playlist Counter - feet touch only now; mouse-back plays a
-// fixed chant (MOUSE_CHANT_TRACK in config.h), no longer rotates.
+// r129: mouse-back's own small rotating pool, separate from
+// mantraTracks[] above - see config.h's comment for the full track
+// numbering/measuring instructions. Track 17 is the original single
+// chant this pool started as (r105); 21/22 are new placeholder slots
+// pending real files and measured durations.
+const int NUM_MOUSE_TRACKS = 3;
+MantraTrack mouseChantTracks[NUM_MOUSE_TRACKS] = {
+  {17, 30000}, // Ganapati Bappa Morya... + short Vakratunda Maha Kaya
+  {21, 30000}, // placeholder duration - correct once the real file is on the card
+  {22, 30000}  // placeholder duration - correct once the real file is on the card
+};
+
+// Dynamic Playlist Counters - feet touch and mouse-back each rotate
+// through their own separate pool (mantraTracks[]/mouseChantTracks[]).
 int feetStep = 0;
+int mouseStep = 0;
 
 // The DFPlayer folder-track number (matches mantraTracks[].dfTrack, or
 // AARTI_TRACK) currently audibly playing - 0 means nothing from the
@@ -2078,11 +2091,14 @@ void triggerMantra() {
   feetDisplayLocked = true;
   feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
 
-  // Fixed chant (MOUSE_CHANT_TRACK/_DURATION in config.h) - no longer
-  // rotates through mantraTracks[] like feet touch still does. Every
-  // mouse-back touch plays the same "Ganapati Bappa Morya..." chant.
-  int dfTrack = MOUSE_CHANT_TRACK;
-  unsigned long duration = MOUSE_CHANT_DURATION;
+  // r129: rotates through mouseChantTracks[] - mouse-back's own small
+  // pool, separate from mantraTracks[] (feet's shared playlist). r105
+  // had made this a single fixed chant instead of a rotation; r129
+  // reintroduces rotation now that more than one mouse-specific chant
+  // exists, using its own mouseStep counter so it never touches feetStep.
+  int trackIndex = mouseStep;
+  int dfTrack = mouseChantTracks[trackIndex].dfTrack;
+  unsigned long duration = mouseChantTracks[trackIndex].duration;
 
   // Same random child/adult blessing text as before - unrelated to
   // which track plays, just what shows on the OLED while it does.
@@ -2097,8 +2113,8 @@ void triggerMantra() {
 
   setSystemState(STATE_MANTRA_ACTIVE, duration);
   // Eyes breathe for exactly this chant's duration - setSystemState()
-  // just turned this off unconditionally above; this is the only place
-  // in the sketch that ever turns it back on, so a feet touch, an
+  // just turned this off unconditionally above. triggerAarti() (r128)
+  // also turns this back on for its own chant, but a feet touch, an
   // offering, or the temple-reopening welcome mantra (which also uses
   // STATE_MANTRA_ACTIVE, via openTempleFromClosed()) never light it.
   // updateEyeLedBreathing() (called from loop()) does the actual
@@ -2109,6 +2125,8 @@ void triggerMantra() {
   }
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
+
+  mouseStep = (mouseStep + 1) % NUM_MOUSE_TRACKS;
 }
 
 void triggerFeetMantra() {

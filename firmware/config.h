@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r128"
+#define FIRMWARE_VERSION "2026-08-29-r129"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -375,21 +375,23 @@ struct ExperienceScene {
 #define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
 #define AARTI_DURATION   240000 // ~4 min, matches web dashboard's AARTI_FALLBACK_DURATION_MS
 
-// Mouse-back pad's own fixed chant ("Ganapati Bappa Morya, Mangala
-// Murti Morya" + a short Vakratunda Maha Kaya) - deliberately NOT part
-// of mantraTracks[]/the rotating playlist, so it always plays this one
-// specific track on every mouse-back touch instead of cycling through
-// the shared library. Feet touch and the wish pad are both untouched -
-// they still work exactly as before. 17 is the next free DFPlayer
-// track number (1-16 are already used - see mantraTracks[]/BELL_TRACK/
-// AARTI_TRACK above). File must be placed as 0017.mp3 in the SD card's
-// MP3 folder. Duration is the user's own ~30s estimate - re-measure the
-// actual file via /api/test?track=17 + a stopwatch once it's really on
-// the card, and correct this if it's meaningfully different; too short
-// cuts the chant off, too long leaves the display stuck showing nothing
-// new while the mantra rotation waits behind it.
-#define MOUSE_CHANT_TRACK    17
-#define MOUSE_CHANT_DURATION 30000
+// r129: mouse-back's own small rotating pool of chants - deliberately
+// NOT part of mantraTracks[]/feet's shared playlist, so the mouse-back
+// pad always plays from its own dedicated set instead of cycling
+// through the feet library, per direct request to add more mouse-chant
+// files distinct from feet's. The actual MantraTrack array
+// (mouseChantTracks[]) and its own rotation counter (mouseStep) live in
+// GanapatiAI.ino right next to mantraTracks[]/feetStep, same convention.
+// Track 17 is the original single chant ("Ganapati Bappa Morya, Mangala
+// Murti Morya" + a short Vakratunda Maha Kaya) kept as the first entry;
+// 21 and 22 are new placeholder slots (18-20 are already taken by the
+// offline-blessing fallback tracks) - add 0021.mp3/0022.mp3 to the SD
+// card's MP3 folder, then re-measure each real duration via
+// /api/test?track=21 (and 22) + a stopwatch and correct the placeholder
+// ~30s durations below if meaningfully different; too short cuts the
+// chant off, too long leaves the display stuck showing nothing new
+// while the rotation waits behind it. Add more slots the same way -
+// next free track number is 23.
 
 // Phase 1: Offline Blessing Fallback - see playOfflineBlessingFallback()
 // in GanapatiAI.ino. Plays instead of a live AI blessing whenever Wi-Fi
