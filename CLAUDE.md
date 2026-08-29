@@ -535,6 +535,13 @@ reasoning survives even when the git log scrolls out of context.
   genuinely re-recorded shorter and firmware wasn't updated to match.
   Left alone pending the user confirming whether 0014.mp3 was
   intentionally replaced.
+- **r131** - Confirmed by the user: `mantraTracks[]`'s track 14 (feet's
+  shared playlist) was intentionally re-recorded shorter, same real
+  length as mouseChantTracks[]'s track 25 (both 1:42/102s) - the r130
+  flag was a real, deliberate change, not stale data. Duration corrected
+  from 175730ms to 102000ms so feet's rotation doesn't sit on a silent
+  "stuck display" for the ~74s gap between the real audio ending and the
+  state machine still expecting more.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

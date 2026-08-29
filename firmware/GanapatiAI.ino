@@ -292,7 +292,7 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {11, 48800}, // Ganeshmantra9.mp3 (48s)
   {12, 27380}, // Ganeshmantra10.mp3 (27s)
   {13, 79280}, // Ganeshmantra11.mp3 (79s)
-  {14, 175730},// Ganeshmantra12.mp3 (175s)
+  {14, 102000},// Ganeshmantra12.mp3 - r131: intentionally re-recorded shorter (1:42), confirmed by user
   {15, 28400}  // Ganeshmantra13.mp3 (28s)
 };
 
