@@ -1747,8 +1747,8 @@ void updateStateMachine() {
                          // hardware yet: a touch from AMBIENT would fall
                          // through to the stateDuration check below on a
                          // stale `now`, underflow, and spuriously trigger
-                         // triggerAartiThenClose() the instant the mantra
-                         // it just started was created.
+                         // the idle-timeout branch below the instant the
+                         // mantra it just started was created.
       } else if (feetTouched) {
         feetTouched = false;
         triggerFeetMantra();
@@ -1756,9 +1756,17 @@ void updateStateMachine() {
       }
 
       if (now - stateTimer > stateDuration) {
-        // Nobody around for AMBIENT_TIMEOUT - close the temple for the
-        // night with the Aarti chant first, same as a manual close.
-        triggerAartiThenClose();
+        // r128: used to auto-close the temple with a full ~4-minute Aarti
+        // right here - reported directly as "too much": this device has
+        // no clock/NTP, so PIR waking AMBIENT at ANY time of day (a
+        // daytime passer-by, not just at actual night) triggered the same
+        // full closing ritual every single time nobody touched anything
+        // within AMBIENT_TIMEOUT. Closing the temple is manual-only now -
+        // the dashboard's "Close Temple" button and ?action=close still
+        // call triggerAartiThenClose() directly, unaffected - AMBIENT
+        // idling out on its own just goes back to sleep like any other
+        // idle timeout, ready for the next PIR trigger.
+        setSystemState(STATE_STANDBY);
       }
       break;
 
@@ -2949,10 +2957,12 @@ void triggerWishPadBlessing() {
 }
 
 void triggerAarti() {
-  // Fired autonomously by AMBIENT_TIMEOUT idle above, by the /api/control
-  // ?action=close route, or directly via ?action=aarti (dashboard button or
-  // manual test) - in every case this just needs to start the physical
-  // chant and reflect AARTI_MODE back via /api/state.
+  // Fired by the dashboard's manual "Close Temple" button (?action=close,
+  // via triggerAartiThenClose() below) or directly via ?action=aarti
+  // (dashboard button or manual test) - in every case this just needs to
+  // start the physical chant and reflect AARTI_MODE back via /api/state.
+  // r128: no longer fired autonomously by AMBIENT_TIMEOUT idle - see that
+  // removal's own comment in updateStateMachine()'s STATE_AMBIENT case.
   dfStop();
   delay(50);
 
@@ -2961,13 +2971,26 @@ void triggerAarti() {
       strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
 
   setSystemState(STATE_AARTI, AARTI_DURATION);
+  // r128: eyes now flash/breathe through the whole Aarti chant too, not
+  // just a mouse-back touch - direct request that the guardian's eyes
+  // react while the LED ring's flame animation (see animateLeds()'s
+  // dedicated STATE_AARTI palette/intensity arc) visibly changes color
+  // around it, instead of sitting static at the plain resting glow.
+  // Same updateEyeLedBreathing() cycle as the mouse chant - it just
+  // keeps repeating for AARTI_DURATION's full ~4 minutes instead of 30s.
+  if (EYE_LED_CONNECTED) {
+    eyeLedBreathingActive = true;
+    eyeLedBreathingStartMs = millis();
+  }
   currentPlayingTrack = AARTI_TRACK;
   dfPlay(AARTI_TRACK);
 }
 
 // Aarti that ends in STATE_TEMPLE_CLOSED once it finishes, instead of
-// returning to STATE_AMBIENT - the idle-timeout auto-close and the
-// dashboard's manual "Close Temple" button both go through this.
+// returning to STATE_AMBIENT - the dashboard's manual "Close Temple"
+// button (?action=close) is the only caller as of r128 (the idle-timeout
+// auto-close that used to also call this was removed - see its own
+// comment in updateStateMachine()'s STATE_AMBIENT case).
 void triggerAartiThenClose() {
   aartiThenClose = true;
   triggerAarti();

@@ -462,6 +462,36 @@ reasoning survives even when the git log scrolls out of context.
   physical wish-pad touch and don't read `/api/state` at all, so they
   were out of scope for this fix and touching them would have been
   unrelated risk.
+- **r128** - Two direct follow-ups after discussing the PIR/Aarti report
+  above. (1) The AMBIENT idle-timeout auto-close (`triggerAartiThenClose()`
+  fired whenever nobody touched anything within `AMBIENT_TIMEOUT`, 60s)
+  is removed - this device has no clock/NTP, so PIR waking AMBIENT at ANY
+  time of day (a daytime passer-by, not just at night) triggered the same
+  full ~4-minute closing Aarti and a closed temple every single time,
+  reported directly as "too much". Closing is manual-only now: the
+  dashboard's "Close Temple" button (`?action=close`) still calls
+  `triggerAartiThenClose()` directly, unaffected; AMBIENT idling out on
+  its own just returns to `STATE_STANDBY` like a plain idle timeout,
+  ready for the next PIR trigger. Chosen over adding real time-of-day
+  awareness (NTP) for the same reasoning as r116's manual-only Temple
+  Atmosphere - a wrong timezone or a Wi-Fi outage at boot would silently
+  misjudge "night" and auto-close (or fail to) at the wrong moment. (2)
+  The mouse eye LED now flashes/breathes through the whole closing Aarti
+  chant too, not just a mouse-back touch - direct request that the
+  guardian's eyes react while the LED ring's existing dedicated Aarti
+  flame animation (ember red -> flame orange, scripted intensity arc)
+  visibly changes color around it, instead of sitting static at the
+  plain resting glow. Reuses the exact same `updateEyeLedBreathing()`
+  cycle as the mouse-back chant (started in `triggerAarti()` right after
+  its own `setSystemState()` call, same pattern as `triggerMantra()`) -
+  it just keeps repeating for `AARTI_DURATION`'s full ~4 minutes instead
+  of 30s, and settles back to the resting glow via the same existing
+  fade-toward-base logic once Aarti ends (to `STATE_TEMPLE_CLOSED` or
+  back to `STATE_AMBIENT`). Whether the eyes should go dim/off (not just
+  settle to the resting glow) specifically once `STATE_TEMPLE_CLOSED` is
+  reached - and whether PIR should give a brief acknowledgment glow
+  during closed without fully reopening the temple - is an open question
+  raised in the same conversation, not yet decided or implemented.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
