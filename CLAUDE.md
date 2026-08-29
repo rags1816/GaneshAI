@@ -406,6 +406,34 @@ reasoning survives even when the git log scrolls out of context.
   base level in whichever direction is needed (previously only ever
   faded downward, which no longer matches - an interrupted chant is
   now usually caught mid-dip, below the resting level, not above it).
+- **r126** - Real bug on the physical OLED's top-right state tag, found
+  while investigating a direct report that a mouse-back touch showed
+  "confusing" text: `STATE_FEET_ACTIVE` was falling into the exact same
+  `"MANTRA"` tag as `STATE_MANTRA_ACTIVE`, so a feet touch and a
+  mouse-back touch were visually indistinguishable on the physical
+  display - there was never a working "FEET" tag at all. Each real touch
+  source now gets its own tag: mouse-back shows "MOUSE BACK", feet shows
+  "FEET". Also gave the wish pad its own "WISH" tag - it was showing
+  "MANTRA" (via the same bug) then would have shown "FEET" once fixed,
+  since `triggerWishPadBlessing()` deliberately reuses
+  `STATE_FEET_ACTIVE`'s existing display-lock/interruption timing rather
+  than adding a whole new SystemState. New `wishPadBlessingActive` flag
+  (set true only by `triggerWishPadBlessing()`, cleared unconditionally
+  at the top of every `setSystemState()` transition - same pattern as
+  the eye LED's reset) lets the tag tell a wish-pad blessing apart from
+  a real feet touch without touching the underlying shared state
+  machinery. Confirmed by design, not a bug: PIR does NOT wake
+  `STATE_TEMPLE_CLOSED` back to AMBIENT - only a physical touch does
+  (existing code comment: "Deliberately only a touch wakes the closed
+  temple - not PIR ... matching the web dashboard's TEMPLE_CLOSED
+  design"), so a closed temple staying closed through motion alone is
+  expected, not a fault. Known follow-up, not yet done: the dashboard's
+  own "System State" text and `/api/state`'s raw state string still
+  report a wish-pad blessing as `FEET_ACTIVE`, same as a real feet
+  touch - fixing that fully needs `wishPadBlessingActive` threaded
+  through `/api/state` and several existing `data.state === "FEET_ACTIVE"`
+  checks in `web_dashboard.h` (Now Playing sync, OLED text sync) that a
+  new `WISH_ACTIVE` string would otherwise silently stop matching.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

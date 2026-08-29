@@ -258,6 +258,19 @@ bool offeringInterrupted = false;
 SystemState offeringPausedState = STATE_STANDBY;
 unsigned long offeringPausedDurationMs = 0;
 
+// r126: triggerWishPadBlessing() deliberately reuses STATE_FEET_ACTIVE's
+// existing display-lock/interruption timing rather than adding a whole
+// new SystemState (see its own comment) - but that meant the OLED's
+// top-right tag and /api/state's exposed state string couldn't tell a
+// real feet touch apart from a wish-pad blessing, both showing "FEET"/
+// "FEET_ACTIVE". This flag is set true only by triggerWishPadBlessing(),
+// right after its own setSystemState(STATE_FEET_ACTIVE, ...) call, and
+// cleared unconditionally at the top of every setSystemState() transition
+// (same "one place that always knows a transition just happened" pattern
+// used for the eye LED) - so it's true for exactly the duration of a wish
+// pad blessing and never leaks into the next real feet touch.
+bool wishPadBlessingActive = false;
+
 // Track Struct Definition
 struct MantraTrack {
   int dfTrack;
@@ -1925,6 +1938,13 @@ void setSystemState(SystemState newState, unsigned long duration) {
   stateDuration = duration;
   scrollX = 128;
 
+  // r126: cleared unconditionally on every transition, same reasoning as
+  // the eye LED reset just below - this is the one place that always
+  // knows a transition just happened. triggerWishPadBlessing() is the
+  // only place that sets this true, immediately after its own call into
+  // this function, so it stays true for exactly one wish-pad blessing.
+  wishPadBlessingActive = false;
+
   // Eye LEDs (mouse's eyes, fiber-coupled) - settle to the dim steady
   // EYE_LED_BASE_BRIGHTNESS glow on every single state change,
   // unconditionally, since this is the one place that always knows a
@@ -2906,6 +2926,7 @@ void triggerWishPadBlessing() {
   feetDisplayLockMs = 600000UL; // cleared by updateStateMachine() when the display genuinely finishes, same as an offering
 
   setSystemState(STATE_FEET_ACTIVE, 6000);
+  wishPadBlessingActive = true; // r126: see its own declaration comment - lets the OLED tag/API tell this apart from a real feet touch
 
   // Reuses the dashboard's own language setting (selectedLang, 0/1/2 -
   // see its declaration above) rather than always English - the wish pad
@@ -3314,11 +3335,19 @@ void drawOLED() {
   // blessing text into a 34px-tall strip drawn at 6x12 - unreadable from
   // more than arm's length on a screen this small. Both are dropped so
   // the blessing text below can use almost the full 64px height instead.
+  // r126: real bug fix, not just a rename - STATE_FEET_ACTIVE was falling
+  // into the same "MANTRA" tag as STATE_MANTRA_ACTIVE, so a feet touch and
+  // a mouse-back touch were visually indistinguishable on the physical
+  // OLED (reported directly: mouse-back touch looked like it said "mantra
+  // active" instead of its own thing). Each real touch source now gets
+  // its own tag; wishPadBlessingActive (see its declaration comment)
+  // distinguishes a wish-pad blessing from a real feet touch even though
+  // both share STATE_FEET_ACTIVE's underlying timing.
   u8g2.setFont(u8g2_font_5x7_tf);
   const char* tag = "";
   if (currentState == STATE_AMBIENT) tag = "AMBIENT";
-  else if (currentState == STATE_MANTRA_ACTIVE) tag = "MANTRA";
-  else if (currentState == STATE_FEET_ACTIVE) tag = "MANTRA";
+  else if (currentState == STATE_MANTRA_ACTIVE) tag = "MOUSE BACK";
+  else if (currentState == STATE_FEET_ACTIVE) tag = wishPadBlessingActive ? "WISH" : "FEET";
   else if (currentState == STATE_AARTI) tag = "AARTI";
   int tagWidth = u8g2.getStrWidth(tag);
   u8g2.drawStr(124 - tagWidth, 8, tag);
