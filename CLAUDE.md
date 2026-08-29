@@ -563,6 +563,30 @@ reasoning survives even when the git log scrolls out of context.
   at its old pre-r131 duration (175730ms) and still listed track 10 -
   neither had been touched by r131/r132's firmware-side changes since
   they're a separately-maintained duplicate; both corrected here too.
+- **r133** - Two direct follow-ups. (1) Added a proper "Play Track"
+  dashboard control - a dropdown of all 29 known SD card tracks (feet,
+  mouse-back, bell, both Aarti parts, offline blessings) plus a Play
+  button, calling a new `/api/control?action=playtrack&track=N`. Unlike
+  the pre-existing `/api/test?track=N` (a raw diagnostic - `dfPlay()` and
+  nothing else, no OLED/LED/Now-Playing update), the new
+  `playTrackManually()` looks up the real duration from whichever pool
+  the track belongs to and puts the device into `STATE_FEET_ACTIVE` so
+  the OLED/LED/dashboard all show something coherent for the track's
+  actual length - specifically requested so the long mouse-back chants
+  (22 at 3:59, 29 at 4:13) can be played on demand rather than only
+  landing by chance in the rotation. (2) Removed the dashboard's
+  "One-Directional Mic" feature (browser `getUserMedia` wake-on-clap +
+  crowd-reactive Aarti brightness) entirely, per direct request to clean
+  up unused panels - it could never actually work in real use:
+  `getUserMedia` is a secure-context-only browser API (HTTPS or
+  localhost), and this dashboard is normally opened at the ESP32's own
+  plain-HTTP local IP (no static IP, no HTTPS - see this file's Firmware
+  section), the exact same hard browser rule already documented
+  elsewhere in this file for why puja.html's own speech feature had to
+  move off the ESP32 entirely. Removed as dead weight (HTML panel, all
+  mic JS, the crowd-reactive brightness boost in the LED loop) rather
+  than left toggleable-but-broken; the "Devotee Pitch"/"Active Language"
+  selects it shared a box with are untouched and still work as before.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

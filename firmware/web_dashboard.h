@@ -663,8 +663,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </details>
 
         <!-- Advanced Pitch Simulator Config -->
+        <!-- r133: "One-Directional Mic" (browser getUserMedia wake-on-clap
+             + crowd-reactive Aarti) removed - it could never actually work
+             in real use. getUserMedia is a secure-context-only browser API
+             (HTTPS or localhost); this dashboard is normally opened at the
+             ESP32's own plain-HTTP local IP (no static IP, no HTTPS - see
+             CLAUDE.md), the exact same hard browser rule already documented
+             elsewhere in this file for why the puja page's own speech
+             feature had to move off the ESP32 entirely. Removed as dead
+             weight rather than left toggleable-but-broken. -->
         <div style="background: rgba(2,12,27,0.3); border-radius: 10px; padding: 8px; margin-bottom: 12px; border: 1px dashed var(--border-color);">
-            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">AI MIC SETTINGS (SIMULATION)</div>
+            <div class="slider-label" style="font-weight: 600; font-size: 10px; color: var(--accent-teal);">PITCH &amp; LANGUAGE</div>
             <div style="display: flex; gap: 8px; margin-top: 4px;">
                 <div style="flex: 1;">
                     <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">Devotee Pitch</span>
@@ -682,16 +691,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         <option value="ta">Tamil</option>
                     </select>
                 </div>
-            </div>
-            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <span style="font-size: 8px; text-transform: uppercase; color: #8892b0;">One-Directional Mic</span><br>
-                    <span id="mic-status" style="font-size: 9px; color: var(--accent-teal);">Off</span>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="mic-toggle" onchange="toggleMic()">
-                    <span class="slider round"></span>
-                </label>
             </div>
         </div>
 
@@ -717,6 +716,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
             <button class="btn-stop" style="flex: 1;" onclick="closeTemple()">🔔 Close Temple (Night Mode)</button>
             <button class="btn-action" style="flex: 1;" onclick="openTemple()">🌅 Open Temple</button>
+        </div>
+
+        <!-- r133: on-demand playback for any track on the SD card, not just
+             the ones a touch would normally rotate to - the long mouse-back
+             chants (22, 29) in particular were asked for specifically. -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <select id="play-track-select" class="select-input" style="flex: 1; font-size: 11px; padding: 6px;"></select>
+            <button class="btn-action" style="flex: 0 0 auto; padding: 6px 14px;" onclick="playTrackOnDevice()">▶ Play</button>
         </div>
 
         <details class="collapsible-section">
@@ -1902,6 +1909,64 @@ var QRCode;
         let feetStep = 0;
         const globalMantraPlayer = new Audio();
 
+        // r133: full SD card catalog for the "Play Track" manual control -
+        // deliberately a separate list from mantraTracks[] above (that one
+        // is feet's own rotation pool, used for local simulation/lookup and
+        // missing the mouse-back pool, Aarti, and bell entirely). Labels
+        // and durations match GanapatiAI.ino's mantraTracks[]/
+        // mouseChantTracks[]/AARTI_TRACK/AARTI_PART2_TRACK/BELL_TRACK.
+        const allPlayableTracks = [
+            { track: 1,  label: "1 - Vakratundaya", duration: 19121 },
+            { track: 2,  label: "2 - Feet mantra", duration: 28390 },
+            { track: 3,  label: "3 - Bell", duration: 5000 },
+            { track: 4,  label: "4 - Feet mantra", duration: 27360 },
+            { track: 5,  label: "5 - Feet mantra", duration: 55350 },
+            { track: 6,  label: "6 - Feet mantra", duration: 155530 },
+            { track: 7,  label: "7 - Feet mantra", duration: 99600 },
+            { track: 8,  label: "8 - Feet mantra", duration: 60160 },
+            { track: 9,  label: "9 - Feet mantra", duration: 136700 },
+            { track: 10, label: "10 - Aarti part 2", duration: 125520 },
+            { track: 11, label: "11 - Feet mantra", duration: 48800 },
+            { track: 12, label: "12 - Feet mantra", duration: 27380 },
+            { track: 13, label: "13 - Feet mantra", duration: 79280 },
+            { track: 14, label: "14 - Feet mantra", duration: 102000 },
+            { track: 15, label: "15 - Feet mantra", duration: 28400 },
+            { track: 16, label: "16 - Aarti part 1", duration: 206000 },
+            { track: 17, label: "17 - Mouse-back chant", duration: 12000 },
+            { track: 18, label: "18 - Offline blessing", duration: 19000 },
+            { track: 19, label: "19 - Offline blessing", duration: 17000 },
+            { track: 20, label: "20 - Offline blessing", duration: 16000 },
+            { track: 21, label: "21 - Mouse-back chant", duration: 39000 },
+            { track: 22, label: "22 - Mouse-back chant (long, 3:59)", duration: 239000 },
+            { track: 23, label: "23 - Mouse-back chant", duration: 21000 },
+            { track: 24, label: "24 - Mouse-back chant", duration: 88000 },
+            { track: 25, label: "25 - Mouse-back chant", duration: 102000 },
+            { track: 26, label: "26 - Mouse-back chant", duration: 45000 },
+            { track: 27, label: "27 - Mouse-back chant", duration: 86000 },
+            { track: 28, label: "28 - Mouse-back chant", duration: 127000 },
+            { track: 29, label: "29 - Mouse-back chant (long, 4:13)", duration: 253000 }
+        ];
+
+        function populatePlayTrackSelect() {
+            const sel = document.getElementById('play-track-select');
+            if (!sel) return;
+            sel.innerHTML = allPlayableTracks.map(t =>
+                `<option value="${t.track}">${t.label} (${formatTime(t.duration)})</option>`
+            ).join('');
+        }
+
+        function playTrackOnDevice() {
+            const sel = document.getElementById('play-track-select');
+            if (!sel) return;
+            const n = parseInt(sel.value, 10);
+            if (isNaN(n)) return;
+            if (isPhysicalESP) {
+                sendESPControl('playtrack', `&track=${n}`);
+            } else {
+                console.log('Play Track is a real-device-only control (no local simulation).');
+            }
+        }
+
         // --- Now Playing / Song Library (item 3) ---
         let nowPlayingFile = null;
         let nowPlayingDurationMs = 0;
@@ -2025,87 +2090,10 @@ var QRCode;
             return avg;
         }
 
-        // --- One-Directional Mic: Wake-on-voice/clap + Crowd-reactive Aarti ---
-        // Deliberately never connected to audioCtx.destination - this is for
-        // listening only, never routed to the speaker (no feedback risk).
-        let micStream = null;
-        let micAnalyser = null;
-        let micTimeData = null;
-        let micMonitorInterval = null;
-        let micRecentLevels = [];
-        let lastMicWakeTime = 0;
-        const MIC_WAKE_COOLDOWN_MS = 4000;
-
-        async function toggleMic() {
-            const enabled = document.getElementById('mic-toggle').checked;
-            const statusEl = document.getElementById('mic-status');
-            if (enabled) {
-                try {
-                    initAudio();
-                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const micSource = audioCtx.createMediaStreamSource(micStream);
-                    micAnalyser = audioCtx.createAnalyser();
-                    micAnalyser.fftSize = 512;
-                    micTimeData = new Uint8Array(micAnalyser.fftSize);
-                    micSource.connect(micAnalyser);
-
-                    statusEl.innerText = "Listening (wake + crowd-reactive)";
-                    statusEl.style.color = "#4ade80";
-
-                    micRecentLevels = [];
-                    if (micMonitorInterval) clearInterval(micMonitorInterval);
-                    micMonitorInterval = setInterval(monitorMic, 120);
-                } catch (err) {
-                    console.log("Mic access denied or unavailable:", err);
-                    statusEl.innerText = "Mic access denied";
-                    statusEl.style.color = "#f87171";
-                    document.getElementById('mic-toggle').checked = false;
-                }
-            } else {
-                if (micMonitorInterval) { clearInterval(micMonitorInterval); micMonitorInterval = null; }
-                if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-                micAnalyser = null;
-                statusEl.innerText = "Off";
-                statusEl.style.color = "var(--accent-teal)";
-            }
-        }
-
-        // Root-mean-square level from the raw waveform, roughly 0..1. Used for
-        // loudness/spike detection - not pitch, just "how loud right now".
-        function getMicLevel() {
-            if (!micAnalyser) return null;
-            micAnalyser.getByteTimeDomainData(micTimeData);
-            let sumSquares = 0;
-            for (let i = 0; i < micTimeData.length; i++) {
-                const v = (micTimeData[i] - 128) / 128;
-                sumSquares += v * v;
-            }
-            return Math.sqrt(sumSquares / micTimeData.length);
-        }
-
-        // Wake-on-voice/clap: watches for a sudden spike above the recent
-        // ambient level while asleep - a clap or a loud greeting wakes the
-        // device just like PIR would.
-        function monitorMic() {
-            const level = getMicLevel();
-            if (level === null) return;
-
-            const avg = micRecentLevels.length > 0
-                ? micRecentLevels.reduce((a, b) => a + b, 0) / micRecentLevels.length
-                : level;
-
-            if (state === "STANDBY") {
-                const now = Date.now();
-                const isSpike = level > 0.15 && level > avg * 2.5;
-                if (isSpike && now - lastMicWakeTime > MIC_WAKE_COOLDOWN_MS) {
-                    lastMicWakeTime = now;
-                    changeState("AMBIENT", AMBIENT_IDLE_MS);
-                }
-            }
-
-            micRecentLevels.push(level);
-            if (micRecentLevels.length > 20) micRecentLevels.shift(); // ~2.4s window
-        }
+        // r133: "One-Directional Mic" (getUserMedia wake-on-clap +
+        // crowd-reactive Aarti) removed here too - see the removal comment
+        // on its former HTML panel above for why it could never actually
+        // work in real use.
 
         function stopHum() {
             if (globalMantraPlayer) {
@@ -2428,17 +2416,6 @@ var QRCode;
                 hueOffset += 1.5;
                 let brightRatio = brightness / 255;
 
-                // Crowd-reactive Aarti: while the chant is playing, a louder
-                // room (singing, clapping) brightens the ring - a call and
-                // response with the actual crowd, not just the recorded track.
-                if (state === "AARTI_MODE" && !aartiBuildActive && micAnalyser) {
-                    const crowdLevel = getMicLevel();
-                    if (crowdLevel !== null) {
-                        const crowdBoost = Math.min(0.4, crowdLevel * 1.5);
-                        brightRatio = Math.min(1, brightRatio + crowdBoost);
-                    }
-                }
-                
                 let activePattern = pattern;
                 let childRainbow = false;
                 const activeThemeColor = themes[selectedTheme];
@@ -3683,6 +3660,8 @@ var QRCode;
         renderQueue();
         // Render the static song library list (item 3)
         renderSongLibrary();
+        // r133: populate the "Play Track" manual-play dropdown
+        populatePlayTrackSelect();
         // Devotee QR Code - points to the puja page on Firebase Hosting
         // (a fixed HTTPS address), not the ESP32's own web server. Moved
         // there because Chrome's SpeechRecognition API (the speak-your-

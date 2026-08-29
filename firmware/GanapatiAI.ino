@@ -623,6 +623,7 @@ void triggerAartiThenClose();
 void openTempleFromClosed();
 void stopAudioAndStandby();
 void playOfflineBlessingFallback(const String &lang);
+void playTrackManually(int n);
 ExperienceScene getCurrentScene();
 bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
 void playMoodClosurePulse(const char *mood);
@@ -1198,6 +1199,13 @@ void handleWebRoutes() {
       }
     } else if (action == "stop") {
       stopAudioAndStandby();
+    } else if (action == "playtrack") {
+      // r133: proper on-demand playback for the dashboard's "Play Track"
+      // control - unlike /api/test?track=N (a raw diagnostic that just
+      // calls dfPlay() with no state change at all), this actually shows
+      // something coherent on the OLED/LED and updates currentPlayingTrack
+      // so the dashboard's own Now Playing panel reflects it too.
+      playTrackManually(server.arg("track").toInt());
     } else if (action == "offering") {
       // Fired when the priest approves a devotee's submission from the
       // Priest Queue (see approveQueueItem() in web_dashboard.h) - shows
@@ -2998,6 +3006,41 @@ void triggerWishPadBlessing() {
   // (confirmed on hardware) until LANG_TO_CODE gave Marathi its own code.
   const char *wishPadLang = (selectedLang == 1) ? "hi" : (selectedLang == 2) ? "ta" : (selectedLang == 3) ? "mr" : "en";
   speakGenericBlessingOnAmpAsync(wishPadLang);
+}
+
+// r133: on-demand playback of any known track (dashboard's "Play Track"
+// control) - looks up the real duration from whichever pool the track
+// number belongs to (feet/mouse/Aarti's two parts) so the OLED/LED render
+// something coherent for the actual length instead of a generic guess.
+// Reuses STATE_FEET_ACTIVE purely for its saffron/gold display and timer,
+// same as several other manual triggers - this is an admin convenience,
+// not a devotional touch flow, so it doesn't need its own SystemState.
+void playTrackManually(int n) {
+  unsigned long duration = 60000; // fallback for a track not in any known list below
+  for (int i = 0; i < NUM_TRACKS; i++) {
+    if (mantraTracks[i].dfTrack == n) { duration = mantraTracks[i].duration; break; }
+  }
+  for (int i = 0; i < NUM_MOUSE_TRACKS; i++) {
+    if (mouseChantTracks[i].dfTrack == n) { duration = mouseChantTracks[i].duration; break; }
+  }
+  if (n == AARTI_TRACK) duration = AARTI_PART1_DURATION;
+  else if (n == AARTI_PART2_TRACK) duration = AARTI_PART2_DURATION;
+
+  dfStop();
+  delay(50);
+  offeringDisplayActive = false;
+  offeringInterrupted = false;
+  currentMoodTag[0] = '\0';
+  freeBlessingImage();
+  feetDisplayLocked = true;
+  feetDisplayTimer = millis();
+  feetDisplayLockMs = 12000;
+  strlcpy(scrollText, "   \xF0\x9F\x8E\xB5 Manual playback \xF0\x9F\x8E\xB5   ", sizeof(scrollText));
+  strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
+
+  setSystemState(STATE_FEET_ACTIVE, duration);
+  currentPlayingTrack = n;
+  dfPlay(n);
 }
 
 void triggerAarti() {
