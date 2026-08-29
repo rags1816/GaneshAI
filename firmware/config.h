@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-28-r119"
+#define FIRMWARE_VERSION "2026-08-29-r120"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -89,7 +89,16 @@
 // setSystemState() (turns it off on every state change, unconditionally)
 // and triggerMantra() (the only place that turns it on) below.
 #define EYE_LED_PIN         16   // printed "RX2" on the board silkscreen
-#define EYE_LED_CONNECTED   true
+// EMERGENCY ROLLBACK (r120): flipped back to false after r119 broke feet/
+// mouse touch, OLED, LED ring, and mantra playback on the user's live
+// device - everything that routes through setSystemState(), which calls
+// ledcWrite() on this pin unconditionally on every state change. Strong
+// suspect: ledcAttach() didn't succeed cleanly on GPIO16 on this specific
+// board (this project already saw one spare board where GPIO16 behaved
+// oddly). Wish pad kept working because its flow doesn't route through
+// setSystemState() the same way. Diagnose ON A SPARE BOARD, not the live
+// device, before re-enabling.
+#define EYE_LED_CONNECTED   false
 
 // Breathing animation (not a flat on/off) - see updateEyeLedBreathing()
 // in GanapatiAI.ino. Driven via the ESP32's LEDC PWM peripheral instead

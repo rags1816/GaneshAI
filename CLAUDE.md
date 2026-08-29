@@ -323,6 +323,18 @@ reasoning survives even when the git log scrolls out of context.
   take the PIN number directly rather than a channel number -
   `EYE_LED_PWM_CHANNEL` no longer exists as a concept on this core,
   removed entirely rather than left unused.
+- **r120 - EMERGENCY ROLLBACK** - r119 broke the live device: feet touch,
+  mouse-back touch, OLED, LED ring, and mantra playback all stopped
+  working after flashing it, while the wish pad (and its spoken
+  blessing) kept working. `EYE_LED_CONNECTED` flipped back to `false`.
+  Leading theory: `ledcAttach()` didn't succeed cleanly on GPIO16 on
+  this specific board, and `setSystemState()`'s unconditional
+  `ledcWrite()` on every single state change then crashed/hung the
+  device on almost every interaction - matching exactly which things
+  broke (everything routing through `setSystemState()`) and which
+  didn't (the wish pad's flow, which doesn't route through it the same
+  way). Not yet confirmed - diagnose the actual PWM/GPIO16 behavior on a
+  SPARE board, never the live device, before attempting to re-enable.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
