@@ -513,6 +513,28 @@ reasoning survives even when the git log scrolls out of context.
   `/api/test?track=21`/`22` once they're really on the SD card, same
   process as every other placeholder track this session. Add more slots
   the same way - next free track number is 23.
+- **r130** - Real SD card file listing (screenshots of the actual MP3
+  folder) confirmed two things and filled in the placeholders from r129.
+  (1) `AARTI_TRACK`'s file (0016.mp3) was re-recorded and is now really
+  3:26 (206s), not the ~4min `AARTI_DURATION`/`AARTI_FALLBACK_DURATION_MS`
+  both still assumed - fixed in both config.h and web_dashboard.h/
+  index.html so the closing Aarti's state timer (and the LED flame arc +
+  eye breathing pulse riding on it, both r128) don't run ~34s past when
+  the actual audio already finished. (2) The mouse-back pool (r129) grew
+  from 3 tracks to all of 17 + 21 through 29 (10 total) once the user
+  confirmed "17 and then 21 onwards is for mouse back touch" - durations
+  are now the real measured lengths from the file listing (MM:SS
+  resolution) instead of 30s placeholders. Flagged, not changed: track 22
+  (3:59) is notably longer than every other track in this pool (12s-2:07)
+  - worth the user double-checking it's the intended file, not a mix-up.
+  Also flagged, not changed: mantraTracks[]'s track 14 (feet's shared
+  playlist, unrelated to tonight's mouse-back/Aarti changes) has a real
+  discrepancy between its firmware duration (175730ms) and the actual
+  0014.mp3 file's real length (1:42/102s per the same listing) - about
+  74s of silent "stuck display" per r112-era reasoning if that file was
+  genuinely re-recorded shorter and firmware wasn't updated to match.
+  Left alone pending the user confirming whether 0014.mp3 was
+  intentionally replaced.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

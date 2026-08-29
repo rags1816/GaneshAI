@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r129"
+#define FIRMWARE_VERSION "2026-08-29-r130"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -373,25 +373,21 @@ struct ExperienceScene {
 // "mp3" (0001.mp3, 0002.mp3, ...) - played via playMp3Folder(), NOT play().
 #define BELL_TRACK       3      // Ganapathibell.mp3 - the only track not in mantraTracks[]/AARTI_TRACK
 #define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
-#define AARTI_DURATION   240000 // ~4 min, matches web dashboard's AARTI_FALLBACK_DURATION_MS
+#define AARTI_DURATION   206000 // r130: real GaneshAarti.mp3 re-recorded shorter (3:26) - matches web dashboard's AARTI_FALLBACK_DURATION_MS
 
-// r129: mouse-back's own small rotating pool of chants - deliberately
-// NOT part of mantraTracks[]/feet's shared playlist, so the mouse-back
-// pad always plays from its own dedicated set instead of cycling
-// through the feet library, per direct request to add more mouse-chant
-// files distinct from feet's. The actual MantraTrack array
-// (mouseChantTracks[]) and its own rotation counter (mouseStep) live in
-// GanapatiAI.ino right next to mantraTracks[]/feetStep, same convention.
-// Track 17 is the original single chant ("Ganapati Bappa Morya, Mangala
-// Murti Morya" + a short Vakratunda Maha Kaya) kept as the first entry;
-// 21 and 22 are new placeholder slots (18-20 are already taken by the
-// offline-blessing fallback tracks) - add 0021.mp3/0022.mp3 to the SD
-// card's MP3 folder, then re-measure each real duration via
-// /api/test?track=21 (and 22) + a stopwatch and correct the placeholder
-// ~30s durations below if meaningfully different; too short cuts the
-// chant off, too long leaves the display stuck showing nothing new
-// while the rotation waits behind it. Add more slots the same way -
-// next free track number is 23.
+// r130: mouse-back's own rotating pool of chants - deliberately NOT
+// part of mantraTracks[]/feet's shared playlist, so the mouse-back pad
+// always plays from its own dedicated set instead of cycling through
+// the feet library. Grown from the original single track 17 (r105) to
+// 10 tracks (r129's 21/22 placeholders, then r130 added 23-29 once the
+// user confirmed the whole 21-29 range is mouse-back material) - the
+// actual MantraTrack array (mouseChantTracks[]) and its own rotation
+// counter (mouseStep) live in GanapatiAI.ino right next to
+// mantraTracks[]/feetStep, same convention. Durations below are real
+// measured lengths (from the actual SD card file listing, MM:SS
+// resolution), not placeholders - 18-20 are taken by the offline-
+// blessing fallback tracks, so this pool is 17 + 21 through 29. Next
+// free track number is 30.
 
 // Phase 1: Offline Blessing Fallback - see playOfflineBlessingFallback()
 // in GanapatiAI.ino. Plays instead of a live AI blessing whenever Wi-Fi

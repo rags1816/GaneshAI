@@ -296,16 +296,22 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {15, 28400}  // Ganeshmantra13.mp3 (28s)
 };
 
-// r129: mouse-back's own small rotating pool, separate from
-// mantraTracks[] above - see config.h's comment for the full track
-// numbering/measuring instructions. Track 17 is the original single
-// chant this pool started as (r105); 21/22 are new placeholder slots
-// pending real files and measured durations.
-const int NUM_MOUSE_TRACKS = 3;
+// r130: mouse-back's own rotating pool, separate from mantraTracks[]
+// above - see config.h's comment for the full history. Real measured
+// durations from the actual SD card file listing (MM:SS resolution,
+// converted to ms) - not placeholders.
+const int NUM_MOUSE_TRACKS = 10;
 MantraTrack mouseChantTracks[NUM_MOUSE_TRACKS] = {
-  {17, 30000}, // Ganapati Bappa Morya... + short Vakratunda Maha Kaya
-  {21, 30000}, // placeholder duration - correct once the real file is on the card
-  {22, 30000}  // placeholder duration - correct once the real file is on the card
+  {17, 12000},  // Ganapati Bappa Morya... + short Vakratunda Maha Kaya (0:12)
+  {21, 39000},  // 0:39
+  {22, 239000}, // 3:59 - unusually long next to the rest of this pool; worth double-checking it's the intended file
+  {23, 21000},  // 0:21
+  {24, 88000},  // 1:28
+  {25, 102000}, // 1:42
+  {26, 45000},  // 0:45
+  {27, 86000},  // 1:26
+  {28, 127000}, // 2:07
+  {29, 253000}  // 4:13
 };
 
 // Dynamic Playlist Counters - feet touch and mouse-back each rotate

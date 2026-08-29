@@ -1611,7 +1611,7 @@ var QRCode;
         // Aarti indefinitely while nobody is around. Reset on every fresh wake.
         let aartiDoneThisWake = false;
         const AARTI_TRACK_FILE = "GaneshAarti.mp3";
-        const AARTI_FALLBACK_DURATION_MS = 240000; // GaneshAarti.mp3 is ~4 minutes
+        const AARTI_FALLBACK_DURATION_MS = 206000; // r130: GaneshAarti.mp3 re-recorded shorter (3:26), matches config.h's AARTI_DURATION
 
         // Temple Closed (Night Mode)
         const CLOSE_HOLD_MS = 15000;
