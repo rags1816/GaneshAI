@@ -1605,7 +1605,7 @@ var QRCode;
         // Aarti indefinitely while nobody is around. Reset on every fresh wake.
         let aartiDoneThisWake = false;
         const AARTI_TRACK_FILE = "GaneshAarti.mp3";
-        const AARTI_FALLBACK_DURATION_MS = 206000; // r130: GaneshAarti.mp3 re-recorded shorter (3:26), matches config.h's AARTI_DURATION
+        const AARTI_FALLBACK_DURATION_MS = 331520; // r132: GaneshAarti.mp3 (3:26) + Ganeshmantra8.mp3 (2:05) as one combined closing block, matches config.h's AARTI_DURATION
 
         // Temple Closed (Night Mode)
         const CLOSE_HOLD_MS = 15000;
@@ -1871,6 +1871,11 @@ var QRCode;
         ];
         let currentBlessingIndex = 0;
 
+        // r131/r132: kept in sync with GanapatiAI.ino's own mantraTracks[] -
+        // track 14's duration corrected to its real re-recorded length
+        // (102000ms, was 175730), and track 10 removed entirely (it now
+        // plays as part 2 of the closing Aarti block instead - see
+        // AARTI_PART2_TRACK/AARTI_PART2_DURATION in config.h).
         const mantraTracks = [
             { file: "Ganapathimantrai.mp3", duration: 19121, dfTrack: 1 },
             { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
@@ -1880,11 +1885,10 @@ var QRCode;
             { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
             { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
             { file: "Ganeshmantra7.mp3", duration: 136700, dfTrack: 9 },
-            { file: "Ganeshmantra8.mp3", duration: 125520, dfTrack: 10 },
             { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
             { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
             { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
-            { file: "Ganeshmantra12.mp3", duration: 175730, dfTrack: 14 },
+            { file: "Ganeshmantra12.mp3", duration: 102000, dfTrack: 14 },
             { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
         ];
 

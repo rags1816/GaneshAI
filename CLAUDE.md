@@ -542,6 +542,27 @@ reasoning survives even when the git log scrolls out of context.
   from 175730ms to 102000ms so feet's rotation doesn't sit on a silent
   "stuck display" for the ~74s gap between the real audio ending and the
   state machine still expecting more.
+- **r132** - Track 10 (Ganeshmantra8.mp3) moved out of feet's mantraTracks[]
+  rotation (now 13 tracks, not 14) and into the closing Aarti itself, per
+  direct request that it "run after aarti as one block of aarti" - the
+  user confirmed it should come out of feet's rotation entirely (not stay
+  in both) and play immediately back-to-back with no gap after
+  AARTI_TRACK. New `AARTI_PART1_DURATION`/`AARTI_PART2_TRACK`/
+  `AARTI_PART2_DURATION` in config.h; `AARTI_DURATION` is now their
+  combined total (331520ms) rather than AARTI_TRACK's own length, since
+  that's what `setSystemState()` actually uses for `STATE_AARTI` - the LED
+  flame arc and eye breathing pulse (both keyed off the state's total
+  duration, r128) now naturally stretch across both parts as one
+  continuous scripted sequence instead of two separate chants. New
+  `aartiPart2Playing` flag (reset in `triggerAarti()`, checked in
+  `updateStateMachine()`'s `STATE_AARTI` case) switches the physical track
+  at exactly `AARTI_PART1_DURATION` elapsed. Also caught and fixed a real,
+  separate sync gap while touching this: `web_dashboard.h`'s own JS
+  mirror of `mantraTracks[]` (used for the dashboard's local Quick-
+  Blessings simulation and Now-Playing track lookups) still had track 14
+  at its old pre-r131 duration (175730ms) and still listed track 10 -
+  neither had been touched by r131/r132's firmware-side changes since
+  they're a separately-maintained duplicate; both corrected here too.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
