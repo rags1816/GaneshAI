@@ -2163,12 +2163,28 @@ var QRCode;
             }, duration * 1000);
         }
 
+        // r127: mirrors the physical OLED's top-right tag wording (see
+        // GanapatiAI.ino's own tag map, fixed in r126) so the dashboard
+        // reads the same as the real device instead of the raw state
+        // machine name - most notably WISH_ACTIVE, which used to be
+        // indistinguishable from a real feet touch on both the device
+        // and here until r126/r127 gave it its own identity end to end.
+        function oledStateTag(s) {
+            switch (s) {
+                case "MANTRA_ACTIVE": return "MOUSE BACK";
+                case "FEET_ACTIVE":   return "FEET";
+                case "WISH_ACTIVE":   return "WISH";
+                case "AARTI_MODE":    return "AARTI";
+                default:              return s; // AMBIENT, or anything unrecognized
+            }
+        }
+
         // Update UI Text & Labels
         function updateUI() {
             document.getElementById('state-val').innerText = state;
             const stateLbl = document.getElementById('oled-state-lbl');
             const stateVal = document.getElementById('state-val');
-            
+
             if (state === "STANDBY") {
                 stateLbl.innerText = "[STANDBY]";
                 stateVal.className = "status-val";
@@ -2178,7 +2194,7 @@ var QRCode;
                 stateVal.className = "status-val";
                 document.getElementById('oled-scroller').style.display = 'none';
             } else {
-                stateLbl.innerText = `[${state}]`;
+                stateLbl.innerText = `[${oledStateTag(state)}]`;
                 stateVal.className = "status-val status-active";
                 document.getElementById('oled-scroller').style.display = 'block';
             }
@@ -2422,15 +2438,18 @@ var QRCode;
                 // Blessing-mood tint: nudge the palette toward the current
                 // blessing's mood wherever blessings are actually displayed.
                 // Left out of MANTRA_ACTIVE on purpose - that state stays a
-                // "pure" flowing chant color.
-                if (currentMoodColor && (state === "AMBIENT" || state === "FEET_ACTIVE")) {
+                // "pure" flowing chant color. r127: WISH_ACTIVE (a wish-pad
+                // blessing, reported separately from FEET_ACTIVE as of
+                // r127's /api/state fix) genuinely has a self-classified
+                // mood too, same as a real feet touch - included here.
+                if (currentMoodColor && (state === "AMBIENT" || state === "FEET_ACTIVE" || state === "WISH_ACTIVE")) {
                     c1 = blendColor(c1, currentMoodColor, 0.25);
                     c2 = blendColor(c2, currentMoodColor, 0.25);
                 }
 
                 // Audio-reactive breathing while a mantra is actually sounding.
                 let breathOverride = null;
-                if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE" || (state === "AARTI_MODE" && !aartiBuildActive)) {
+                if (state === "MANTRA_ACTIVE" || state === "FEET_ACTIVE" || state === "WISH_ACTIVE" || (state === "AARTI_MODE" && !aartiBuildActive)) {
                     const energy = getMantraEnergy();
                     if (energy !== null) breathOverride = 0.25 + energy * 0.85;
                 }
@@ -3764,7 +3783,11 @@ var QRCode;
                 const fwTag = document.getElementById('firmware-version-tag');
                 if (fwTag && data.firmware) fwTag.textContent = 'Firmware: ' + data.firmware;
                 const prevState = state;
-                const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "AARTI_MODE");
+                // r127: WISH_ACTIVE added - a wish-pad blessing is real
+                // audio finishing on its own, same as MANTRA_ACTIVE/
+                // FEET_ACTIVE/AARTI_MODE, and needs the same local
+                // hum/timer cleanup once the device moves back to idle.
+                const wasActive = (prevState === "MANTRA_ACTIVE" || prevState === "FEET_ACTIVE" || prevState === "WISH_ACTIVE" || prevState === "AARTI_MODE");
                 const nowIdle = (data.state === "STANDBY" || data.state === "AMBIENT" || data.state === "TEMPLE_CLOSED");
 
                 state = data.state;
@@ -3874,7 +3897,8 @@ var QRCode;
                 // always show the same line at the same time.
                 if (data.blessing && data.blessing !== currentText &&
                     (data.state === "AMBIENT" || data.state === "MANTRA_ACTIVE" ||
-                     data.state === "FEET_ACTIVE" || data.state === "AARTI_MODE")) {
+                     data.state === "FEET_ACTIVE" || data.state === "WISH_ACTIVE" ||
+                     data.state === "AARTI_MODE")) {
                     setOledText(data.blessing);
                 }
 

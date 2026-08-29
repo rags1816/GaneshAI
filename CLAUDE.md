@@ -434,6 +434,34 @@ reasoning survives even when the git log scrolls out of context.
   through `/api/state` and several existing `data.state === "FEET_ACTIVE"`
   checks in `web_dashboard.h` (Now Playing sync, OLED text sync) that a
   new `WISH_ACTIVE` string would otherwise silently stop matching.
+- **r127** - Follow-up to r126, closing the dashboard-side half of that
+  gap per direct request ("want the dashboard to sync as per principle
+  with the actions done"). `/api/state` now reports a wish-pad blessing
+  as `WISH_ACTIVE` instead of `FEET_ACTIVE` (gated on `wishPadBlessingActive`,
+  same flag r126 added). Threaded through the specific `web_dashboard.h`/
+  `index.html` checks that actually needed it to keep working correctly:
+  the mood-tint and audio-reactive-breathing LED preview conditions (a
+  wish blessing has a real self-classified mood, same as a feet touch),
+  the idle-transition cleanup (`wasActive`/`nowIdle`, so local hums/timers
+  stop correctly once a wish blessing ends), and the OLED-text content
+  sync (so the dashboard's simulated OLED shows the wish pad's fixed
+  "your silent prayer is heard" message instead of stale text). New
+  `oledStateTag()` helper maps raw state names to the same wording as the
+  real device's OLED tag (r126) - "MOUSE BACK"/"FEET"/"WISH"/"AARTI" -
+  instead of the dashboard showing the raw `MANTRA_ACTIVE`/`FEET_ACTIVE`/
+  `WISH_ACTIVE` strings verbatim. Deliberately did NOT touch the
+  "Now Playing" library-track lookup (`data.track` matched against
+  `mantraTracks[]`) - a wish-pad blessing's actual audio (bell, then a
+  live-streamed TTS blessing) was never one of the DFPlayer's SD-card
+  mantra tracks to begin with, so that lookup correctly stays FEET/MANTRA
+  -only, unrelated to this fix. Also deliberately left alone the several
+  OTHER `FEET_ACTIVE`/`MANTRA_ACTIVE` checks in `web_dashboard.h` that
+  belong to the dashboard's own local button-triggered simulation
+  (`changeState()` calls from its embedded Quick Blessings/offering
+  panel, close-hold pad simulation, etc.) - those never fire from a
+  physical wish-pad touch and don't read `/api/state` at all, so they
+  were out of scope for this fix and touching them would have been
+  unrelated risk.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

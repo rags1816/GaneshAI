@@ -1026,7 +1026,12 @@ void handleWebRoutes() {
       case STATE_STANDBY: stateStr = "STANDBY"; break;
       case STATE_AMBIENT: stateStr = "AMBIENT"; break;
       case STATE_MANTRA_ACTIVE: stateStr = "MANTRA_ACTIVE"; break;
-      case STATE_FEET_ACTIVE: stateStr = "FEET_ACTIVE"; break;
+      // r127: report a wish-pad blessing as its own "WISH_ACTIVE" instead
+      // of "FEET_ACTIVE" - the dashboard previously couldn't tell a real
+      // feet touch apart from a wish-pad blessing, same underlying bug as
+      // the OLED tag fixed in r126, just on the dashboard side instead of
+      // the physical display.
+      case STATE_FEET_ACTIVE: stateStr = wishPadBlessingActive ? "WISH_ACTIVE" : "FEET_ACTIVE"; break;
       case STATE_AARTI: stateStr = "AARTI_MODE"; break;
       case STATE_TEMPLE_CLOSED: stateStr = "TEMPLE_CLOSED"; break;
       default: stateStr = "STANDBY"; break;
