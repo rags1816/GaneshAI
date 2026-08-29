@@ -678,6 +678,17 @@ reasoning survives even when the git log scrolls out of context.
   never matched anything and the panel silently kept showing stale info
   from whatever last matched. New `mouseChantTracksJS` (mouse-back's own
   JS list, never existed before) added to that lookup.
+- **r140** - Device Health's crash line ("Crashed near stage N") now
+  appends a friendly description of what stage N actually is, per direct
+  request ("need to know in the dashboard itself when these stages
+  appear what do they actually mean") - new `crashStageLabel()` in
+  `web_dashboard.h`/`index.html` mirrors exactly where `lastStage` is set
+  in `GanapatiAI.ino`'s `loop()`: 1=web server/Wi-Fi/health checks,
+  2=reading touch/PIR sensors, 3=state machine update, 4=LED ring/eye
+  animation, 5=OLED draw, 0=still inside `setup()` itself. Display-only -
+  no firmware change, `/api/health`'s `bootCrashedStage` field already
+  carried this number, it just wasn't explained anywhere the admin could
+  see it.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

@@ -3948,6 +3948,22 @@ var QRCode;
             return h > 0 ? (h + 'h ' + m + 'm') : (m + 'm');
         }
 
+        // r140: friendly description for the crash tracer's numbered
+        // stages, so "Crashed near stage 1" means something on sight
+        // instead of needing to go read loop() in the .ino - matches
+        // exactly where lastStage is set in GanapatiAI.ino's loop().
+        function crashStageLabel(stage) {
+            switch (stage) {
+                case 0: return "boot (setup() itself, before the main loop started)";
+                case 1: return "web server / Wi-Fi & health checks";
+                case 2: return "reading touch & PIR sensors";
+                case 3: return "state machine update";
+                case 4: return "LED ring & eye animation";
+                case 5: return "OLED display draw";
+                default: return "unknown stage";
+            }
+        }
+
         function pollDeviceHealth() {
             fetch('/api/health').then(r => r.json()).then(data => {
                 const wifiEl = document.getElementById('health-wifi');
@@ -3965,7 +3981,11 @@ var QRCode;
                         : (data.offlineFallbackCount + 'x so far, last ' + Math.round(data.lastOfflineFallbackAgoSec / 60) + ' min ago');
                 }
                 const crashEl = document.getElementById('health-crash');
-                if (crashEl) crashEl.textContent = data.bootCrashedLastRun ? ('Crashed near stage ' + data.bootCrashedStage) : 'Clean boot';
+                if (crashEl) {
+                    crashEl.textContent = data.bootCrashedLastRun
+                        ? ('Crashed near stage ' + data.bootCrashedStage + ' - ' + crashStageLabel(data.bootCrashedStage))
+                        : 'Clean boot';
+                }
 
                 const playerEl = document.getElementById('health-player');
                 if (playerEl) playerEl.textContent = data.dfPlayerReady ? 'Ready' : 'Not detected';
