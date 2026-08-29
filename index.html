@@ -1612,7 +1612,7 @@ var QRCode;
         // Aarti indefinitely while nobody is around. Reset on every fresh wake.
         let aartiDoneThisWake = false;
         const AARTI_TRACK_FILE = "GaneshAarti.mp3";
-        const AARTI_FALLBACK_DURATION_MS = 206000; // r136: reverted r132 - GaneshAarti.mp3 alone (3:26), matches config.h's AARTI_DURATION
+        const AARTI_FALLBACK_DURATION_MS = 331520; // r137: GaneshAarti.mp3 (3:26) + Ganeshmantra8.mp3 (2:05) as one combined closing block, matches config.h's AARTI_DURATION
 
         // Temple Closed (Night Mode)
         const CLOSE_HOLD_MS = 15000;
@@ -1878,10 +1878,11 @@ var QRCode;
         ];
         let currentBlessingIndex = 0;
 
-        // r131/r136: kept in sync with GanapatiAI.ino's own mantraTracks[] -
+        // r131/r137: kept in sync with GanapatiAI.ino's own mantraTracks[] -
         // track 14's duration corrected to its real re-recorded length
-        // (102000ms, was 175730). Track 10 restored (r136 reverted r132's
-        // "plays after Aarti" change - it's a plain feet mantra again).
+        // (102000ms, was 175730), and track 10 removed entirely (r137
+        // reinstated r132 - it plays as part 2 of the closing Aarti block
+        // instead, confirmed as the intended pairing).
         const mantraTracks = [
             { file: "Ganapathimantrai.mp3", duration: 19121, dfTrack: 1 },
             { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
@@ -1891,7 +1892,6 @@ var QRCode;
             { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
             { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
             { file: "Ganeshmantra7.mp3", duration: 136700, dfTrack: 9 },
-            { file: "Ganeshmantra8.mp3", duration: 125520, dfTrack: 10 },
             { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
             { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
             { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
@@ -1908,7 +1908,7 @@ var QRCode;
         // is feet's own rotation pool, used for local simulation/lookup and
         // missing the mouse-back pool, Aarti, and bell entirely). Labels
         // and durations match GanapatiAI.ino's mantraTracks[]/
-        // mouseChantTracks[]/AARTI_TRACK/BELL_TRACK.
+        // mouseChantTracks[]/AARTI_TRACK/AARTI_PART2_TRACK/BELL_TRACK.
         const allPlayableTracks = [
             { track: 1,  label: "1 - Vakratundaya", duration: 19121 },
             { track: 2,  label: "2 - Feet mantra", duration: 28390 },
@@ -1919,13 +1919,13 @@ var QRCode;
             { track: 7,  label: "7 - Feet mantra", duration: 99600 },
             { track: 8,  label: "8 - Feet mantra", duration: 60160 },
             { track: 9,  label: "9 - Feet mantra", duration: 136700 },
-            { track: 10, label: "10 - Feet mantra", duration: 125520 },
+            { track: 10, label: "10 - Aarti part 2", duration: 125520 },
             { track: 11, label: "11 - Feet mantra", duration: 48800 },
             { track: 12, label: "12 - Feet mantra", duration: 27380 },
             { track: 13, label: "13 - Feet mantra", duration: 79280 },
             { track: 14, label: "14 - Feet mantra", duration: 102000 },
             { track: 15, label: "15 - Feet mantra", duration: 28400 },
-            { track: 16, label: "16 - Aarti", duration: 206000 },
+            { track: 16, label: "16 - Aarti part 1", duration: 206000 },
             { track: 17, label: "17 - Mouse-back chant", duration: 12000 },
             { track: 18, label: "18 - Offline blessing", duration: 19000 },
             { track: 19, label: "19 - Offline blessing", duration: 17000 },

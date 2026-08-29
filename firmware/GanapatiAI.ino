@@ -242,6 +242,12 @@ bool settleTouch(bool raw, bool &lastRead, unsigned long &changedAt, bool &stabl
 // /api/control?action=aarti with no close intent).
 bool aartiThenClose = false;
 
+// r137: true once the closing Aarti has switched from part 1
+// (AARTI_TRACK) to part 2 (AARTI_PART2_TRACK) - see triggerAarti() (resets
+// this false) and updateStateMachine()'s STATE_AARTI case (flips it true
+// and starts part 2 at exactly AARTI_PART1_DURATION elapsed, no gap).
+bool aartiPart2Playing = false;
+
 // Offering-approval pause/resume tracking (see triggerPersonalizedOffering()):
 // when a priest approves an offering while a mantra/Aarti is playing, the
 // interrupted state and its FULL original duration are remembered here so
@@ -277,9 +283,11 @@ struct MantraTrack {
   unsigned long duration;
 };
 
-// r136: reverted r132 - track 10 stays a plain feet mantra, not part of
-// Aarti. Back to 14 tracks.
-const int NUM_TRACKS = 14;
+// r137: reinstated r132 (reverted by r136, then confirmed by direct
+// correction that track 10 DOES belong with Aarti) - track 10 moved OUT
+// of feet's rotation and into the closing Aarti itself (see triggerAarti()'s
+// AARTI_PART2_TRACK below). 13 tracks, not 14.
+const int NUM_TRACKS = 13;
 MantraTrack mantraTracks[NUM_TRACKS] = {
   {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
@@ -289,7 +297,6 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {7, 99600},  // Ganeshmantra5.mp3 (99s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
   {9, 136700}, // Ganeshmantra7.mp3 (136s)
-  {10, 125520},// Ganeshmantra8.mp3 (125s)
   {11, 48800}, // Ganeshmantra9.mp3 (48s)
   {12, 27380}, // Ganeshmantra10.mp3 (27s)
   {13, 79280}, // Ganeshmantra11.mp3 (79s)
@@ -1920,6 +1927,17 @@ void updateStateMachine() {
         return;
       }
 
+      // r137: switch to part 2 (AARTI_PART2_TRACK) the instant part 1's
+      // own real length elapses - immediately back-to-back, no gap, so it
+      // reads as one continuous Aarti block rather than two separate
+      // chants. stateDuration itself is unchanged (AARTI_DURATION, the
+      // combined total) - only which physical track is sounding changes.
+      if (!aartiPart2Playing && (now - stateTimer >= AARTI_PART1_DURATION)) {
+        aartiPart2Playing = true;
+        currentPlayingTrack = AARTI_PART2_TRACK;
+        dfPlay(AARTI_PART2_TRACK);
+      }
+
       if (now - stateTimer > stateDuration) {
         dfStop();
         if (aartiThenClose) {
@@ -2992,8 +3010,8 @@ void triggerWishPadBlessing() {
 
 // r133: on-demand playback of any known track (dashboard's "Play Track"
 // control) - looks up the real duration from whichever pool the track
-// number belongs to (feet/mouse/Aarti) so the OLED/LED render something
-// coherent for the actual length instead of a generic guess.
+// number belongs to (feet/mouse/Aarti's two parts) so the OLED/LED render
+// something coherent for the actual length instead of a generic guess.
 // Reuses STATE_FEET_ACTIVE purely for its saffron/gold display and timer,
 // same as several other manual triggers - this is an admin convenience,
 // not a devotional touch flow, so it doesn't need its own SystemState.
@@ -3005,7 +3023,8 @@ void playTrackManually(int n) {
   for (int i = 0; i < NUM_MOUSE_TRACKS; i++) {
     if (mouseChantTracks[i].dfTrack == n) { duration = mouseChantTracks[i].duration; break; }
   }
-  if (n == AARTI_TRACK) duration = AARTI_DURATION;
+  if (n == AARTI_TRACK) duration = AARTI_PART1_DURATION;
+  else if (n == AARTI_PART2_TRACK) duration = AARTI_PART2_DURATION;
 
   dfStop();
   delay(50);
@@ -3045,11 +3064,16 @@ void triggerAarti() {
   // dedicated STATE_AARTI palette/intensity arc) visibly changes color
   // around it, instead of sitting static at the plain resting glow.
   // Same updateEyeLedBreathing() cycle as the mouse chant - it just
-  // keeps repeating for AARTI_DURATION's full ~3.5 minutes instead of 30s.
+  // keeps repeating for AARTI_DURATION's full combined duration (r137:
+  // both parts back to back) instead of 30s.
   if (EYE_LED_CONNECTED) {
     eyeLedBreathingActive = true;
     eyeLedBreathingStartMs = millis();
   }
+  // r137: reset here (not just where it's set true in updateStateMachine())
+  // so a fresh Aarti always starts on part 1 even if the previous one was
+  // interrupted by a touch mid-part-2.
+  aartiPart2Playing = false;
   currentPlayingTrack = AARTI_TRACK;
   dfPlay(AARTI_TRACK);
 }

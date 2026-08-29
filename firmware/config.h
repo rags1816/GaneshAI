@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r136"
+#define FIRMWARE_VERSION "2026-08-29-r137"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -371,11 +371,20 @@ struct ExperienceScene {
 
 // DFPlayer Mini SD card layout: all tracks live in a folder literally named
 // "mp3" (0001.mp3, 0002.mp3, ...) - played via playMp3Folder(), NOT play().
-#define BELL_TRACK       3      // Ganapathibell.mp3 - the only track not in mantraTracks[]/AARTI_TRACK
-#define AARTI_TRACK      16     // GaneshAarti.mp3 - the only track not in mantraTracks[]
-// r136: reverted r132's "track 10 plays after Aarti as one block" - direct
-// correction, track 10 stays a plain feet mantra, not part of Aarti.
-#define AARTI_DURATION   206000 // r130: real GaneshAarti.mp3 re-recorded shorter (3:26) - matches web dashboard's AARTI_FALLBACK_DURATION_MS
+#define BELL_TRACK       3      // Ganapathibell.mp3 - the only track not in mantraTracks[]/AARTI_TRACK/AARTI_PART2_TRACK
+#define AARTI_TRACK       16     // GaneshAarti.mp3 - part 1 of the closing Aarti
+#define AARTI_PART1_DURATION 206000 // real measured length of AARTI_TRACK (3:26) - triggerAarti() switches to part 2 exactly here, no gap
+// r137: reinstated r132/reverted r136 - confirmed by direct correction
+// that track 10 (Ganeshmantra8.mp3, formerly in mantraTracks[] - see its
+// own removal comment there) DOES belong with Aarti track 16, playing
+// immediately after it as one continuous ritual. AARTI_DURATION is the
+// COMBINED total (both parts back to back) - this is what setSystemState()
+// actually uses for STATE_AARTI, so the LED flame arc and eye breathing
+// pulse (both riding on the state's own duration) naturally stretch across
+// both parts as a single scripted sequence instead of resetting partway.
+#define AARTI_PART2_TRACK     10
+#define AARTI_PART2_DURATION  125520 // Ganeshmantra8.mp3's own measured length (2:05), matches mantraTracks[]'s old entry for this track
+#define AARTI_DURATION (AARTI_PART1_DURATION + AARTI_PART2_DURATION) // r130/r132/r137: matches web dashboard's AARTI_FALLBACK_DURATION_MS
 
 // r130: mouse-back's own rotating pool of chants - deliberately NOT
 // part of mantraTracks[]/feet's shared playlist, so the mouse-back pad

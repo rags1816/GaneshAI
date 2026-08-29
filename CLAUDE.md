@@ -637,6 +637,17 @@ reasoning survives even when the git log scrolls out of context.
   backend's 6-mood vocabulary, so there's no correct local value to map
   from; same known kind of preview-only gap as Temple Atmosphere's local
   preview (r116).
+- **r137 - REVERTED r136's track-10 change** - direct correction: track
+  10 DOES belong with Aarti track 16, playing immediately after it as
+  one continuous block - that was the original r132 intent all along,
+  and r136 misread a confirmation message as asking to undo it. Fully
+  reinstated: track 10 removed from `mantraTracks[]` again (13 tracks),
+  `AARTI_PART1_DURATION`/`AARTI_PART2_TRACK`/`AARTI_PART2_DURATION`/
+  `aartiPart2Playing` all restored, `AARTI_DURATION` back to the combined
+  total (331520ms), and `web_dashboard.h`/`index.html`'s JS mirrors
+  (`mantraTracks`, `AARTI_FALLBACK_DURATION_MS`, the "Play Track"
+  dropdown's 10/16 labels) corrected to match again. r136's OTHER change
+  (Pattern tied to blessing mood) was correct and is untouched by this.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
