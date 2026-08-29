@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r124"
+#define FIRMWARE_VERSION "2026-08-29-r125"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -119,11 +119,15 @@
 // Confirmed working on real hardware, then refined per direct feedback:
 // the eyes should never go fully dark - a dim, always-on glow, brighter
 // breathing pulse only while the mouse-back chant plays, settling back
-// to the same dim glow afterward (not off). EYE_LED_BASE_BRIGHTNESS is
-// that steady resting level; EYE_LED_PEAK_BRIGHTNESS is the top of the
-// breathing pulse (unchanged from before).
-#define EYE_LED_BASE_BRIGHTNESS  25
-#define EYE_LED_PEAK_BRIGHTNESS 180
+// to the same dim glow afterward (not off). r125: the ~10% resting glow
+// (old EYE_LED_BASE_BRIGHTNESS=25) read as too dim on the physical fiber
+// runs, so the resting glow is now raised to 80% - EYE_LED_BASE_BRIGHTNESS
+// is that steady resting level AND the top of the breathing pulse (the
+// eye is already at its brightest at rest, so a touch dips it down rather
+// than raising it further); EYE_LED_BREATH_LOW_BRIGHTNESS (10%) is the
+// bottom of that dip, replacing the old EYE_LED_PEAK_BRIGHTNESS role.
+#define EYE_LED_BASE_BRIGHTNESS       204
+#define EYE_LED_BREATH_LOW_BRIGHTNESS  26
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

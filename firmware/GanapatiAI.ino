@@ -1938,10 +1938,16 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // an instant cut, but ONLY when breathing was actually active - every
   // other state change (the vast majority) just confirms the PWM
   // channel is already at the resting level, no delay added.
+  // r125: EYE_LED_BASE_BRIGHTNESS is now the CEILING of the breathing
+  // dip (see config.h), so an interrupted chant is usually caught
+  // mid-dip, below base, not above it like the old low-base scheme -
+  // this fade now steps toward base in whichever direction is needed,
+  // instead of only ever fading downward.
   if (EYE_LED_CONNECTED) {
     if (eyeLedBreathingActive) {
       int startB = ledcRead(EYE_LED_PIN);
-      for (int b = startB; b > EYE_LED_BASE_BRIGHTNESS; b -= 15) {
+      int step = (startB > EYE_LED_BASE_BRIGHTNESS) ? -15 : 15;
+      for (int b = startB; (step < 0) ? (b > EYE_LED_BASE_BRIGHTNESS) : (b < EYE_LED_BASE_BRIGHTNESS); b += step) {
         ledcWrite(EYE_LED_PIN, b);
         delay(15);
       }
@@ -3083,51 +3089,54 @@ void playMoodClosurePulse(const char *mood) {
 // dashboard's /api/settings?atmosphere=N) - see its declaration for why
 // this deliberately isn't NTP/clock-driven.
 void applyAtmosphere(CRGB &c1, CRGB &c2) {
+  // r125: reported on hardware as "no visible effect" even while watching
+  // the correct AMBIENT window - the original blend amounts (100/180/120
+  // out of 255) left Theme of the Day's own colors dominant enough that
+  // the wash read as a minor tint, not a distinct atmosphere. Pushed all
+  // three well past the halfway point so the wash color clearly leads.
   switch (selectedAtmosphere) {
     case 1: // Evening - warm gold wash
-      c1 = blend(c1, CRGB(255, 180, 60), 100);
-      c2 = blend(c2, CRGB(255, 130, 20), 100);
+      c1 = blend(c1, CRGB(255, 180, 60), 200);
+      c2 = blend(c2, CRGB(255, 130, 20), 200);
       break;
     case 2: // Night - deep blue-teal, deliberately dim and quiet
-      c1 = blend(c1, CRGB(10, 40, 60), 180);
-      c2 = blend(c2, CRGB(10, 60, 70), 180);
+      c1 = blend(c1, CRGB(10, 40, 60), 220);
+      c2 = blend(c2, CRGB(10, 60, 70), 220);
       c1.nscale8(90);
       c2.nscale8(90);
       break;
     case 3: // Festival - vibrant gold+magenta wash, full energy
-      c1 = blend(c1, CRGB(255, 200, 0), 120);
-      c2 = blend(c2, CRGB(255, 0, 150), 120);
+      c1 = blend(c1, CRGB(255, 200, 0), 210);
+      c2 = blend(c2, CRGB(255, 0, 150), 210);
       break;
     default: // 0 = Day - Theme of the Day's own colors, unmodified
       break;
   }
 }
 
-// Mouse eye LED breathing - fades in (~800ms) then breathes gently
-// (~3s cycle) for as long as eyeLedBreathingActive stays true, using the
-// same single Green LED, no color change. Called every loop() pass
-// (see loop() above), same non-blocking pattern as animateLeds().
-// Rises from the resting EYE_LED_BASE_BRIGHTNESS glow (never from fully
-// dark) up to EYE_LED_PEAK_BRIGHTNESS (~70%, deliberately not full, so
-// it reads as a soft glow rather than a blinking indicator), then
-// breathes between those same two levels for as long as this chant
-// plays - settling back to the resting glow, not off, is handled by
-// setSystemState() once the chant ends.
+// Mouse eye LED breathing - breathes gently (~3s cycle) for as long as
+// eyeLedBreathingActive stays true, using the same single Green LED, no
+// color change. Called every loop() pass (see loop() above), same
+// non-blocking pattern as animateLeds().
+// r125: the resting glow (EYE_LED_BASE_BRIGHTNESS, 80%) is now the SAME
+// level as the top of this pulse, not its bottom - the eye is already at
+// its brightest when a touch starts the chant, so there's no ramp-up to
+// do; the pulse instead dips DOWN to EYE_LED_BREATH_LOW_BRIGHTNESS (10%)
+// and back up to the 80% resting level, repeating for as long as the
+// chant plays. The sine is phase-shifted (+PI/2) so brightness starts
+// and ends each 3s cycle exactly at the 80% resting level, with no jump
+// when breathing starts or when setSystemState() takes back over once
+// the chant ends.
 void updateEyeLedBreathing() {
   if (!EYE_LED_CONNECTED) return;
   if (!eyeLedBreathingActive) return;
   unsigned long elapsed = millis() - eyeLedBreathingStartMs;
-  uint8_t brightness;
-  const float lo = EYE_LED_BASE_BRIGHTNESS;
-  const float hi = EYE_LED_PEAK_BRIGHTNESS;
-  if (elapsed < 800) {
-    brightness = (uint8_t)(lo + (elapsed / 800.0f) * (hi - lo));
-  } else {
-    float phase = (elapsed - 800) / 3000.0f * 2.0f * PI;
-    float mid = (lo + hi) / 2.0f;
-    float amp = (hi - lo) / 2.0f;
-    brightness = (uint8_t)(mid + sinf(phase) * amp);
-  }
+  const float lo = EYE_LED_BREATH_LOW_BRIGHTNESS;
+  const float hi = EYE_LED_BASE_BRIGHTNESS;
+  float phase = (elapsed / 3000.0f) * 2.0f * PI + (PI / 2.0f);
+  float mid = (lo + hi) / 2.0f;
+  float amp = (hi - lo) / 2.0f;
+  uint8_t brightness = (uint8_t)(mid + sinf(phase) * amp);
   ledcWrite(EYE_LED_PIN, brightness);
 }
 

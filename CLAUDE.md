@@ -385,6 +385,27 @@ reasoning survives even when the git log scrolls out of context.
   (`index.html`/`web_dashboard.h`) got matching "MP3 player" / "LED
   ring" / "PIR" rows under Device Health. No firmware behavior changed
   - purely surfacing existing state, same read-only philosophy as r115.
+- **r125** - Two direct follow-up tweaks after live testing. (1) Temple
+  Atmosphere (r116) reported as "no visible effect" even when watching
+  the correct AMBIENT window - the wash's blend amounts (100-180 out of
+  255) left Theme of the Day's base colors dominant enough to read as a
+  faint tint; `applyAtmosphere()`'s Evening/Night/Festival blends all
+  pushed to 200-220 so the wash color clearly leads. (2) Mouse eye LED
+  resting glow raised from ~10% to 80% brightness per direct feedback
+  that it read as too dim on the physical fiber runs - the breathing
+  pulse during the mouse-back chant now dips DOWN from that 80% resting
+  level to a 10% low point and back, instead of rising up from a dim
+  10% base to a 70% peak. `EYE_LED_BASE_BRIGHTNESS` (now 204, was the
+  pulse's old low end) is the resting glow AND the pulse's ceiling;
+  new `EYE_LED_BREATH_LOW_BRIGHTNESS` (26) replaces the old
+  `EYE_LED_PEAK_BRIGHTNESS` as the pulse's floor.
+  `updateEyeLedBreathing()` rewritten to a single phase-shifted sine
+  (no separate 800ms linear ramp-in) since the resting level and the
+  pulse's ceiling are now the same value, so there's nothing to ramp up
+  to; and `setSystemState()`'s post-chant settle now steps toward the
+  base level in whichever direction is needed (previously only ever
+  faded downward, which no longer matches - an interrupted chant is
+  now usually caught mid-dip, below the resting level, not above it).
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
