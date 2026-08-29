@@ -1106,19 +1106,24 @@ void handleWebRoutes() {
   // is for a human to read, not for the firmware to act on unprompted.
   server.on("/api/health", HTTP_GET, []() {
     unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
-    char json[512];
+    char json[640];
     snprintf(json, sizeof(json),
       "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
       "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
       "\"offlineFallbackCount\":%lu,\"lastOfflineFallbackAgoSec\":%ld,"
-      "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d}",
+      "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d,"
+      "\"dfPlayerReady\":%s,\"ledConnected\":%s,\"ledEnabled\":%s,"
+      "\"pirConnected\":%s,\"pirEnabled\":%s}",
       (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
       millis() / 1000, ampReady ? "true" : "false",
       blessingTaskActive ? "true" : "false", blessingTaskMs,
       offlineFallbackCount,
       lastOfflineFallbackMs == 0 ? -1L : (long)((millis() - lastOfflineFallbackMs) / 1000),
-      bootCrashedLastRun ? "true" : "false", bootCrashedStage);
+      bootCrashedLastRun ? "true" : "false", bootCrashedStage,
+      dfPlayerReady ? "true" : "false",
+      LED_CONNECTED ? "true" : "false", ledEnabled ? "true" : "false",
+      PIR_CONNECTED ? "true" : "false", pirEnabled ? "true" : "false");
     server.send(200, "application/json", json);
   });
 

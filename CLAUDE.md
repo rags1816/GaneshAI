@@ -374,6 +374,17 @@ reasoning survives even when the git log scrolls out of context.
   `setup()`'s initial write and `setSystemState()`'s per-transition
   write both changed from 0 to the base level; `updateEyeLedBreathing()`
   now oscillates between base and peak instead of 0 and peak.
+- **r124** - Device Health dashboard panel (r115) expanded with MP3
+  player/LED ring/PIR status - it previously only surfaced Wi-Fi/heap/
+  amp/crash-tracer/offline-fallback fields, leaving three pieces of
+  already-tracked state (`dfPlayerReady`, `LED_CONNECTED`/`ledEnabled`,
+  `PIR_CONNECTED`/`pirEnabled`) invisible on the dashboard even though
+  the firmware already knew them. `/api/health`'s JSON gained
+  `dfPlayerReady`, `ledConnected`, `ledEnabled`, `pirConnected`,
+  `pirEnabled` (buffer widened 512->640 bytes); both dashboard copies
+  (`index.html`/`web_dashboard.h`) got matching "MP3 player" / "LED
+  ring" / "PIR" rows under Device Health. No firmware behavior changed
+  - purely surfacing existing state, same read-only philosophy as r115.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

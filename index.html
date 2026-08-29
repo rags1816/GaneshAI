@@ -904,6 +904,9 @@
             <div>Uptime: <span id="health-uptime" style="color:#fff;">-</span></div>
             <div>Free memory: <span id="health-heap" style="color:#fff;">-</span></div>
             <div>Amp: <span id="health-amp" style="color:#fff;">-</span></div>
+            <div>MP3 player: <span id="health-player" style="color:#fff;">-</span></div>
+            <div>LED ring: <span id="health-led" style="color:#fff;">-</span></div>
+            <div>PIR: <span id="health-pir" style="color:#fff;">-</span></div>
             <div>Offline fallback: <span id="health-offline" style="color:#fff;">-</span></div>
             <div>Last boot: <span id="health-crash" style="color:#fff;">-</span></div>
         </div>
@@ -3916,6 +3919,13 @@ var QRCode;
                 }
                 const crashEl = document.getElementById('health-crash');
                 if (crashEl) crashEl.textContent = data.bootCrashedLastRun ? ('Crashed near stage ' + data.bootCrashedStage) : 'Clean boot';
+
+                const playerEl = document.getElementById('health-player');
+                if (playerEl) playerEl.textContent = data.dfPlayerReady ? 'Ready' : 'Not detected';
+                const ledEl = document.getElementById('health-led');
+                if (ledEl) ledEl.textContent = !data.ledConnected ? 'Not connected' : (data.ledEnabled ? 'Enabled' : 'Disabled (admin toggle)');
+                const pirEl = document.getElementById('health-pir');
+                if (pirEl) pirEl.textContent = !data.pirConnected ? 'Not connected' : (data.pirEnabled ? 'Enabled' : 'Disabled (admin toggle)');
             }).catch(() => {});
         }
         if (isPhysicalESP) {
