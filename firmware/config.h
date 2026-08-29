@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-29-r137"
+#define FIRMWARE_VERSION "2026-08-29-r138"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -128,6 +128,10 @@
 // bottom of that dip, replacing the old EYE_LED_PEAK_BRIGHTNESS role.
 #define EYE_LED_BASE_BRIGHTNESS       204
 #define EYE_LED_BREATH_LOW_BRIGHTNESS  26
+// r138: reported on hardware as "very gradual" at the original 3000ms full
+// cycle - halved so the 80%->10%->80% dip reads as a clear pulse instead
+// of a slow drift. Raise this back toward 3000 if it now feels too fast.
+#define EYE_LED_BREATH_PERIOD_MS     1500
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

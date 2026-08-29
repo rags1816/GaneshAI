@@ -2173,9 +2173,15 @@ var QRCode;
 
         // Update UI Text & Labels
         function updateUI() {
-            document.getElementById('state-val').innerText = state;
             const stateLbl = document.getElementById('oled-state-lbl');
             const stateVal = document.getElementById('state-val');
+            // r138: "System State" card used to show the raw state machine
+            // name (e.g. "MANTRA_ACTIVE" for a mouse-back touch) even
+            // though the simulated OLED label right above it already used
+            // the friendly oledStateTag() wording - reported directly as
+            // the physical OLED correctly saying "MOUSE BACK" while this
+            // card still said "mantra active". Both now use the same tag.
+            stateVal.innerText = oledStateTag(state);
 
             if (state === "STANDBY") {
                 stateLbl.innerText = "[STANDBY]";

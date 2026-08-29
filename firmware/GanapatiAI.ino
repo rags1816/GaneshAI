@@ -3275,26 +3275,27 @@ void applyAtmosphere(CRGB &c1, CRGB &c2) {
   }
 }
 
-// Mouse eye LED breathing - breathes gently (~3s cycle) for as long as
-// eyeLedBreathingActive stays true, using the same single Green LED, no
-// color change. Called every loop() pass (see loop() above), same
-// non-blocking pattern as animateLeds().
+// Mouse eye LED breathing - breathes gently (EYE_LED_BREATH_PERIOD_MS per
+// cycle) for as long as eyeLedBreathingActive stays true, using the same
+// single Green LED, no color change. Called every loop() pass (see loop()
+// above), same non-blocking pattern as animateLeds().
 // r125: the resting glow (EYE_LED_BASE_BRIGHTNESS, 80%) is now the SAME
 // level as the top of this pulse, not its bottom - the eye is already at
 // its brightest when a touch starts the chant, so there's no ramp-up to
 // do; the pulse instead dips DOWN to EYE_LED_BREATH_LOW_BRIGHTNESS (10%)
 // and back up to the 80% resting level, repeating for as long as the
 // chant plays. The sine is phase-shifted (+PI/2) so brightness starts
-// and ends each 3s cycle exactly at the 80% resting level, with no jump
+// and ends each cycle exactly at the 80% resting level, with no jump
 // when breathing starts or when setSystemState() takes back over once
-// the chant ends.
+// the chant ends. r138: period halved (3000ms -> EYE_LED_BREATH_PERIOD_MS,
+// 1500ms) after direct feedback that the dip read as "very gradual".
 void updateEyeLedBreathing() {
   if (!EYE_LED_CONNECTED) return;
   if (!eyeLedBreathingActive) return;
   unsigned long elapsed = millis() - eyeLedBreathingStartMs;
   const float lo = EYE_LED_BREATH_LOW_BRIGHTNESS;
   const float hi = EYE_LED_BASE_BRIGHTNESS;
-  float phase = (elapsed / 3000.0f) * 2.0f * PI + (PI / 2.0f);
+  float phase = (elapsed / (float)EYE_LED_BREATH_PERIOD_MS) * 2.0f * PI + (PI / 2.0f);
   float mid = (lo + hi) / 2.0f;
   float amp = (hi - lo) / 2.0f;
   uint8_t brightness = (uint8_t)(mid + sinf(phase) * amp);

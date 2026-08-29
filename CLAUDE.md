@@ -648,6 +648,18 @@ reasoning survives even when the git log scrolls out of context.
   (`mantraTracks`, `AARTI_FALLBACK_DURATION_MS`, the "Play Track"
   dropdown's 10/16 labels) corrected to match again. r136's OTHER change
   (Pattern tied to blessing mood) was correct and is untouched by this.
+- **r138** - Two direct follow-ups after live testing. (1) The dashboard's
+  "System State" card was still showing the raw state machine name (e.g.
+  "MANTRA_ACTIVE" for a mouse-back touch) even though the simulated OLED
+  label right above it already used r127's friendly `oledStateTag()`
+  wording - reported directly as the physical OLED correctly saying
+  "MOUSE BACK" (r126) while the dashboard card still said "mantra
+  active", the exact confusion r126/r127 were meant to fix. `updateUI()`
+  now applies `oledStateTag()` to both. (2) The mouse eye's breathing
+  dip (80%->10%->80%, r125) reported as "very gradual" on hardware - the
+  cycle period is halved, new `EYE_LED_BREATH_PERIOD_MS` (1500ms, was a
+  hardcoded 3000) in config.h so it's a named, easily-tunable constant
+  rather than a magic number buried in `updateEyeLedBreathing()`.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
