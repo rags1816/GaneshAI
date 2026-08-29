@@ -333,8 +333,10 @@ reasoning survives even when the git log scrolls out of context.
   device on almost every interaction - matching exactly which things
   broke (everything routing through `setSystemState()`) and which
   didn't (the wish pad's flow, which doesn't route through it the same
-  way). Not yet confirmed - diagnose the actual PWM/GPIO16 behavior on a
-  SPARE board, never the live device, before attempting to re-enable.
+  way). Not yet confirmed at the time - diagnose the actual PWM/GPIO16
+  behavior on a SPARE board, never the live device, before attempting to
+  re-enable. **Superseded by r121's finding below: this theory was
+  wrong.**
 - **r121** - Re-enabled `EYE_LED_CONNECTED` for a clean re-test: after
   r120's rollback, the user found the ESP32 itself was not fully seated
   in its socket, likely from handling during the r119 flash - a real,
@@ -343,7 +345,12 @@ reasoning survives even when the git log scrolls out of context.
   r120's ledcAttach()/GPIO16 crash theory. Testing with confirmed-solid
   seating is the only way to tell which was actually true. If the same
   breakage recurs even with solid seating, r120's theory is confirmed -
-  revert to false immediately.
+  revert to false immediately. **Confirmed on hardware immediately after
+  reflashing: all pads, PIR, LED ring, OLED, DFPlayer, and the mouse eye
+  breathing animation all work correctly with solid seating.** r120's
+  ledcAttach()/GPIO16 crash theory was wrong - the loose board seating
+  was the real and only cause of r119's breakage. The eye LED PWM code
+  from r118/r119 was fine all along and needed no further changes.
 - **r122** - Investigating a separate report: PIR wakes the temple (state
   moves to AMBIENT) but the bell doesn't ring, seen on both r119 and
   r120 - so not just a symptom of r119's crash. The PIR-wake branch in
@@ -354,7 +361,9 @@ reasoning survives even when the git log scrolls out of context.
   branch fires at all versus firing but the bell command itself failing
   - existing PIR diagnostics (the "MOTION (line driven HIGH)" / "NOISE"
   verdict) already confirm whether the raw sensor is read correctly,
-  this fills the gap after that.
+  this fills the gap after that. **Confirmed working after reflashing
+  with solid board seating** - same root cause as r120/r121's broader
+  investigation, not a separate PIR-specific bug.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
