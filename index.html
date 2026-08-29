@@ -1899,6 +1899,26 @@ var QRCode;
             { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
         ];
 
+        // r139: separate list for mouse-back's own pool (never had a JS
+        // mirror at all before this) - real bug found while investigating
+        // a direct report that "the mantra number for the same mantra is
+        // different": the Now Playing sync below only ever searched
+        // mantraTracks (feet's list), so a mouse-back touch's real track
+        // number (17/21-29) never matched anything and the panel just
+        // kept showing whatever was last correctly matched, stale.
+        const mouseChantTracksJS = [
+            { file: "0017.mp3", duration: 12000, dfTrack: 17 },
+            { file: "0021.mp3", duration: 39000, dfTrack: 21 },
+            { file: "0022.mp3", duration: 239000, dfTrack: 22 },
+            { file: "0023.mp3", duration: 21000, dfTrack: 23 },
+            { file: "0024.mp3", duration: 88000, dfTrack: 24 },
+            { file: "0025.mp3", duration: 102000, dfTrack: 25 },
+            { file: "0026.mp3", duration: 45000, dfTrack: 26 },
+            { file: "0027.mp3", duration: 86000, dfTrack: 27 },
+            { file: "0028.mp3", duration: 127000, dfTrack: 28 },
+            { file: "0029.mp3", duration: 253000, dfTrack: 29 }
+        ];
+
         let mouseStep = 0;
         let feetStep = 0;
         const globalMantraPlayer = new Audio();
@@ -3865,9 +3885,15 @@ var QRCode;
                 // /api/state's "track" field (the firmware's actual DFPlayer
                 // folder-track number) is the fix - look up the matching entry
                 // and light up the Song Library / Now Playing panel correctly
-                // regardless of who triggered it.
+                // regardless of who triggered it. r139: mouseChantTracksJS
+                // added to this lookup - MANTRA_ACTIVE (mouse-back) track
+                // numbers (17/21-29) never matched anything in mantraTracks
+                // (feet's list only), so the panel silently never updated
+                // for a mouse-back touch at all, real bug found while
+                // investigating a direct "mantra number is different" report.
                 if ((data.state === "MANTRA_ACTIVE" || data.state === "FEET_ACTIVE") && data.track) {
-                    const physicalTrack = mantraTracks.find(t => t.dfTrack === data.track);
+                    const physicalTrack = mantraTracks.find(t => t.dfTrack === data.track) ||
+                                           mouseChantTracksJS.find(t => t.dfTrack === data.track);
                     if (physicalTrack && nowPlayingFile !== physicalTrack.file) {
                         startNowPlaying(physicalTrack.file, physicalTrack.duration);
                     }

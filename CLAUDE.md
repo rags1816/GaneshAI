@@ -660,6 +660,24 @@ reasoning survives even when the git log scrolls out of context.
   cycle period is halved, new `EYE_LED_BREATH_PERIOD_MS` (1500ms, was a
   hardcoded 3000) in config.h so it's a named, easily-tunable constant
   rather than a magic number buried in `updateEyeLedBreathing()`.
+- **r139** - Two direct follow-ups after live testing surfaced a real
+  bug and a real request in the mouse-back chant pool. (1) Reported as
+  "track 17 doesn't come up" and "want 17/21/23/26 more frequent than
+  the rest" - a plain round-robin through all 10 mouse tracks meant
+  each one, including 17, only recurred once every 10 touches, easy to
+  mistake for "never". New `mouseChantSequence[]` (14 entries) is a
+  weighted PLAY ORDER over the existing `mouseChantTracks[]` pool -
+  17/21/23/26 each appear twice per 14-touch cycle, the other six once,
+  interleaved so nothing repeats back-to-back. `mouseChantTracks[]`
+  itself is untouched and still the canonical (track, duration) list
+  other code (like `playTrackManually()`) looks up by track number.
+  (2) Real, separate bug found while investigating a "the mantra number
+  for the same mantra is different" report: the dashboard's Now Playing
+  sync only ever searched `mantraTracks` (feet's JS list) for
+  `data.track`, so a mouse-back touch's real track number (17/21-29)
+  never matched anything and the panel silently kept showing stale info
+  from whatever last matched. New `mouseChantTracksJS` (mouse-back's own
+  JS list, never existed before) added to that lookup.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

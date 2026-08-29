@@ -307,19 +307,36 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
 // r130: mouse-back's own rotating pool, separate from mantraTracks[]
 // above - see config.h's comment for the full history. Real measured
 // durations from the actual SD card file listing (MM:SS resolution,
-// converted to ms) - not placeholders.
+// converted to ms) - not placeholders. This is the canonical unique
+// list (still used for duration lookups - e.g. playTrackManually()) -
+// the actual PLAY ORDER/frequency is mouseChantSequence[] below, not a
+// plain walk through this array.
 const int NUM_MOUSE_TRACKS = 10;
 MantraTrack mouseChantTracks[NUM_MOUSE_TRACKS] = {
-  {17, 12000},  // Ganapati Bappa Morya... + short Vakratunda Maha Kaya (0:12)
-  {21, 39000},  // 0:39
-  {22, 239000}, // 3:59 - unusually long next to the rest of this pool; worth double-checking it's the intended file
-  {23, 21000},  // 0:21
-  {24, 88000},  // 1:28
-  {25, 102000}, // 1:42
-  {26, 45000},  // 0:45
-  {27, 86000},  // 1:26
-  {28, 127000}, // 2:07
-  {29, 253000}  // 4:13
+  {17, 12000},  // index 0 - Ganapati Bappa Morya... + short Vakratunda Maha Kaya (0:12)
+  {21, 39000},  // index 1 - 0:39
+  {22, 239000}, // index 2 - 3:59 - unusually long next to the rest of this pool; worth double-checking it's the intended file
+  {23, 21000},  // index 3 - 0:21
+  {24, 88000},  // index 4 - 1:28
+  {25, 102000}, // index 5 - 1:42
+  {26, 45000},  // index 6 - 0:45
+  {27, 86000},  // index 7 - 1:26
+  {28, 127000}, // index 8 - 2:07
+  {29, 253000}  // index 9 - 4:13
+};
+
+// r139: weighted play order for mouseChantTracks[] above, per direct
+// request that tracks 17/21/23/26 show up more often than the other six
+// - a plain round-robin through all 10 unique tracks meant each one,
+// including 17, only recurred once every 10 touches, which read as
+// "17 never comes up" even though it deterministically does. Values are
+// INDICES into mouseChantTracks[] (0=17, 1=21, 2=22, 3=23, 4=24, 5=25,
+// 6=26, 7=27, 8=28, 9=29); 17/21/23/26 each appear twice per 14-touch
+// cycle, the rest once, interleaved so the same track never repeats
+// back-to-back.
+const int NUM_MOUSE_SEQUENCE = 14;
+const int mouseChantSequence[NUM_MOUSE_SEQUENCE] = {
+  0, 1, 2, 3, 4, 6, 0, 5, 1, 7, 3, 8, 6, 9
 };
 
 // Dynamic Playlist Counters - feet touch and mouse-back each rotate
@@ -2125,12 +2142,14 @@ void triggerMantra() {
   feetDisplayLocked = true;
   feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
 
-  // r129: rotates through mouseChantTracks[] - mouse-back's own small
-  // pool, separate from mantraTracks[] (feet's shared playlist). r105
-  // had made this a single fixed chant instead of a rotation; r129
-  // reintroduces rotation now that more than one mouse-specific chant
-  // exists, using its own mouseStep counter so it never touches feetStep.
-  int trackIndex = mouseStep;
+  // r129/r139: rotates through mouseChantSequence[] - a weighted play
+  // order over mouseChantTracks[] (mouse-back's own small pool, separate
+  // from mantraTracks[]/feet's shared playlist), using its own mouseStep
+  // counter so it never touches feetStep. r105 had made this a single
+  // fixed chant instead of a rotation; r129 reintroduced rotation, r139
+  // made it weighted per direct request that some tracks show up more
+  // often than others.
+  int trackIndex = mouseChantSequence[mouseStep];
   int dfTrack = mouseChantTracks[trackIndex].dfTrack;
   unsigned long duration = mouseChantTracks[trackIndex].duration;
 
@@ -2160,7 +2179,7 @@ void triggerMantra() {
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
 
-  mouseStep = (mouseStep + 1) % NUM_MOUSE_TRACKS;
+  mouseStep = (mouseStep + 1) % NUM_MOUSE_SEQUENCE;
 }
 
 void triggerFeetMantra() {
