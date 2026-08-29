@@ -613,6 +613,30 @@ reasoning survives even when the git log scrolls out of context.
   should link to (a specific Theme? the blessing mood palette used
   elsewhere? something else entirely) still needs to be decided before
   implementing.
+- **r136** - Two direct follow-ups, closing out the open questions from
+  r135. (1) Reverted r132 entirely - track 10 (Ganeshmantra8.mp3) is
+  back in feet's `mantraTracks[]` rotation (14 tracks again) and no
+  longer plays after the closing Aarti; `AARTI_DURATION` is back to just
+  `AARTI_TRACK`'s own real length (206000ms). `AARTI_PART1_DURATION`/
+  `AARTI_PART2_TRACK`/`AARTI_PART2_DURATION`/`aartiPart2Playing` all
+  removed; `web_dashboard.h`/`index.html`'s JS mirrors (the `mantraTracks`
+  array, `AARTI_FALLBACK_DURATION_MS`, the "Play Track" dropdown's
+  labels for 10/16) corrected to match. Direct, unambiguous correction -
+  "good, no track 10 after track 16." (2) Answered the open question
+  from r135: "AMBIENT LED Pattern" is now tied to the last real
+  blessing's mood (new `moodPatternFor()`, reusing the same 6 moods as
+  `moodColorsFor()`) instead of sitting as a third fully independent
+  manual pick - joyful->Rainbow Dream, hopeful->Peacock Wave, comforting/
+  peaceful->Golden Aura, empowering->Circuit Pulse, grateful->Diya
+  Flicker. Falls back to the manual dropdown only when no blessing has
+  set `currentMoodTag` yet (fresh boot, or after whatever last cleared
+  it). Deliberately NOT mirrored in the dashboard's own local LED
+  preview - the browser's local mood classifier (`BLESSING_MOODS`, a
+  separate 4-mood keyword-matching approximation for the local Quick-
+  Blessings simulation) uses different names entirely from the real
+  backend's 6-mood vocabulary, so there's no correct local value to map
+  from; same known kind of preview-only gap as Temple Atmosphere's local
+  preview (r116).
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

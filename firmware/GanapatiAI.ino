@@ -242,12 +242,6 @@ bool settleTouch(bool raw, bool &lastRead, unsigned long &changedAt, bool &stabl
 // /api/control?action=aarti with no close intent).
 bool aartiThenClose = false;
 
-// r132: true once the closing Aarti has switched from part 1
-// (AARTI_TRACK) to part 2 (AARTI_PART2_TRACK) - see triggerAarti() (resets
-// this false) and updateStateMachine()'s STATE_AARTI case (flips it true
-// and starts part 2 at exactly AARTI_PART1_DURATION elapsed, no gap).
-bool aartiPart2Playing = false;
-
 // Offering-approval pause/resume tracking (see triggerPersonalizedOffering()):
 // when a priest approves an offering while a mantra/Aarti is playing, the
 // interrupted state and its FULL original duration are remembered here so
@@ -283,12 +277,9 @@ struct MantraTrack {
   unsigned long duration;
 };
 
-// r132: 13 tracks now, not 14 - track 10 (Ganeshmantra8.mp3) moved OUT of
-// feet's rotation and into the closing Aarti itself (see triggerAarti()'s
-// AARTI_PART2_TRACK below) per direct request that it run as the second
-// half of "one block of aarti" - playing it again separately on a feet
-// touch would be redundant now that it's part of that same ritual.
-const int NUM_TRACKS = 13;
+// r136: reverted r132 - track 10 stays a plain feet mantra, not part of
+// Aarti. Back to 14 tracks.
+const int NUM_TRACKS = 14;
 MantraTrack mantraTracks[NUM_TRACKS] = {
   {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
@@ -298,6 +289,7 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {7, 99600},  // Ganeshmantra5.mp3 (99s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
   {9, 136700}, // Ganeshmantra7.mp3 (136s)
+  {10, 125520},// Ganeshmantra8.mp3 (125s)
   {11, 48800}, // Ganeshmantra9.mp3 (48s)
   {12, 27380}, // Ganeshmantra10.mp3 (27s)
   {13, 79280}, // Ganeshmantra11.mp3 (79s)
@@ -626,6 +618,7 @@ void playOfflineBlessingFallback(const String &lang);
 void playTrackManually(int n);
 ExperienceScene getCurrentScene();
 bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
+int moodPatternFor(const char *mood);
 void playMoodClosurePulse(const char *mood);
 void updateEyeLedBreathing();
 
@@ -1927,17 +1920,6 @@ void updateStateMachine() {
         return;
       }
 
-      // r132: switch to part 2 (AARTI_PART2_TRACK) the instant part 1's
-      // own real length elapses - immediately back-to-back, no gap, so it
-      // reads as one continuous Aarti block rather than two separate
-      // chants. stateDuration itself is unchanged (AARTI_DURATION, the
-      // combined total) - only which physical track is sounding changes.
-      if (!aartiPart2Playing && (now - stateTimer >= AARTI_PART1_DURATION)) {
-        aartiPart2Playing = true;
-        currentPlayingTrack = AARTI_PART2_TRACK;
-        dfPlay(AARTI_PART2_TRACK);
-      }
-
       if (now - stateTimer > stateDuration) {
         dfStop();
         if (aartiThenClose) {
@@ -3010,8 +2992,8 @@ void triggerWishPadBlessing() {
 
 // r133: on-demand playback of any known track (dashboard's "Play Track"
 // control) - looks up the real duration from whichever pool the track
-// number belongs to (feet/mouse/Aarti's two parts) so the OLED/LED render
-// something coherent for the actual length instead of a generic guess.
+// number belongs to (feet/mouse/Aarti) so the OLED/LED render something
+// coherent for the actual length instead of a generic guess.
 // Reuses STATE_FEET_ACTIVE purely for its saffron/gold display and timer,
 // same as several other manual triggers - this is an admin convenience,
 // not a devotional touch flow, so it doesn't need its own SystemState.
@@ -3023,8 +3005,7 @@ void playTrackManually(int n) {
   for (int i = 0; i < NUM_MOUSE_TRACKS; i++) {
     if (mouseChantTracks[i].dfTrack == n) { duration = mouseChantTracks[i].duration; break; }
   }
-  if (n == AARTI_TRACK) duration = AARTI_PART1_DURATION;
-  else if (n == AARTI_PART2_TRACK) duration = AARTI_PART2_DURATION;
+  if (n == AARTI_TRACK) duration = AARTI_DURATION;
 
   dfStop();
   delay(50);
@@ -3064,17 +3045,11 @@ void triggerAarti() {
   // dedicated STATE_AARTI palette/intensity arc) visibly changes color
   // around it, instead of sitting static at the plain resting glow.
   // Same updateEyeLedBreathing() cycle as the mouse chant - it just
-  // keeps repeating for AARTI_DURATION's full combined duration (r132:
-  // both parts back to back) instead of 30s.
+  // keeps repeating for AARTI_DURATION's full ~3.5 minutes instead of 30s.
   if (EYE_LED_CONNECTED) {
     eyeLedBreathingActive = true;
     eyeLedBreathingStartMs = millis();
   }
-  // r132: reset here (not just where it's set true below) so a fresh
-  // Aarti always starts on part 1 even if the previous one was
-  // interrupted by a touch mid-part-2 - see updateStateMachine()'s
-  // STATE_AARTI case for where this flips true and starts part 2.
-  aartiPart2Playing = false;
   currentPlayingTrack = AARTI_TRACK;
   dfPlay(AARTI_TRACK);
 }
@@ -3198,6 +3173,26 @@ bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2) {
     return false;
   }
   return true;
+}
+
+// r136: ties the AMBIENT ring's motion pattern to the last real blessing's
+// mood, instead of Pattern sitting as a third fully independent manual
+// pick alongside Theme/Atmosphere - direct follow-up after discussing
+// that all three only ever affect the ring during the same narrow
+// AMBIENT window. Reuses the same 6 moods as moodColorsFor() just above
+// (see its own comment for why these six specifically); called from
+// animateLeds() only when currentMoodTag is actually set - a fresh boot
+// or a state that clears the tag (a plain mantra/feet touch, an offering
+// resuming) falls back to the manual "AMBIENT LED Pattern" dropdown
+// instead, same as before this existed.
+int moodPatternFor(const char *mood) {
+  if (strcmp(mood, "joyful") == 0)     return 3; // Rainbow Dream - vibrant, playful
+  if (strcmp(mood, "hopeful") == 0)    return 0; // Peacock Wave - flowing, aspirational
+  if (strcmp(mood, "comforting") == 0) return 2; // Golden Aura - gentle breathing
+  if (strcmp(mood, "peaceful") == 0)   return 2; // Golden Aura - gentle breathing
+  if (strcmp(mood, "empowering") == 0) return 1; // Circuit Pulse - energetic
+  if (strcmp(mood, "grateful") == 0)   return 4; // Diya Flicker - warm devotional lamp
+  return 0; // unrecognized - Peacock Wave, same default as currentPattern's own default
 }
 
 // V2 Phase 3: LED scene phases - Closure. One gentle brightness pulse in
@@ -3360,12 +3355,17 @@ void animateLeds() {
 
     // Same state->pattern overrides as the dashboard: Feet touch always
     // shows Peacock Wave, Mantra/Aarti chanting always shows Circuit Pulse.
-    // Only AMBIENT actually reflects the user's chosen currentPattern.
+    // Only AMBIENT actually reflects a chosen pattern - r136: and even
+    // then, prefers the last real blessing's mood (moodPatternFor()) over
+    // the manual "AMBIENT LED Pattern" dropdown, which is now just the
+    // fallback for before any blessing has happened yet.
     int activePattern = currentPattern;
     if (currentState == STATE_FEET_ACTIVE) {
       activePattern = 0;
     } else if (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_AARTI) {
       activePattern = 1;
+    } else if (currentMoodTag[0] != '\0') {
+      activePattern = moodPatternFor(currentMoodTag);
     }
 
     for (int i = 0; i < NUM_LEDS; i++) {
