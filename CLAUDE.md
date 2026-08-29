@@ -344,6 +344,17 @@ reasoning survives even when the git log scrolls out of context.
   seating is the only way to tell which was actually true. If the same
   breakage recurs even with solid seating, r120's theory is confirmed -
   revert to false immediately.
+- **r122** - Investigating a separate report: PIR wakes the temple (state
+  moves to AMBIENT) but the bell doesn't ring, seen on both r119 and
+  r120 - so not just a symptom of r119's crash. The PIR-wake branch in
+  STATE_STANDBY had no Serial log at all (unlike the touch-wake branch's
+  "WAKE: bell first..."), so there was no way to tell from the Serial
+  Monitor whether it even runs. Added `"WAKE: PIR motion detected..."`
+  right where it calls `dfPlay(BELL_TRACK)`, to pin down whether this
+  branch fires at all versus firing but the bell command itself failing
+  - existing PIR diagnostics (the "MOTION (line driven HIGH)" / "NOISE"
+  verdict) already confirm whether the raw sensor is read correctly,
+  this fills the gap after that.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

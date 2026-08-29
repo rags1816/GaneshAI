@@ -1698,6 +1698,10 @@ void updateStateMachine() {
         // PIR correctly woke the temple (state, display, dashboard all
         // moved to AMBIENT) but the bell itself never sounded - matches
         // exactly what a dropped play command looks like.
+        // Unlike the touch-wake branch above, this had NO log line at
+        // all - reported again as "PIR wakes it but no bell" with no way
+        // to tell from Serial whether this branch even runs.
+        Serial.println("WAKE: PIR motion detected - playing bell, moving to AMBIENT");
         dfStop();
         delay(50);
         dfPlay(BELL_TRACK);
