@@ -1876,45 +1876,63 @@ var QRCode;
         ];
         let currentBlessingIndex = 0;
 
-        // r131/r137: kept in sync with GanapatiAI.ino's own mantraTracks[] -
-        // track 14's duration corrected to its real re-recorded length
-        // (102000ms, was 175730), and track 10 removed entirely (r137
-        // reinstated r132 - it plays as part 2 of the closing Aarti block
-        // instead, confirmed as the intended pairing).
+        // r131/r137/r142: kept in sync with GanapatiAI.ino's own
+        // mantraTracks[] - track 6 corrected to its real length (114000ms,
+        // was 155530), track 9 removed (now a "Song", over 2 minutes - see
+        // songTracksJS below), new tracks 33/34/36/38/39 added.
         const mantraTracks = [
             { file: "Ganapathimantrai.mp3", duration: 19121, dfTrack: 1 },
             { file: "Ganpathimantra1.mp3", duration: 28390, dfTrack: 2 },
             { file: "Ganapathimantra2.mp3", duration: 27360, dfTrack: 4 },
             { file: "Ganeshmantra3.mp3", duration: 55350, dfTrack: 5 },
-            { file: "Ganeshmantra4.mp3", duration: 155530, dfTrack: 6 },
+            { file: "Ganeshmantra4.mp3", duration: 114000, dfTrack: 6 },
             { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
             { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
-            { file: "Ganeshmantra7.mp3", duration: 136700, dfTrack: 9 },
             { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
             { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
             { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
             { file: "Ganeshmantra12.mp3", duration: 102000, dfTrack: 14 },
-            { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 }
+            { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 },
+            { file: "0033.mp3", duration: 13000, dfTrack: 33 },
+            { file: "0034.mp3", duration: 13000, dfTrack: 34 },
+            { file: "0036.mp3", duration: 14000, dfTrack: 36 },
+            { file: "0038.mp3", duration: 25000, dfTrack: 38 },
+            { file: "0039.mp3", duration: 16000, dfTrack: 39 }
         ];
 
-        // r139: separate list for mouse-back's own pool (never had a JS
-        // mirror at all before this) - real bug found while investigating
-        // a direct report that "the mantra number for the same mantra is
-        // different": the Now Playing sync below only ever searched
-        // mantraTracks (feet's list), so a mouse-back touch's real track
-        // number (17/21-29) never matched anything and the panel just
-        // kept showing whatever was last correctly matched, stale.
+        // r139/r142: separate list for mouse-back's own pool (never had a
+        // JS mirror at all before r139): real bug found while
+        // investigating a direct report that "the mantra number for the
+        // same mantra is different" - the Now Playing sync below only
+        // ever searched mantraTracks (feet's list), so a mouse-back
+        // touch's real track number never matched anything and the panel
+        // just kept showing whatever was last correctly matched, stale.
+        // r142: 22 moved out (now the Aarti alternate track), 28/29 moved
+        // out (over 2 minutes, now "Songs"), new tracks 30/31/35 added.
         const mouseChantTracksJS = [
             { file: "0017.mp3", duration: 12000, dfTrack: 17 },
             { file: "0021.mp3", duration: 39000, dfTrack: 21 },
-            { file: "0022.mp3", duration: 239000, dfTrack: 22 },
             { file: "0023.mp3", duration: 21000, dfTrack: 23 },
             { file: "0024.mp3", duration: 88000, dfTrack: 24 },
             { file: "0025.mp3", duration: 102000, dfTrack: 25 },
             { file: "0026.mp3", duration: 45000, dfTrack: 26 },
             { file: "0027.mp3", duration: 86000, dfTrack: 27 },
+            { file: "0030.mp3", duration: 64000, dfTrack: 30 },
+            { file: "0031.mp3", duration: 25000, dfTrack: 31 },
+            { file: "0035.mp3", duration: 26000, dfTrack: 35 }
+        ];
+
+        // r142: "Songs" - tracks over 2 minutes, excluded from both touch
+        // rotations (see the matching songTracks[] in GanapatiAI.ino and
+        // config.h's own comment for the full reasoning). Added to the Now
+        // Playing lookup below so a manually-played Song (via Play Track)
+        // still syncs correctly instead of leaving the panel stale.
+        const songTracksJS = [
+            { file: "0009.mp3", duration: 136700, dfTrack: 9 },
             { file: "0028.mp3", duration: 127000, dfTrack: 28 },
-            { file: "0029.mp3", duration: 253000, dfTrack: 29 }
+            { file: "0029.mp3", duration: 253000, dfTrack: 29 },
+            { file: "0032.mp3", duration: 186000, dfTrack: 32 },
+            { file: "0037.mp3", duration: 208000, dfTrack: 37 }
         ];
 
         let mouseStep = 0;
@@ -1927,36 +1945,48 @@ var QRCode;
         // missing the mouse-back pool, Aarti, and bell entirely). Labels
         // and durations match GanapatiAI.ino's mantraTracks[]/
         // mouseChantTracks[]/AARTI_TRACK/AARTI_PART2_TRACK/BELL_TRACK.
+        // r142: relabeled/reorganized for the Songs/Aarti-alternate
+        // reshuffle - see config.h's own comment for the full reasoning.
         const allPlayableTracks = [
             { track: 1,  label: "1 - Vakratundaya", duration: 19121 },
             { track: 2,  label: "2 - Feet mantra", duration: 28390 },
             { track: 3,  label: "3 - Bell", duration: 5000 },
             { track: 4,  label: "4 - Feet mantra", duration: 27360 },
             { track: 5,  label: "5 - Feet mantra", duration: 55350 },
-            { track: 6,  label: "6 - Feet mantra", duration: 155530 },
+            { track: 6,  label: "6 - Feet mantra", duration: 114000 },
             { track: 7,  label: "7 - Feet mantra", duration: 99600 },
             { track: 8,  label: "8 - Feet mantra", duration: 60160 },
-            { track: 9,  label: "9 - Feet mantra", duration: 136700 },
-            { track: 10, label: "10 - Aarti part 2", duration: 125520 },
+            { track: 9,  label: "9 - Song (long, 2:16, manual only)", duration: 136700 },
+            { track: 10, label: "10 - Aarti part 2 (after 16)", duration: 125520 },
             { track: 11, label: "11 - Feet mantra", duration: 48800 },
             { track: 12, label: "12 - Feet mantra", duration: 27380 },
             { track: 13, label: "13 - Feet mantra", duration: 79280 },
             { track: 14, label: "14 - Feet mantra", duration: 102000 },
             { track: 15, label: "15 - Feet mantra", duration: 28400 },
-            { track: 16, label: "16 - Aarti part 1", duration: 206000 },
+            { track: 16, label: "16 - Aarti part 1 (feet's last touch)", duration: 206000 },
             { track: 17, label: "17 - Mouse-back chant", duration: 12000 },
             { track: 18, label: "18 - Offline blessing", duration: 19000 },
             { track: 19, label: "19 - Offline blessing", duration: 17000 },
             { track: 20, label: "20 - Offline blessing", duration: 16000 },
             { track: 21, label: "21 - Mouse-back chant", duration: 39000 },
-            { track: 22, label: "22 - Mouse-back chant (long, 3:59)", duration: 239000 },
+            { track: 22, label: "22 - Aarti alternate (mouse-back's last touch)", duration: 239000 },
             { track: 23, label: "23 - Mouse-back chant", duration: 21000 },
             { track: 24, label: "24 - Mouse-back chant", duration: 88000 },
             { track: 25, label: "25 - Mouse-back chant", duration: 102000 },
             { track: 26, label: "26 - Mouse-back chant", duration: 45000 },
             { track: 27, label: "27 - Mouse-back chant", duration: 86000 },
-            { track: 28, label: "28 - Mouse-back chant", duration: 127000 },
-            { track: 29, label: "29 - Mouse-back chant (long, 4:13)", duration: 253000 }
+            { track: 28, label: "28 - Song (long, 2:07, manual only)", duration: 127000 },
+            { track: 29, label: "29 - Song (long, 4:13, manual only)", duration: 253000 },
+            { track: 30, label: "30 - Mouse-back chant", duration: 64000 },
+            { track: 31, label: "31 - Mouse-back chant", duration: 25000 },
+            { track: 32, label: "32 - Song (long, 3:06, manual only)", duration: 186000 },
+            { track: 33, label: "33 - Feet mantra", duration: 13000 },
+            { track: 34, label: "34 - Feet mantra", duration: 13000 },
+            { track: 35, label: "35 - Mouse-back chant", duration: 26000 },
+            { track: 36, label: "36 - Feet mantra", duration: 14000 },
+            { track: 37, label: "37 - Song (long, 3:28, manual only)", duration: 208000 },
+            { track: 38, label: "38 - Feet mantra", duration: 25000 },
+            { track: 39, label: "39 - Feet mantra", duration: 16000 }
         ];
 
         function populatePlayTrackSelect() {
@@ -3881,8 +3911,12 @@ var QRCode;
                 // for a mouse-back touch at all, real bug found while
                 // investigating a direct "mantra number is different" report.
                 if ((data.state === "MANTRA_ACTIVE" || data.state === "FEET_ACTIVE") && data.track) {
+                    // r142: songTracksJS added - a manually-played Song
+                    // (via Play Track) reports FEET_ACTIVE too, same as a
+                    // real feet touch, and needs to match here as well.
                     const physicalTrack = mantraTracks.find(t => t.dfTrack === data.track) ||
-                                           mouseChantTracksJS.find(t => t.dfTrack === data.track);
+                                           mouseChantTracksJS.find(t => t.dfTrack === data.track) ||
+                                           songTracksJS.find(t => t.dfTrack === data.track);
                     if (physicalTrack && nowPlayingFile !== physicalTrack.file) {
                         startNowPlaying(physicalTrack.file, physicalTrack.duration);
                     }

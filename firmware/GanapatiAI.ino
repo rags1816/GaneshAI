@@ -248,6 +248,14 @@ bool aartiThenClose = false;
 // and starts part 2 at exactly AARTI_PART1_DURATION elapsed, no gap).
 bool aartiPart2Playing = false;
 
+// r142: snapshotted once per Aarti in triggerAarti() from
+// lastTouchWasMouseBack, so a single Aarti's own behavior stays
+// consistent even though the global could only change via an
+// interrupting touch (which itself branches away from STATE_AARTI
+// entirely - see updateStateMachine()). true = playing AARTI_ALT_TRACK
+// alone; false = the normal AARTI_TRACK + AARTI_PART2_TRACK block.
+bool aartiUsingAltTrack = false;
+
 // Offering-approval pause/resume tracking (see triggerPersonalizedOffering()):
 // when a priest approves an offering while a mantra/Aarti is playing, the
 // interrupted state and its FULL original duration are remembered here so
@@ -283,66 +291,96 @@ struct MantraTrack {
   unsigned long duration;
 };
 
-// r137: reinstated r132 (reverted by r136, then confirmed by direct
-// correction that track 10 DOES belong with Aarti) - track 10 moved OUT
-// of feet's rotation and into the closing Aarti itself (see triggerAarti()'s
-// AARTI_PART2_TRACK below). 13 tracks, not 14.
-const int NUM_TRACKS = 13;
+// r142: track 9 moved out (2:16, now a "Song" - see songTracks[] below),
+// new tracks 33/34/36/38/39 added per direct request. Track 6's duration
+// corrected (was 155530/2:35, real length confirmed as 1:54/114000) -
+// 17 tracks total, not 13.
+const int NUM_TRACKS = 17;
 MantraTrack mantraTracks[NUM_TRACKS] = {
   {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
   {4, 27360},  // Ganapathimantra2.mp3 (27s)
   {5, 55350},  // Ganeshmantra3.mp3 (55s)
-  {6, 155530}, // Ganeshmantra4.mp3 (155s)
+  {6, 114000}, // Ganeshmantra4.mp3 - r142: corrected to real length (1:54), confirmed by user
   {7, 99600},  // Ganeshmantra5.mp3 (99s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
-  {9, 136700}, // Ganeshmantra7.mp3 (136s)
   {11, 48800}, // Ganeshmantra9.mp3 (48s)
   {12, 27380}, // Ganeshmantra10.mp3 (27s)
   {13, 79280}, // Ganeshmantra11.mp3 (79s)
   {14, 102000},// Ganeshmantra12.mp3 - r131: intentionally re-recorded shorter (1:42), confirmed by user
-  {15, 28400}  // Ganeshmantra13.mp3 (28s)
+  {15, 28400}, // Ganeshmantra13.mp3 (28s)
+  {33, 13000}, // r142: new (0:13)
+  {34, 13000}, // r142: new (0:13)
+  {36, 14000}, // r142: new (0:14)
+  {38, 25000}, // r142: new (0:25)
+  {39, 16000}  // r142: new (0:16)
 };
 
-// r130: mouse-back's own rotating pool, separate from mantraTracks[]
+// r130/r142: mouse-back's own rotating pool, separate from mantraTracks[]
 // above - see config.h's comment for the full history. Real measured
 // durations from the actual SD card file listing (MM:SS resolution,
 // converted to ms) - not placeholders. This is the canonical unique
 // list (still used for duration lookups - e.g. playTrackManually()) -
 // the actual PLAY ORDER/frequency is mouseChantSequence[] below, not a
-// plain walk through this array.
+// plain walk through this array. r142: 22 moved out (now AARTI_ALT_TRACK
+// in config.h), 28/29 moved out (over 2 minutes - now in songTracks[]
+// below), new tracks 30/31/35 added to keep this pool at 10.
 const int NUM_MOUSE_TRACKS = 10;
 MantraTrack mouseChantTracks[NUM_MOUSE_TRACKS] = {
   {17, 12000},  // index 0 - Ganapati Bappa Morya... + short Vakratunda Maha Kaya (0:12)
   {21, 39000},  // index 1 - 0:39
-  {22, 239000}, // index 2 - 3:59 - unusually long next to the rest of this pool; worth double-checking it's the intended file
-  {23, 21000},  // index 3 - 0:21
-  {24, 88000},  // index 4 - 1:28
-  {25, 102000}, // index 5 - 1:42
-  {26, 45000},  // index 6 - 0:45
-  {27, 86000},  // index 7 - 1:26
-  {28, 127000}, // index 8 - 2:07
-  {29, 253000}  // index 9 - 4:13
+  {23, 21000},  // index 2 - 0:21
+  {24, 88000},  // index 3 - 1:28
+  {25, 102000}, // index 4 - 1:42
+  {26, 45000},  // index 5 - 0:45
+  {27, 86000},  // index 6 - 1:26
+  {30, 64000},  // index 7 - r142: new (1:04)
+  {31, 25000},  // index 8 - r142: new (0:25)
+  {35, 26000}   // index 9 - r142: new (0:26)
 };
 
-// r139: weighted play order for mouseChantTracks[] above, per direct
+// r139/r142: weighted play order for mouseChantTracks[] above, per direct
 // request that tracks 17/21/23/26 show up more often than the other six
 // - a plain round-robin through all 10 unique tracks meant each one,
 // including 17, only recurred once every 10 touches, which read as
 // "17 never comes up" even though it deterministically does. Values are
-// INDICES into mouseChantTracks[] (0=17, 1=21, 2=22, 3=23, 4=24, 5=25,
-// 6=26, 7=27, 8=28, 9=29); 17/21/23/26 each appear twice per 14-touch
-// cycle, the rest once, interleaved so the same track never repeats
-// back-to-back.
+// INDICES into mouseChantTracks[] (0=17, 1=21, 2=23, 3=24, 4=25, 5=26,
+// 6=27, 7=30, 8=31, 9=35); 17/21/23/26 (indices 0/1/2/5) each appear
+// twice per 14-touch cycle, the rest once, interleaved so the same track
+// never repeats back-to-back. Recomputed for r142's new pool membership -
+// same weighting scheme, different indices since 22/28/29 left and
+// 30/31/35 joined.
 const int NUM_MOUSE_SEQUENCE = 14;
 const int mouseChantSequence[NUM_MOUSE_SEQUENCE] = {
-  0, 1, 2, 3, 4, 6, 0, 5, 1, 7, 3, 8, 6, 9
+  0, 1, 3, 2, 4, 5, 0, 6, 1, 7, 2, 8, 5, 9
+};
+
+// r142: "Songs" - any track over 2 minutes, deliberately excluded from
+// BOTH mantraTracks[]/mouseChantTracks[] above (see config.h's own
+// comment for the full reasoning: "too long with touch pads") - never
+// walked by feetStep/mouseStep, only ever looked up by number here for
+// playTrackManually()'s duration lookup when played on demand from the
+// dashboard's Play Track control.
+const int NUM_SONG_TRACKS = 5;
+MantraTrack songTracks[NUM_SONG_TRACKS] = {
+  {9, 136700},  // feet's former track 9 (2:16) - moved out of mantraTracks[]
+  {28, 127000}, // mouse-back's former track 28 (2:07) - moved out of mouseChantTracks[]
+  {29, 253000}, // mouse-back's former track 29 (4:13) - moved out of mouseChantTracks[]
+  {32, 186000}, // new (3:06)
+  {37, 208000}  // new (3:28)
 };
 
 // Dynamic Playlist Counters - feet touch and mouse-back each rotate
 // through their own separate pool (mantraTracks[]/mouseChantTracks[]).
 int feetStep = 0;
 int mouseStep = 0;
+
+// r142: which touch pad was used most recently - feeds triggerAarti()'s
+// pick between the 16+10 block and the single-track alternative (22).
+// Set true in triggerMantra() (mouse-back), false in triggerFeetMantra()
+// (feet) - defaults false (the 16+10 block) so a fresh boot or a close
+// with no prior touch this session gets the "primary" Aarti.
+bool lastTouchWasMouseBack = false;
 
 // The DFPlayer folder-track number (matches mantraTracks[].dfTrack, or
 // AARTI_TRACK) currently audibly playing - 0 means nothing from the
@@ -1944,12 +1982,12 @@ void updateStateMachine() {
         return;
       }
 
-      // r137: switch to part 2 (AARTI_PART2_TRACK) the instant part 1's
-      // own real length elapses - immediately back-to-back, no gap, so it
-      // reads as one continuous Aarti block rather than two separate
-      // chants. stateDuration itself is unchanged (AARTI_DURATION, the
-      // combined total) - only which physical track is sounding changes.
-      if (!aartiPart2Playing && (now - stateTimer >= AARTI_PART1_DURATION)) {
+      // r137/r142: switch to part 2 (AARTI_PART2_TRACK) the instant part
+      // 1's own real length elapses - immediately back-to-back, no gap,
+      // so it reads as one continuous Aarti block rather than two
+      // separate chants. Only for the normal block - aartiUsingAltTrack
+      // (r142) has no part 2 to switch to.
+      if (!aartiUsingAltTrack && !aartiPart2Playing && (now - stateTimer >= AARTI_PART1_DURATION)) {
         aartiPart2Playing = true;
         currentPlayingTrack = AARTI_PART2_TRACK;
         dfPlay(AARTI_PART2_TRACK);
@@ -2178,6 +2216,7 @@ void triggerMantra() {
   }
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
+  lastTouchWasMouseBack = true; // r142: feeds triggerAarti()'s alt-track pick
 
   mouseStep = (mouseStep + 1) % NUM_MOUSE_SEQUENCE;
 }
@@ -2218,6 +2257,7 @@ void triggerFeetMantra() {
   setSystemState(STATE_FEET_ACTIVE, duration);
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
+  lastTouchWasMouseBack = false; // r142: feeds triggerAarti()'s alt-track pick
 
   feetStep = (feetStep + 1) % NUM_TRACKS;
 }
@@ -3042,8 +3082,12 @@ void playTrackManually(int n) {
   for (int i = 0; i < NUM_MOUSE_TRACKS; i++) {
     if (mouseChantTracks[i].dfTrack == n) { duration = mouseChantTracks[i].duration; break; }
   }
+  for (int i = 0; i < NUM_SONG_TRACKS; i++) {
+    if (songTracks[i].dfTrack == n) { duration = songTracks[i].duration; break; }
+  }
   if (n == AARTI_TRACK) duration = AARTI_PART1_DURATION;
   else if (n == AARTI_PART2_TRACK) duration = AARTI_PART2_DURATION;
+  else if (n == AARTI_ALT_TRACK) duration = AARTI_ALT_DURATION;
 
   dfStop();
   delay(50);
@@ -3076,25 +3120,34 @@ void triggerAarti() {
   strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
       strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
 
-  setSystemState(STATE_AARTI, AARTI_DURATION);
+  // r142: which Aarti plays now depends on which pad was touched most
+  // recently - feet -> the AARTI_TRACK+AARTI_PART2_TRACK block, mouse-
+  // back -> AARTI_ALT_TRACK alone. Snapshotted once here so this Aarti's
+  // own behavior (the part-2 switch below, and this state's total
+  // duration) stays consistent for its whole run.
+  aartiUsingAltTrack = lastTouchWasMouseBack;
+  unsigned long totalDuration = aartiUsingAltTrack ? AARTI_ALT_DURATION : AARTI_DURATION;
+  setSystemState(STATE_AARTI, totalDuration);
   // r128: eyes now flash/breathe through the whole Aarti chant too, not
   // just a mouse-back touch - direct request that the guardian's eyes
   // react while the LED ring's flame animation (see animateLeds()'s
   // dedicated STATE_AARTI palette/intensity arc) visibly changes color
   // around it, instead of sitting static at the plain resting glow.
   // Same updateEyeLedBreathing() cycle as the mouse chant - it just
-  // keeps repeating for AARTI_DURATION's full combined duration (r137:
-  // both parts back to back) instead of 30s.
+  // keeps repeating for the state's full duration (r137: both parts back
+  // to back for the normal block; r142: the alt track's own length)
+  // instead of 30s.
   if (EYE_LED_CONNECTED) {
     eyeLedBreathingActive = true;
     eyeLedBreathingStartMs = millis();
   }
   // r137: reset here (not just where it's set true in updateStateMachine())
   // so a fresh Aarti always starts on part 1 even if the previous one was
-  // interrupted by a touch mid-part-2.
+  // interrupted by a touch mid-part-2. Irrelevant but harmless when
+  // aartiUsingAltTrack is true - there's no part 2 to switch to.
   aartiPart2Playing = false;
-  currentPlayingTrack = AARTI_TRACK;
-  dfPlay(AARTI_TRACK);
+  currentPlayingTrack = aartiUsingAltTrack ? AARTI_ALT_TRACK : AARTI_TRACK;
+  dfPlay(currentPlayingTrack);
 }
 
 // Aarti that ends in STATE_TEMPLE_CLOSED once it finishes, instead of

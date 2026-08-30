@@ -709,6 +709,46 @@ reasoning survives even when the git log scrolls out of context.
   pad's OLED text is also always the fixed English "Your silent prayer
   is heard..." regardless of which spoken language is selected - never
   translated to match.
+- **r142** - Real SD card file listing (10 more new tracks, 0030-0039)
+  confirmed and triggered a reorganization of the whole track catalog
+  across feet/mouse-back/Aarti, per direct instructions. (1) Track 6's
+  duration corrected from 155530ms (2:35) to its real 114000ms (1:54) -
+  another case of the firmware's stored duration not matching a
+  since-changed real file, same pattern as r130/r131/r137's track 10/14
+  corrections. (2) New "Songs" concept: any track over 2 minutes is now
+  excluded from BOTH mantraTracks[] (feet) and mouseChantTracks[]
+  (mouse-back) - "too long with touch pads" - and lives only in a new
+  duration-only lookup table, `songTracks[]`, for on-demand play via the
+  dashboard's Play Track control. Applied retroactively across the whole
+  catalog, not just the new batch: feet's former track 9 (2:16) and
+  mouse-back's former tracks 28 (2:07) and 29 (4:13) all moved to
+  `songTracks[]`, joined by two new long tracks, 32 (3:06) and 37 (3:28).
+  (3) Track 22 (3:59, formerly mouse-back's longest chant) becomes a
+  second, single-track Aarti alternative - `AARTI_ALT_TRACK`/
+  `AARTI_ALT_DURATION` in config.h. New `lastTouchWasMouseBack` (set in
+  triggerMantra()/triggerFeetMantra()) and `aartiUsingAltTrack`
+  (snapshotted once per Aarti in triggerAarti()) make the closing ritual
+  reflect whichever pad was actually touched most recently - a feet
+  touch closes with the existing 16+10 block, a mouse-back touch closes
+  with track 22 alone - chosen over a plain alternating rotation as the
+  "whatever is easy" option that's also more meaningful than an
+  arbitrary coin flip. `updateStateMachine()`'s part-2 switch (r137) is
+  now gated on `!aartiUsingAltTrack` since the alt path has no second
+  part. (4) New feet tracks 33/34/36/38/39 and new mouse-back tracks
+  30/31/35 fill out both pools back to their pre-reorg sizes (feet 12->17
+  after losing 9 and gaining 5; mouse-back stays at 10 after losing 3
+  and gaining 3) - `mouseChantSequence[]`'s weighted indices (r139)
+  recomputed for the new pool membership, same weighting scheme (17/21/
+  23/26 still appear twice per 14-touch cycle). `web_dashboard.h`/
+  `index.html`'s JS mirrors (`mantraTracks`, `mouseChantTracksJS`, the
+  new `songTracksJS`, `allPlayableTracks`) all updated to match, and the
+  Now Playing sync extended to also check `songTracksJS` so a manually-
+  played Song syncs correctly instead of leaving the panel stale. Known
+  gap, not fixed: the dashboard's own local Aarti simulation (separate
+  demo state machine, `AARTI_TRACK_FILE`/`AARTI_FALLBACK_DURATION_MS`)
+  still always shows the 16+10 block regardless of which pad last fired
+  it locally - same kind of preview-only gap as Temple Atmosphere's and
+  the mood-pattern link's local previews (r116, r136).
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
