@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r147"
+#define FIRMWARE_VERSION "2026-08-30-r148"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -160,14 +160,19 @@
 // 100ohm"), which the wiring comment on EYE_LED_PIN above had drifted
 // from at some point.
 #define EYE_LED_RESISTOR_OHMS       100  // per LED
-// r146: corrected from an assumed 2.1V to the real part's datasheet spec
-// (5mm green, 24000-26000 MCD, 20mA rated forward current, Vf 3.0-3.2V,
-// midpoint used here) - confirmed by the user. With only 3.3V GPIO
-// headroom above a 3.0-3.2V Vf, real current through these LEDs is
-// nowhere near their 20mA rating regardless of resistor value - see the
-// worked numbers in this version's CLAUDE.md entry. Correct this again
-// if a different-spec LED is ever substituted.
-#define EYE_LED_FORWARD_VOLTAGE     3.1
+// r148: corrected again, from the r146 datasheet-rated-current figure
+// (3.1V, only valid AT the LED's rated 20mA test current) to a REAL
+// measured value - a diode's Vf drops well below its rated-current spec
+// at much lower actual currents (exponential I-V curve, not a fixed
+// drop). Measured on a spare/isolated ESP32+LED-only bench rig running
+// this exact PWM code at its 80% resting duty: 0.31V across the 100ohm
+// resistor -> 3.1mA average -> 3.875mA on-state (peak) current once
+// corrected for the 80% duty -> Vf = 3.3V - (3.875mA * 100ohm) = 2.91V.
+// See this version's CLAUDE.md entry for the full worked numbers,
+// including an earlier arithmetic slip (dividing by duty cycle twice)
+// that this corrects. Re-measure and correct again if a different-spec
+// LED is ever substituted.
+#define EYE_LED_FORWARD_VOLTAGE     2.91
 #define EYE_LED_GPIO_VOLTAGE        3.3  // ESP32 GPIO high level
 
 // NeoPixel LEDs

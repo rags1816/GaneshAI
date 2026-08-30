@@ -827,6 +827,30 @@ reasoning survives even when the git log scrolls out of context.
   if moved to the proposed 5V-fed transistor-switched circuit (close to
   the LED's 20mA rating, and the existing 100ohm resistors work fine
   unchanged in that circuit - no need to swap them).
+- **r148** - `EYE_LED_FORWARD_VOLTAGE` corrected from r146's datasheet
+  rated-current figure (3.1V, only valid AT the LED's rated 20mA test
+  current) to a REAL measured value, after the user pushed back that the
+  power estimate "cannot be so way off" given how bright the LED
+  actually looks. Verified on a spare, fully isolated ESP32+LED-only
+  bench rig (no pads, no other wiring) running this exact r146/r147 PWM
+  code sitting at its steady 80%-duty resting glow (no animation, so a
+  clean time-averaged multimeter reading) - real measurement, not
+  another guess, per this project's established spare-board-first
+  hardware debugging discipline. Measured 0.31V across the 100ohm
+  resistor -> 3.1mA time-averaged current at 80% duty -> 3.875mA
+  on-state (peak) current once corrected for that duty -> real
+  Vf = 3.3V (GPIO) - (3.875mA * 100ohm) = 2.91V, meaningfully below the
+  3.0-3.2V datasheet figure - expected, since a diode's forward voltage
+  follows an exponential I-V curve and only equals the datasheet spec AT
+  the rated 20mA test current, not at the ~4mA actually flowing here.
+  A companion yellow LED was measured on the same rig for comparison
+  (0.58V -> 7.25mA on-state) but isn't installed on the real device, so
+  its number wasn't used. Caught and corrected a real arithmetic slip of
+  my own while working this out: the first pass at this calculation
+  divided by the 80% duty cycle a second time (treating the already
+  duty-corrected 3.875mA as if it were still the raw average), which
+  would have produced an incorrect ~2.82V - the fix here is the properly
+  worked number, not that first attempt.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
