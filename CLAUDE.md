@@ -798,6 +798,25 @@ reasoning survives even when the git log scrolls out of context.
   "is audio actually happening" signal `getCurrentScene()` already uses.
   Exposed via `/api/health`'s new `estTotalMw`/`estLedMw`/`estEyeLedMw`/
   `estDfPlayerMw` fields; Device Health shows the total in both mA and W.
+- **r146** - `EYE_LED_FORWARD_VOLTAGE` corrected from an assumed 2.1V to
+  the real part's datasheet spec (5mm green, 24000-26000 MCD, 20mA rated
+  forward current, Vf 3.0-3.2V - midpoint 3.1V used), confirmed by the
+  user. Worked the numbers while updating this and found something real,
+  not just a power-estimate correction: at `EYE_LED_GPIO_VOLTAGE` (3.3V)
+  driving a 3.1V-Vf LED through `EYE_LED_RESISTOR_OHMS` (120), only
+  ~0.2V is left for the resistor to drop - actual current works out to
+  roughly 1.7mA per LED at full PWM duty (2 LEDs in parallel ~3.3mA
+  total), nowhere near these LEDs' 20mA rating, REGARDLESS of resistor
+  value - there just isn't enough voltage headroom between a 3.3V GPIO
+  and a 3.0-3.2V Vf LED for any resistor choice to reach anywhere near
+  rated current. This is a plausible real contributor to the dimness
+  this session spent several versions tuning around in firmware alone
+  (r118-r138's base-brightness/breathing-speed changes) - a hardware
+  change (a 5V-fed transistor-switched circuit instead of driving
+  directly off the 3.3V GPIO, giving ~1.9V of real headroom instead of
+  ~0.2V) would let these specific LEDs reach meaningfully more of their
+  rated brightness than firmware tuning alone ever could. Not changed
+  yet - flagged for the user to decide whether to pursue.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

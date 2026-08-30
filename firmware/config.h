@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r145"
+#define FIRMWARE_VERSION "2026-08-30-r146"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -154,7 +154,14 @@
 // in parallel off the single EYE_LED_PIN GPIO (see its own wiring
 // comment), each through its own resistor.
 #define EYE_LED_RESISTOR_OHMS       120  // per LED - matches the wiring notes on EYE_LED_PIN above
-#define EYE_LED_FORWARD_VOLTAGE     2.1  // typical green LED Vf - correct if your LEDs are a different color/spec
+// r146: corrected from an assumed 2.1V to the real part's datasheet spec
+// (5mm green, 24000-26000 MCD, 20mA rated forward current, Vf 3.0-3.2V,
+// midpoint used here) - confirmed by the user. With only 3.3V GPIO
+// headroom above a 3.0-3.2V Vf, real current through these LEDs is
+// nowhere near their 20mA rating regardless of resistor value - see the
+// worked numbers in this version's CLAUDE.md entry. Correct this again
+// if a different-spec LED is ever substituted.
+#define EYE_LED_FORWARD_VOLTAGE     3.1
 #define EYE_LED_GPIO_VOLTAGE        3.3  // ESP32 GPIO high level
 
 // NeoPixel LEDs
