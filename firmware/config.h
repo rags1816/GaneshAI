@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r146"
+#define FIRMWARE_VERSION "2026-08-30-r147"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -74,8 +74,9 @@
 // the altar base, each butted against its own 2mm end-glow fiber running
 // into one of the mouse idol's eyes; the idol carries only bare fiber,
 // nothing electrical (see the mouse-eye-led diagram from this build's
-// planning). Both LED anodes (each through its own 120ohm resistor) tie
-// to this single GPIO; cathodes share GND. GPIO16 is printed "RX2" on
+// planning). Both LED anodes (each through its own 100ohm resistor - see
+// EYE_LED_RESISTOR_OHMS, r147) tie to this single GPIO; cathodes share
+// GND. GPIO16 is printed "RX2" on
 // most DevKit boards, not "D16" - wire to the pin marked RX2. Genuinely
 // free: every other GPIO is already claimed (see the amp/mic/touch/OLED
 // definitions above and below), and 16 was only ever reserved for the
@@ -153,7 +154,12 @@
 // fixed - but still needs these assumed electrical specs. Two LEDs run
 // in parallel off the single EYE_LED_PIN GPIO (see its own wiring
 // comment), each through its own resistor.
-#define EYE_LED_RESISTOR_OHMS       120  // per LED - matches the wiring notes on EYE_LED_PIN above
+// r147: corrected from an assumed 120 to the real wired value, confirmed
+// by the user (100ohm per LED, both resistors' other ends tied together
+// to EYE_LED_PIN) - matches r108's original bench-test note ("Green,
+// 100ohm"), which the wiring comment on EYE_LED_PIN above had drifted
+// from at some point.
+#define EYE_LED_RESISTOR_OHMS       100  // per LED
 // r146: corrected from an assumed 2.1V to the real part's datasheet spec
 // (5mm green, 24000-26000 MCD, 20mA rated forward current, Vf 3.0-3.2V,
 // midpoint used here) - confirmed by the user. With only 3.3V GPIO

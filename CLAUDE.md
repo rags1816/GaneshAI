@@ -817,6 +817,16 @@ reasoning survives even when the git log scrolls out of context.
   ~0.2V) would let these specific LEDs reach meaningfully more of their
   rated brightness than firmware tuning alone ever could. Not changed
   yet - flagged for the user to decide whether to pursue.
+- **r147** - `EYE_LED_RESISTOR_OHMS` corrected from an assumed 120 to the
+  real wired value, confirmed by the user: 100ohm per LED (matches
+  r108's original bench-test note - the wiring comment on `EYE_LED_PIN`
+  had drifted to 120 at some point since). Recomputing r146's headroom
+  finding with the real 100ohm: ~2mA/LED as currently wired straight off
+  the 3.3V GPIO (barely different from the 120ohm estimate - the
+  bottleneck is the voltage headroom, not the resistor), vs. ~17mA/LED
+  if moved to the proposed 5V-fed transistor-switched circuit (close to
+  the LED's 20mA rating, and the existing 100ohm resistors work fine
+  unchanged in that circuit - no need to swap them).
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
