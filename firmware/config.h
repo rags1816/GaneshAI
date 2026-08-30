@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r144"
+#define FIRMWARE_VERSION "2026-08-30-r145"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -132,6 +132,30 @@
 // cycle - halved so the 80%->10%->80% dip reads as a clear pulse instead
 // of a slow drift. Raise this back toward 3000 if it now feels too fast.
 #define EYE_LED_BREATH_PERIOD_MS     1500
+
+// r145: power draw ESTIMATE assumptions - this board has no current/power
+// sensor at all, so none of this is measured. The LED ring figure is
+// real math against the ring's actual current pixel colors/brightness
+// (FastLED's own power model, calculate_unscaled_power_mW() - genuinely
+// accurate for the ring specifically). Everything else below is a fixed
+// datasheet-typical constant, since there's no way to measure the
+// ESP32/OLED/DFPlayer+amp/eye-LEDs' real draw without adding real
+// hardware (an INA219/INA226 current sensor would give real numbers -
+// not present on this build). Correct these constants if you know your
+// actual parts' real specs; see getEstimatedPowerMw() in GanapatiAI.ino.
+#define POWER_SUPPLY_VOLTS          5.0  // assumed main rail (USB/adapter) everything below is estimated against
+#define POWER_ESP32_BASE_MW         700  // ESP32 dev board, Wi-Fi connected, typical - real Wi-Fi TX bursts spike well above this momentarily
+#define POWER_OLED_MW               75   // SSD1309 128x64 monochrome, typical mixed content
+#define POWER_SENSORS_MW            5    // 3x TP223 touch pads + AM312 PIR combined - each individually negligible
+#define POWER_DFPLAYER_IDLE_MW      100  // DFPlayer Mini, not currently playing
+#define POWER_DFPLAYER_PLAYING_MW   500  // DFPlayer Mini + I2S amp + speaker, typical mid-volume while playing - real draw varies a lot with volume/content
+// Mouse eye LEDs: computed live from the actual PWM duty (ledcRead), not
+// fixed - but still needs these assumed electrical specs. Two LEDs run
+// in parallel off the single EYE_LED_PIN GPIO (see its own wiring
+// comment), each through its own resistor.
+#define EYE_LED_RESISTOR_OHMS       120  // per LED - matches the wiring notes on EYE_LED_PIN above
+#define EYE_LED_FORWARD_VOLTAGE     2.1  // typical green LED Vf - correct if your LEDs are a different color/spec
+#define EYE_LED_GPIO_VOLTAGE        3.3  // ESP32 GPIO high level
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin

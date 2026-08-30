@@ -920,6 +920,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <div>PIR: <span id="health-pir" style="color:#fff;">-</span></div>
             <div>Offline fallback: <span id="health-offline" style="color:#fff;">-</span></div>
             <div>Last boot: <span id="health-crash" style="color:#fff;">-</span></div>
+            <!-- r145: ESTIMATE only, not measured - this board has no
+                 current/power sensor. See getEstimatedPowerMw() in
+                 GanapatiAI.ino for exactly what's real math (the LED
+                 ring) vs. a fixed datasheet-typical assumption
+                 (everything else). -->
+            <div>Est. power draw: <span id="health-power" style="color:#fff;">-</span></div>
         </div>
         </details>
 
@@ -4034,6 +4040,17 @@ var QRCode;
                 if (ledEl) ledEl.textContent = !data.ledConnected ? 'Not connected' : (data.ledEnabled ? 'Enabled' : 'Disabled (admin toggle)');
                 const pirEl = document.getElementById('health-pir');
                 if (pirEl) pirEl.textContent = !data.pirConnected ? 'Not connected' : (data.pirEnabled ? 'Enabled' : 'Disabled (admin toggle)');
+
+                // r145: ESTIMATE only - see the HTML comment above this
+                // row and getEstimatedPowerMw() in GanapatiAI.ino. mA
+                // figure divides by POWER_SUPPLY_VOLTS's real value (5V)
+                // rather than hardcoding it here a second time.
+                const powerEl = document.getElementById('health-power');
+                if (powerEl && typeof data.estTotalMw === 'number') {
+                    const totalMa = Math.round(data.estTotalMw / 5.0);
+                    powerEl.textContent = totalMa + ' mA / ' + (data.estTotalMw / 1000).toFixed(1) + ' W (estimate, LED ' +
+                        data.estLedMw + 'mW + eyes ' + data.estEyeLedMw + 'mW + rest fixed - not measured)';
+                }
             }).catch(() => {});
         }
         if (isPhysicalESP) {

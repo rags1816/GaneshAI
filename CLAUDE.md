@@ -778,6 +778,26 @@ reasoning survives even when the git log scrolls out of context.
   the `item.lang || 'en'` fallback wired correctly (from puja.html
   offerings) - it just never received a real value from this panel
   before now.
+- **r145** - Added an estimated power draw row to Device Health, per
+  direct request. This board has no current/power sensor at all, so
+  none of it is truly measured - `getEstimatedPowerMw()` is honest about
+  which parts are real math and which are assumptions: the LED ring
+  figure uses FastLED's own power model (`calculate_unscaled_power_mW()`)
+  against the ring's ACTUAL current pixel colors and live brightness
+  (genuinely accurate for the ring specifically, including correctly
+  reading ~0 during Standby/Closed since `leds[]` is solid black then);
+  the mouse eye LEDs are computed from their real live PWM duty
+  (`ledcRead()`) against an assumed resistor/Vf/GPIO-voltage spec. Every
+  other component (ESP32 base, OLED, DFPlayer+amp, the touch/PIR
+  sensors) is a fixed datasheet-typical constant in config.h
+  (`POWER_ESP32_BASE_MW` etc.) - correctable there if the user knows
+  their actual parts' real specs, but not something firmware can measure
+  without adding a real sensor (an INA219/INA226 would give real
+  numbers). DFPlayer's estimate switches between an idle and a playing
+  constant based on `currentPlayingTrack`/`blessingTaskActive`, same
+  "is audio actually happening" signal `getCurrentScene()` already uses.
+  Exposed via `/api/health`'s new `estTotalMw`/`estLedMw`/`estEyeLedMw`/
+  `estDfPlayerMw` fields; Device Health shows the total in both mA and W.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

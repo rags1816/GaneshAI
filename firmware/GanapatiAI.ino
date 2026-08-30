@@ -692,6 +692,7 @@ bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
 int moodPatternFor(const char *mood);
 void playMoodClosurePulse(const char *mood);
 void updateEyeLedBreathing();
+void getEstimatedPowerMw(uint32_t &totalMw, uint32_t &ledMw, uint32_t &eyeLedMw, uint32_t &dfPlayerMw);
 
 // ==========================================
 // Setup Function
@@ -1217,14 +1218,17 @@ void handleWebRoutes() {
   // is for a human to read, not for the firmware to act on unprompted.
   server.on("/api/health", HTTP_GET, []() {
     unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
-    char json[640];
+    uint32_t estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw;
+    getEstimatedPowerMw(estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw);
+    char json[800];
     snprintf(json, sizeof(json),
       "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
       "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
       "\"offlineFallbackCount\":%lu,\"lastOfflineFallbackAgoSec\":%ld,"
       "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d,"
       "\"dfPlayerReady\":%s,\"ledConnected\":%s,\"ledEnabled\":%s,"
-      "\"pirConnected\":%s,\"pirEnabled\":%s}",
+      "\"pirConnected\":%s,\"pirEnabled\":%s,"
+      "\"estTotalMw\":%lu,\"estLedMw\":%lu,\"estEyeLedMw\":%lu,\"estDfPlayerMw\":%lu}",
       (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
       millis() / 1000, ampReady ? "true" : "false",
@@ -1234,7 +1238,8 @@ void handleWebRoutes() {
       bootCrashedLastRun ? "true" : "false", bootCrashedStage,
       dfPlayerReady ? "true" : "false",
       LED_CONNECTED ? "true" : "false", ledEnabled ? "true" : "false",
-      PIR_CONNECTED ? "true" : "false", pirEnabled ? "true" : "false");
+      PIR_CONNECTED ? "true" : "false", pirEnabled ? "true" : "false",
+      (unsigned long)estTotalMw, (unsigned long)estLedMw, (unsigned long)estEyeLedMw, (unsigned long)estDfPlayerMw);
     server.send(200, "application/json", json);
   });
 
@@ -3382,6 +3387,43 @@ void updateEyeLedBreathing() {
   float amp = (hi - lo) / 2.0f;
   uint8_t brightness = (uint8_t)(mid + sinf(phase) * amp);
   ledcWrite(EYE_LED_PIN, brightness);
+}
+
+// r145: software power draw ESTIMATE, exposed via /api/health - this
+// board has no current/power sensor at all, so nothing here is measured.
+// The LED ring figure is real: FastLED's own power model
+// (calculate_unscaled_power_mW()) against the ring's ACTUAL current
+// pixel colors, scaled by the real live brightness - leds[] always
+// reflects whatever's currently shown (including solid black during
+// Standby/Closed, which correctly estimates ~0), so this is accurate
+// for the ring specifically, not a guess. The eye LEDs are computed from
+// their real live PWM duty (ledcRead) times an assumed electrical spec
+// (resistor/Vf/GPIO voltage - see config.h's POWER_* constants). Every
+// other component (ESP32 base, OLED, DFPlayer+amp, sensors) is a fixed
+// datasheet-typical constant, since there's no way to measure those
+// without adding real hardware (an INA219/INA226 current sensor would
+// give real numbers - not present on this build).
+void getEstimatedPowerMw(uint32_t &totalMw, uint32_t &ledMw, uint32_t &eyeLedMw, uint32_t &dfPlayerMw) {
+  ledMw = 0;
+  if (LED_CONNECTED && ledEnabled) {
+    ledMw = calculate_unscaled_power_mW(leds, NUM_LEDS) * FastLED.getBrightness() / 255;
+  }
+
+  eyeLedMw = 0;
+  if (EYE_LED_CONNECTED) {
+    int duty = ledcRead(EYE_LED_PIN);
+    float perBranchMa = (EYE_LED_GPIO_VOLTAGE - EYE_LED_FORWARD_VOLTAGE) / EYE_LED_RESISTOR_OHMS * 1000.0f;
+    float totalMa = perBranchMa * 2.0f * (duty / 255.0f); // 2 LEDs in parallel off the one GPIO
+    eyeLedMw = (uint32_t)(totalMa * EYE_LED_GPIO_VOLTAGE);
+  }
+
+  // currentPlayingTrack != 0 or the amp's own background task both count
+  // as "actually making sound right now" - see getCurrentScene()'s own
+  // audioActive for the same reasoning.
+  bool playing = (currentPlayingTrack != 0) || blessingTaskActive;
+  dfPlayerMw = playing ? POWER_DFPLAYER_PLAYING_MW : POWER_DFPLAYER_IDLE_MW;
+
+  totalMw = POWER_ESP32_BASE_MW + POWER_OLED_MW + POWER_SENSORS_MW + dfPlayerMw + ledMw + eyeLedMw;
 }
 
 void animateLeds() {
