@@ -3107,12 +3107,20 @@ var QRCode;
             // for a priest to approve/reject. Same shape/relay pattern as
             // puja.html's (the separate devotee-facing page) submitPuja(),
             // which already had this right.
+            // r144: lang added - this local panel never sent a language at
+            // all before, so an approved offering always spoke in English
+            // regardless of the dashboard's Active Language setting, unlike
+            // puja.html's own per-offering picker. Reuses the same
+            // dashboard-wide Active Language the wish pad already speaks
+            // in, per direct request ("like the wish pad") - this panel
+            // has no per-offering picker of its own.
             const newRequest = {
                 id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 name: name,
                 offering: selectedOffering,
-                prayer: text
+                prayer: text,
+                lang: selectedLang
             };
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             localQueue.push(newRequest);
@@ -3594,13 +3602,17 @@ var QRCode;
             // Show the devotee's actual name/offering/prayer on the
             // physical OLED too, not just this browser's local preview.
             if (isPhysicalESP) {
-                // item.lang/item.mood are only present on offerings that
-                // went through requestAiBlessing() (puja.html submissions
-                // whose AI reply landed in time) - older items and the
-                // dashboard's own quick-offering panel default to English/
-                // no mood, same as before this existed. Sentiment-aware
-                // LED color: see MOODS in backend/functions/index.js and
-                // moodColorsFor() in GanapatiAI.ino.
+                // item.mood is only present on offerings that went through
+                // requestAiBlessing() (puja.html submissions whose AI
+                // reply landed in time) - the dashboard's own local
+                // Virtual Puja panel never does its own AI mood
+                // classification, so mood defaults to none for those.
+                // item.lang (r144: now always set by this panel too, from
+                // the dashboard's own Active Language setting) still
+                // falls back to 'en' for older queued items saved before
+                // this existed. Sentiment-aware LED color: see MOODS in
+                // backend/functions/index.js and moodColorsFor() in
+                // GanapatiAI.ino.
                 const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}&mood=${encodeURIComponent(item.mood || '')}`;
                 sendESPControl('offering', params);
             }

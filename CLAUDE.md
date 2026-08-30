@@ -764,6 +764,20 @@ reasoning survives even when the git log scrolls out of context.
   proportions. Track 19 was floated during the request and explicitly
   withdrawn - it's one of the offline-blessing fallback tracks (18-20),
   not part of either touch pad's rotation at all, so it was left alone.
+- **r144** - Real bug found while investigating a "the mantra number for
+  the same mantra is different" - style report, this time about the
+  dashboard's own embedded "🌸 Virtual Puja & Prayers" panel: submitting
+  an offering there never captured a language at all, so once approved
+  it always spoke in English regardless of the dashboard's Active
+  Language setting - unlike puja.html's real form, which has its own
+  per-offering language picker. Direct request: make it behave "like the
+  wish pad" - `submitPuja()`'s queued request now includes
+  `lang: selectedLang`, reusing the same dashboard-wide Active Language
+  setting the wish pad already speaks in, since this local panel has no
+  per-offering picker of its own. `applyApprovedOffering()` already had
+  the `item.lang || 'en'` fallback wired correctly (from puja.html
+  offerings) - it just never received a real value from this panel
+  before now.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
