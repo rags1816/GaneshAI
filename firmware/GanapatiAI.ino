@@ -316,6 +316,19 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {39, 16000}  // r142: new (0:16)
 };
 
+// r143: weighted play order for mantraTracks[] above, per direct request
+// that 1/2/4/33/34/36/38/39 show up more often than the other nine -
+// feet had always been a plain round-robin until now (mouse-back got
+// this same treatment in r139). Values are INDICES into mantraTracks[]
+// (0=1, 1=2, 2=4, 3=5, 4=6, 5=7, 6=8, 7=11, 8=12, 9=13, 10=14, 11=15,
+// 12=33, 13=34, 14=36, 15=38, 16=39); the 8 weighted tracks (indices
+// 0/1/2/12/13/14/15/16) each appear twice per 25-touch cycle, the other
+// nine once, interleaved so the same track never repeats back-to-back.
+const int NUM_FEET_SEQUENCE = 25;
+const int feetSequence[NUM_FEET_SEQUENCE] = {
+  3, 0, 4, 1, 2, 5, 12, 13, 6, 14, 15, 7, 16, 8, 0, 1, 9, 2, 12, 10, 13, 14, 11, 15, 16
+};
+
 // r130/r142: mouse-back's own rotating pool, separate from mantraTracks[]
 // above - see config.h's comment for the full history. Real measured
 // durations from the actual SD card file listing (MM:SS resolution,
@@ -339,20 +352,16 @@ MantraTrack mouseChantTracks[NUM_MOUSE_TRACKS] = {
   {35, 26000}   // index 9 - r142: new (0:26)
 };
 
-// r139/r142: weighted play order for mouseChantTracks[] above, per direct
-// request that tracks 17/21/23/26 show up more often than the other six
-// - a plain round-robin through all 10 unique tracks meant each one,
-// including 17, only recurred once every 10 touches, which read as
-// "17 never comes up" even though it deterministically does. Values are
-// INDICES into mouseChantTracks[] (0=17, 1=21, 2=23, 3=24, 4=25, 5=26,
-// 6=27, 7=30, 8=31, 9=35); 17/21/23/26 (indices 0/1/2/5) each appear
-// twice per 14-touch cycle, the rest once, interleaved so the same track
-// never repeats back-to-back. Recomputed for r142's new pool membership -
-// same weighting scheme, different indices since 22/28/29 left and
-// 30/31/35 joined.
-const int NUM_MOUSE_SEQUENCE = 14;
+// r139/r142/r143: weighted play order for mouseChantTracks[] above. r143
+// grew the weighted set from {17,21,23,26} to {17,21,23,26,31,35} per
+// direct request. Values are INDICES into mouseChantTracks[] (0=17,
+// 1=21, 2=23, 3=24, 4=25, 5=26, 6=27, 7=30, 8=31, 9=35); the 6 weighted
+// tracks (indices 0/1/2/5/8/9) each appear twice per 16-touch cycle, the
+// other four (24/25/27/30) once, interleaved so the same track never
+// repeats back-to-back.
+const int NUM_MOUSE_SEQUENCE = 16;
 const int mouseChantSequence[NUM_MOUSE_SEQUENCE] = {
-  0, 1, 3, 2, 4, 5, 0, 6, 1, 7, 2, 8, 5, 9
+  3, 0, 1, 2, 4, 5, 8, 9, 6, 0, 1, 2, 7, 5, 8, 9
 };
 
 // r142: "Songs" - any track over 2 minutes, deliberately excluded from
@@ -2239,8 +2248,9 @@ void triggerFeetMantra() {
   feetDisplayLocked = true;
   feetDisplayLockMs = 12000; // ordinary touch: never inherit an offering's long window
   
-  // Get track from struct array
-  int trackIndex = feetStep;
+  // r143: rotates through feetSequence[] - a weighted play order over
+  // mantraTracks[], same treatment mouse-back's own pool got in r139.
+  int trackIndex = feetSequence[feetStep];
   int dfTrack = mantraTracks[trackIndex].dfTrack;
   unsigned long duration = mantraTracks[trackIndex].duration;
   
@@ -2259,7 +2269,7 @@ void triggerFeetMantra() {
   dfPlay(dfTrack);
   lastTouchWasMouseBack = false; // r142: feeds triggerAarti()'s alt-track pick
 
-  feetStep = (feetStep + 1) % NUM_TRACKS;
+  feetStep = (feetStep + 1) % NUM_FEET_SEQUENCE;
 }
 
 // Minimal JSON string escaper - only needs to handle a single text field

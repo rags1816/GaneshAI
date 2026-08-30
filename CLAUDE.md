@@ -749,6 +749,21 @@ reasoning survives even when the git log scrolls out of context.
   still always shows the 16+10 block regardless of which pad last fired
   it locally - same kind of preview-only gap as Temple Atmosphere's and
   the mood-pattern link's local previews (r116, r136).
+- **r143** - Two direct follow-up frequency-weighting requests, same
+  session as r139/r142's reorganization. (1) Feet's `mantraTracks[]` gets
+  the same weighted-rotation treatment mouse-back's pool got in r139 -
+  new `feetSequence[]` (25 entries) plays tracks 1/2/4/33/34/36/38/39
+  twice per cycle and the other nine (5/6/7/8/11/12/13/14/15) once,
+  interleaved so nothing repeats back-to-back; `feetStep` now indexes
+  into this sequence instead of walking `mantraTracks[]` directly, same
+  pattern as mouse-back's `mouseStep`/`mouseChantSequence[]`. Feet had
+  been a plain round-robin until now - this is the first time it's ever
+  had weighting. (2) Mouse-back's own weighted set grew from
+  `{17,21,23,26}` to `{17,21,23,26,31,35}` - `mouseChantSequence[]`
+  regenerated at 16 entries (was 14) with the same doubled/single
+  proportions. Track 19 was floated during the request and explicitly
+  withdrawn - it's one of the offline-blessing fallback tracks (18-20),
+  not part of either touch pad's rotation at all, so it was left alone.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
