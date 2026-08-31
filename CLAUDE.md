@@ -900,6 +900,32 @@ reasoning survives even when the git log scrolls out of context.
   individually rather than the whole group's total. Doesn't mask a
   genuinely infinite hang in a single call - only fixes the
   cumulative-slowness case, which is what the evidence here pointed to.
+- **r151** - Two direct follow-ups after confirming r150 fixed the crash
+  and the transistor circuit was working well. (1) Mouse eye LEDs now
+  also breathe for the duration of any REAL spoken AI blessing - an
+  approved offering ("App"/puja panel) or a wish-pad touch - not just a
+  mouse-back chant or Aarti, per direct request for "a good round
+  experience" across all the ways a devotee gets a blessing.
+  `blessingTaskActive` is already true for exactly as long as the
+  background network+TTS task is actually speaking (both
+  `triggerPersonalizedOffering()`'s and `triggerWishPadBlessing()`'s
+  async paths set it), so the new `updateEyeLedBlessingBreathing()`
+  (called from `loop()` alongside the existing
+  `updateEyeLedBreathing()`) just edge-detects that flag's rising/
+  falling transitions and starts/stops the same breathing cycle
+  triggerMantra()/triggerAarti() already use - neither of those two
+  callers needed any changes themselves. The fade-to-base logic that
+  used to live inline in `setSystemState()` was extracted into
+  `settleEyeLedToBase()` so both the state-transition path and this new
+  blessing-edge path share the same code instead of duplicating the
+  blocking fade loop. (2) Device Health's power estimate line now shows
+  the LED ring's and eye LEDs' estimated CURRENT (mA) explicitly, not
+  just their mW - both already share the same 5V rail (the ring via
+  FastLED's own power model, the eyes via r149's transistor-circuit
+  rewrite), so mA is simply mW/5.0, computed in the dashboard JS from
+  the existing `estLedMw`/`estEyeLedMw` fields - no firmware/`/api/health`
+  change needed for this part. `index.html` resynced from
+  `web_dashboard.h` for this dashboard-only change.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

@@ -4048,8 +4048,15 @@ var QRCode;
                 const powerEl = document.getElementById('health-power');
                 if (powerEl && typeof data.estTotalMw === 'number') {
                     const totalMa = Math.round(data.estTotalMw / 5.0);
+                    // r151: LED ring and eye LED current shown explicitly, not
+                    // just their mW - both figures already share the same 5V
+                    // rail (the ring per FastLED's own power model, the eyes
+                    // per r149's transistor-circuit rewrite), so mA here is
+                    // just mW/5.0, same division as the total above.
+                    const ledMa = Math.round(data.estLedMw / 5.0);
+                    const eyeMa = Math.round(data.estEyeLedMw / 5.0);
                     powerEl.textContent = totalMa + ' mA / ' + (data.estTotalMw / 1000).toFixed(1) + ' W (estimate, LED ' +
-                        data.estLedMw + 'mW + eyes ' + data.estEyeLedMw + 'mW + rest fixed - not measured)';
+                        ledMa + 'mA/' + data.estLedMw + 'mW + eyes ' + eyeMa + 'mA/' + data.estEyeLedMw + 'mW + rest fixed - not measured)';
                 }
             }).catch(() => {});
         }

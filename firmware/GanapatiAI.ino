@@ -692,6 +692,8 @@ bool moodColorsFor(const char *mood, CRGB &c1, CRGB &c2);
 int moodPatternFor(const char *mood);
 void playMoodClosurePulse(const char *mood);
 void updateEyeLedBreathing();
+void settleEyeLedToBase();
+void updateEyeLedBlessingBreathing();
 void getEstimatedPowerMw(uint32_t &totalMw, uint32_t &ledMw, uint32_t &eyeLedMw, uint32_t &dfPlayerMw);
 
 // ==========================================
@@ -1099,6 +1101,7 @@ void loop() {
   updateStateMachine();
   lastStage = 4;
   animateLeds();
+  updateEyeLedBlessingBreathing();
   updateEyeLedBreathing();
   lastStage = 5;
   drawOLED();
@@ -2103,18 +2106,7 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // mid-dip, below base, not above it like the old low-base scheme -
   // this fade now steps toward base in whichever direction is needed,
   // instead of only ever fading downward.
-  if (EYE_LED_CONNECTED) {
-    if (eyeLedBreathingActive) {
-      int startB = ledcRead(EYE_LED_PIN);
-      int step = (startB > EYE_LED_BASE_BRIGHTNESS) ? -15 : 15;
-      for (int b = startB; (step < 0) ? (b > EYE_LED_BASE_BRIGHTNESS) : (b < EYE_LED_BASE_BRIGHTNESS); b += step) {
-        ledcWrite(EYE_LED_PIN, b);
-        delay(15);
-      }
-      eyeLedBreathingActive = false;
-    }
-    ledcWrite(EYE_LED_PIN, EYE_LED_BASE_BRIGHTNESS);
-  }
+  settleEyeLedToBase();
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
   // THIS text has had its own chance to fully scroll across the screen.
@@ -3398,6 +3390,44 @@ void updateEyeLedBreathing() {
   float amp = (hi - lo) / 2.0f;
   uint8_t brightness = (uint8_t)(mid + sinf(phase) * amp);
   ledcWrite(EYE_LED_PIN, brightness);
+}
+
+// r151: extracted from setSystemState() (unchanged behavior there) so the
+// same blocking fade-to-base can also be reused by the new spoken-blessing
+// breathing trigger below, without duplicating the loop.
+void settleEyeLedToBase() {
+  if (!EYE_LED_CONNECTED) return;
+  if (eyeLedBreathingActive) {
+    int startB = ledcRead(EYE_LED_PIN);
+    int step = (startB > EYE_LED_BASE_BRIGHTNESS) ? -15 : 15;
+    for (int b = startB; (step < 0) ? (b > EYE_LED_BASE_BRIGHTNESS) : (b < EYE_LED_BASE_BRIGHTNESS); b += step) {
+      ledcWrite(EYE_LED_PIN, b);
+      delay(15);
+    }
+    eyeLedBreathingActive = false;
+  }
+  ledcWrite(EYE_LED_PIN, EYE_LED_BASE_BRIGHTNESS);
+}
+
+// r151: eyes now also breathe for the duration of any REAL spoken AI
+// blessing - an approved offering ("App") or a wish-pad touch - not just
+// a mouse-back chant or Aarti. blessingTaskActive is true for exactly as
+// long as the background network+TTS task is actually speaking (both
+// triggerPersonalizedOffering()'s and triggerWishPadBlessing()'s async
+// paths set it), so watching its rising/falling edge here covers both
+// callers uniformly without either of them needing their own eye LED
+// code. Edge-detected (not just "if active, breathe") so the ON/OFF
+// transitions only fire once each, same as every other breathing trigger.
+bool prevBlessingTaskActiveForEyeLed = false;
+void updateEyeLedBlessingBreathing() {
+  if (!EYE_LED_CONNECTED) return;
+  if (blessingTaskActive && !prevBlessingTaskActiveForEyeLed) {
+    eyeLedBreathingActive = true;
+    eyeLedBreathingStartMs = millis();
+  } else if (!blessingTaskActive && prevBlessingTaskActiveForEyeLed) {
+    settleEyeLedToBase();
+  }
+  prevBlessingTaskActiveForEyeLed = blessingTaskActive;
 }
 
 // r145: software power draw ESTIMATE, exposed via /api/health - this
