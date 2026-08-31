@@ -947,6 +947,13 @@ reasoning survives even when the git log scrolls out of context.
   and keep a running average, a real added complexity not undertaken
   here since the whole panel is already a software estimate, not a
   measured value. `index.html` resynced from `web_dashboard.h`.
+- **r153** - Device Health's Wi-Fi line now shows a plain-English quality
+  label next to the raw dBm figure (e.g. "-61 dBm - good"), per direct
+  feedback that the number alone isn't self-explanatory without knowing
+  standard RSSI bands. Dashboard-only change (excellent/good/fair/weak/
+  very weak thresholds at the usual -50/-60/-70/-80 dBm cutoffs);
+  `/api/health` already exposed the raw RSSI, no new field needed.
+  `index.html` resynced from `web_dashboard.h`.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

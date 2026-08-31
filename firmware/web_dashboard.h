@@ -4023,7 +4023,23 @@ var QRCode;
         function pollDeviceHealth() {
             fetch('/api/health').then(r => r.json()).then(data => {
                 const wifiEl = document.getElementById('health-wifi');
-                if (wifiEl) wifiEl.textContent = data.wifiConnected ? ('Connected (' + data.wifiRSSI + ' dBm)') : 'Disconnected';
+                if (wifiEl) {
+                    // r153: plain-English quality label alongside the raw dBm
+                    // figure, so it's readable without memorizing signal
+                    // strength ranges - standard Wi-Fi RSSI bands.
+                    let wifiQuality = '';
+                    if (data.wifiConnected) {
+                        const rssi = data.wifiRSSI;
+                        if (rssi >= -50) wifiQuality = 'excellent';
+                        else if (rssi >= -60) wifiQuality = 'good';
+                        else if (rssi >= -70) wifiQuality = 'fair';
+                        else if (rssi >= -80) wifiQuality = 'weak';
+                        else wifiQuality = 'very weak';
+                    }
+                    wifiEl.textContent = data.wifiConnected
+                        ? ('Connected (' + data.wifiRSSI + ' dBm - ' + wifiQuality + ')')
+                        : 'Disconnected';
+                }
                 const uptimeEl = document.getElementById('health-uptime');
                 if (uptimeEl) uptimeEl.textContent = formatUptime(data.uptimeSec);
                 const heapEl = document.getElementById('health-heap');
