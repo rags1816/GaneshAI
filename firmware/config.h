@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r153"
+#define FIRMWARE_VERSION "2026-08-30-r154"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -369,6 +369,16 @@
 // Home Wi-Fi Network Settings
 #define WIFI_SSID        "VM3003995_Ext"
 #define WIFI_PASSWORD    "c7kQrnnrdqnf" 
+
+// r154: heap fragmentation / low-memory self-healing thresholds - see
+// checkHeapHealth()/checkScheduledRestart() in GanapatiAI.ino. A restart
+// is the actual fix (the heap allocator can't defragment memory in
+// place, only a clean boot resets it to one large contiguous block) -
+// these just decide WHEN that's warranted, never interrupting an active
+// blessing/mantra/Aarti to do it.
+#define HEAP_FRAGMENTATION_WARN_RATIO 0.5      // largest free block < 50% of total free heap = fragmented
+#define HEAP_CRITICAL_FREE_BYTES     30000     // absolute low-memory floor, regardless of fragmentation
+#define AUTO_RESTART_UPTIME_MS       86400000UL // 24h - routine preventive restart, idle-gated only (no NTP/wall-clock needed)
 
 // Timing (in milliseconds)
 #define AMBIENT_TIMEOUT  60000  // AMBIENT idle time before auto-triggering the closing Aarti (matches web dashboard's AARTI_IDLE_MS)

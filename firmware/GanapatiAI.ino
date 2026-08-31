@@ -187,6 +187,23 @@ unsigned long lastWifiCheck = 0;
 // happening rather than only inferred after a crash with no evidence.
 unsigned long lastHeapLog = 0;
 #define HEAP_LOG_INTERVAL_MS 60000
+
+// r154: this now DOES actively do something about the fragmentation risk
+// noted above, instead of only logging it. ESP.getMaxAllocHeap() reports
+// the LARGEST single contiguous free block - the number that actually
+// predicts an allocation failure, since ESP.getFreeHeap()'s TOTAL can
+// look perfectly healthy while badly fragmented into many small unusable
+// pieces. heapConditionCritical is a level, not an edge - set true by
+// checkHeapHealth() whenever fragmentation, an absolute low-memory
+// floor, or a long routine uptime is detected, and left true until
+// checkScheduledRestart() finds a genuinely safe idle moment (no
+// blessing speaking, no audio playing, temple not mid-ritual) to
+// actually restart - so a festival-length run never has its heap slowly
+// degrade toward a crash "at an awkward time" without ever being able
+// to self-correct, but a restart also never cuts off an active
+// devotional moment to do it. See config.h's HEAP_*/AUTO_RESTART_*
+// constants and this version's CLAUDE.md entry.
+bool heapConditionCritical = false;
 bool feetTouched = false;
 bool backTouched = false;
 
@@ -668,6 +685,7 @@ void checkSensors();
 void checkWiFiHealth();
 void checkHeapHealth();
 void checkBlessingTaskHealth();
+void checkScheduledRestart();
 void updateStateMachine();
 void animateLeds();
 void playLedClosingSweep();
@@ -1095,6 +1113,7 @@ void loop() {
   esp_task_wdt_reset();
   checkHeapHealth();
   checkBlessingTaskHealth();
+  checkScheduledRestart();
   lastStage = 2;
   checkSensors();
   lastStage = 3;
@@ -1222,21 +1241,24 @@ void handleWebRoutes() {
     server.send(200, "application/json", json);
   });
 
-  // V2 Phase 5: Guardian-style health panel data. Deliberately just
-  // surfaces signals that already exist (checkWiFiHealth()'s reconnect,
-  // checkHeapHealth()'s logging, checkBlessingTaskHealth()'s 120s
-  // self-heal, the crash tracer) - this endpoint reports, it does not
-  // add any new automatic recovery behavior. Per the reviewed V2
-  // feedback: conservative recovery stays limited to Wi-Fi/API retry
-  // (already exactly what checkWiFiHealth() does); everything else here
-  // is for a human to read, not for the firmware to act on unprompted.
+  // V2 Phase 5: Guardian-style health panel data. Mostly surfaces signals
+  // that already exist (checkWiFiHealth()'s reconnect, checkHeapHealth()'s
+  // logging, checkBlessingTaskHealth()'s 120s self-heal, the crash
+  // tracer) for a human to read. r154 is the one real exception to the
+  // original "reports, does not act" V2 design: heapConditionCritical/
+  // checkScheduledRestart() DO now act automatically on a real
+  // fragmentation/low-memory condition - but only ever at a genuinely
+  // idle moment, the same conservative bar r94's blessingTaskActive
+  // self-heal already cleared, not the broader always-on auto-recovery
+  // the original V2 feedback was cautious about.
   server.on("/api/health", HTTP_GET, []() {
     unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
     uint32_t estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw;
     getEstimatedPowerMw(estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw);
-    char json[900];
+    char json[1000];
     snprintf(json, sizeof(json),
       "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
+      "\"maxAllocHeap\":%lu,\"heapNeedsRestart\":%s,"
       "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
       "\"offlineFallbackCount\":%lu,\"lastOfflineFallbackAgoSec\":%ld,"
       "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d,"
@@ -1246,6 +1268,7 @@ void handleWebRoutes() {
       "\"estEspBaseMw\":%d,\"estOledMw\":%d,\"estSensorsMw\":%d}",
       (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
+      (unsigned long)ESP.getMaxAllocHeap(), heapConditionCritical ? "true" : "false",
       millis() / 1000, ampReady ? "true" : "false",
       blessingTaskActive ? "true" : "false", blessingTaskMs,
       offlineFallbackCount,
@@ -1311,6 +1334,18 @@ void handleWebRoutes() {
       // falls back to determining its own mood live in that case.
       String mood = server.hasArg("mood") ? server.arg("mood") : "";
       triggerPersonalizedOffering(name, offeringType, prayer, lang, mood);
+    } else if (action == "restart") {
+      // r154: manual counterpart to checkScheduledRestart()'s automatic
+      // idle-gated one - lets the priest/admin trigger it deliberately at
+      // a convenient moment (e.g. before a festival's heavy multi-day
+      // run) rather than only ever waiting on the automatic condition.
+      // Restarts immediately regardless of state, unlike the automatic
+      // path - this is an explicit human action, not a background
+      // self-heal, so it doesn't need to wait for idle.
+      Serial.println("CONTROL: manual restart requested from dashboard.");
+      server.send(200, "text/plain", "Restarting...");
+      delay(300);
+      ESP.restart();
     }
     server.send(200, "text/plain", "OK");
   });
@@ -1531,8 +1566,39 @@ void checkHeapHealth() {
   unsigned long now = millis();
   if (now - lastHeapLog < HEAP_LOG_INTERVAL_MS) return;
   lastHeapLog = now;
-  Serial.printf("HEAP: %lu bytes free, %lu min-ever-free (uptime %lus)\n",
-                (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), now / 1000);
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  bool tooLow = freeHeap < HEAP_CRITICAL_FREE_BYTES;
+  // Only call it "fragmented" once there's enough free heap for the
+  // comparison to mean something - otherwise a plain low-memory
+  // situation (tooLow, handled separately) would also trip this.
+  bool fragmented = !tooLow && maxAlloc < (uint32_t)(freeHeap * HEAP_FRAGMENTATION_WARN_RATIO);
+  bool longUptime = now >= AUTO_RESTART_UPTIME_MS;
+  heapConditionCritical = tooLow || fragmented || longUptime;
+  Serial.printf("HEAP: %lu bytes free (largest block %lu), %lu min-ever-free (uptime %lus)%s\n",
+                (unsigned long)freeHeap, (unsigned long)maxAlloc, (unsigned long)ESP.getMinFreeHeap(), now / 1000,
+                tooLow ? " - LOW MEMORY" : (fragmented ? " - FRAGMENTED (largest block is under half of free heap)" :
+                (longUptime ? " - routine 24h restart due, waiting for a safe idle moment" : "")));
+}
+
+// r154: actually acts on heapConditionCritical, instead of just logging
+// it - restarts ONLY once the temple is genuinely idle (not mid-blessing,
+// mid-mantra, mid-Aarti), same reasoning as every other conservative
+// self-heal in this firmware (r94's blessingTaskActive watchdog): fixing
+// a real problem before it becomes a crash, without ever interrupting an
+// active devotional moment to do it. A full restart is the ESP32
+// equivalent of "clear the space" - the heap allocator has no way to
+// compact/defragment memory in place, so a clean boot (which resets the
+// whole heap to one large contiguous block) is the actual fix, not a
+// workaround.
+void checkScheduledRestart() {
+  if (!heapConditionCritical) return;
+  bool idleAndSafe = (currentState == STATE_STANDBY || currentState == STATE_TEMPLE_CLOSED) &&
+                      !blessingTaskActive && currentPlayingTrack == 0;
+  if (!idleAndSafe) return;
+  Serial.println("HEAP: restarting now to clear heap fragmentation/low memory - waited for a safe idle moment, nothing was interrupted.");
+  delay(300);
+  ESP.restart();
 }
 
 // Safety net for blessingTaskActive getting stuck true forever - see its

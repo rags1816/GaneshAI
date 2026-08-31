@@ -954,6 +954,49 @@ reasoning survives even when the git log scrolls out of context.
   very weak thresholds at the usual -50/-60/-70/-80 dBm cutoffs);
   `/api/health` already exposed the raw RSSI, no new field needed.
   `index.html` resynced from `web_dashboard.h`.
+- **r154** - Real self-healing for heap fragmentation, per direct request
+  for "a warning with some alert and a way to free the space... before a
+  crash happens at an awkward time" - r115/r145-era heap logging only
+  ever reported the trend, it never acted on it. Two real gaps closed:
+  (1) `checkHeapHealth()` now also reads `ESP.getMaxAllocHeap()` - the
+  LARGEST single contiguous free block, not just total free bytes. This
+  is the number that actually predicts an allocation failure, since
+  total free heap can look perfectly healthy while badly fragmented into
+  many small unusable pieces (a classic embedded C++ failure mode: the
+  Arduino `String` class, used by `server.arg()` and the offering/prayer
+  parameters, allocates and frees variable-sized buffers constantly,
+  which over many requests across a multi-day festival run can leave the
+  heap looking like `[used][20B free][used][15B free][used][30B free]` -
+  65 bytes free in total, but unable to satisfy a single 50-byte
+  request). `heapConditionCritical` goes true when the largest block
+  drops below half of total free heap, OR total free heap drops below an
+  absolute floor (`HEAP_CRITICAL_FREE_BYTES`), OR uptime crosses a
+  routine 24h mark (`AUTO_RESTART_UPTIME_MS`) - all three in config.h.
+  (2) New `checkScheduledRestart()`, called from `loop()`, watches for
+  this flag and actually restarts the ESP32 (`ESP.restart()`) - but ONLY
+  once the temple is genuinely idle (`STATE_STANDBY`/`STATE_TEMPLE_CLOSED`,
+  no `blessingTaskActive`, no track playing) - same conservative bar
+  r94's `blessingTaskActive` self-heal already established: fix a real
+  problem proactively, but never interrupt an active devotional moment to
+  do it. A restart is the actual fix, not a workaround - the heap
+  allocator has no way to compact/defragment memory in place, so a clean
+  boot (resetting the whole heap to one contiguous block) is the ESP32
+  equivalent of "clear the space" the user asked for, done automatically
+  once it's safe rather than needing a human to notice and power-cycle.
+  Deliberately NOT wall-clock/NTP-based (unlike a "reboot at 3am" cron)
+  for the same reasoning as r116/r128's manual-only Atmosphere/closing -
+  a wrong timezone or Wi-Fi outage at boot would misjudge when it's
+  actually safe; tracking uptime + real idle state needs no clock at
+  all. `/api/health` gained `maxAllocHeap`/`heapNeedsRestart`; Device
+  Health shows the largest-block figure alongside free/min-free, and a
+  red warning line when a restart is pending (informational only - the
+  restart already happens in firmware regardless of whether anyone has
+  the dashboard open). Also added a manual "Restart Device" button
+  (`/api/control?action=restart`, confirm-gated since it restarts
+  immediately regardless of state, unlike the automatic path) so the
+  priest/admin can restart deliberately at a convenient moment - e.g.
+  before a festival's heavy multi-day run - rather than only ever
+  waiting on the automatic condition. `index.html` resynced.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

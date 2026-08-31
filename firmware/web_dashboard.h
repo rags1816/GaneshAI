@@ -914,6 +914,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <div>Wi-Fi: <span id="health-wifi" style="color:#fff;">-</span></div>
             <div>Uptime: <span id="health-uptime" style="color:#fff;">-</span></div>
             <div>Free memory: <span id="health-heap" style="color:#fff;">-</span></div>
+            <!-- r154: heapNeedsRestart reflects real fragmentation (largest
+                 free block vs. total free), not just a low total - see
+                 checkHeapHealth()/checkScheduledRestart() in
+                 GanapatiAI.ino. The device restarts itself automatically
+                 once this is true AND it's genuinely idle (no blessing/
+                 mantra/Aarti active) - this line just makes that visible
+                 rather than it happening silently in the background. -->
+            <div id="health-heap-warning" style="display:none; color:#ff6b6b; font-weight:600;">&#9888; Low memory/fragmented - will auto-restart at next idle moment</div>
             <div>Amp: <span id="health-amp" style="color:#fff;">-</span></div>
             <div>MP3 player: <span id="health-player" style="color:#fff;">-</span></div>
             <div>LED ring: <span id="health-led" style="color:#fff;">-</span></div>
@@ -935,6 +943,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                  DFPlayer/amp which switches between its idle and playing
                  constant depending on whether audio is actually going. -->
             <div style="font-size:10px; opacity:0.75; margin-top:2px;" id="health-power-breakdown"></div>
+            <!-- r154: manual counterpart to the automatic idle-gated
+                 restart - lets the priest/admin restart deliberately at a
+                 convenient moment instead of only ever waiting on the
+                 automatic condition. Confirm dialog since this is
+                 disruptive if pressed mid-blessing. -->
+            <button style="margin-top:8px; padding:6px 12px; font-size:11px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.4); color:#ff6b6b; border-radius:8px; cursor:pointer;" onclick="restartDevice()">Restart Device</button>
         </div>
         </details>
 
@@ -3353,6 +3367,19 @@ var QRCode;
             changeState("MANTRA_ACTIVE", track.duration + 900);
         }
 
+        // r154: manual counterpart to the device's own automatic
+        // idle-gated restart (see checkScheduledRestart() in
+        // GanapatiAI.ino) - lets the priest/admin trigger it deliberately
+        // rather than only ever waiting on the automatic low-memory/
+        // fragmentation condition. Confirm dialog since, unlike the
+        // automatic path, this restarts immediately regardless of state -
+        // pressing it mid-blessing WILL cut the blessing off.
+        function restartDevice() {
+            if (!isPhysicalESP) return;
+            if (!confirm("Restart the device now? This will interrupt anything currently playing.")) return;
+            sendESPControl('restart');
+        }
+
         function onMousePadDown() {
             mouseDownAt = Date.now();
             evaluateCloseHold();
@@ -4043,7 +4070,18 @@ var QRCode;
                 const uptimeEl = document.getElementById('health-uptime');
                 if (uptimeEl) uptimeEl.textContent = formatUptime(data.uptimeSec);
                 const heapEl = document.getElementById('health-heap');
-                if (heapEl) heapEl.textContent = Math.round(data.freeHeap / 1024) + ' KB (min ' + Math.round(data.minFreeHeap / 1024) + ' KB)';
+                if (heapEl) {
+                    heapEl.textContent = Math.round(data.freeHeap / 1024) + ' KB (min ' + Math.round(data.minFreeHeap / 1024) +
+                        ' KB, largest block ' + Math.round(data.maxAllocHeap / 1024) + ' KB)';
+                }
+                // r154: shows the exact same condition that drives the
+                // device's own automatic idle-gated restart - see
+                // checkHeapHealth()/checkScheduledRestart() in
+                // GanapatiAI.ino. This is informational only; the restart
+                // itself already happens in firmware without needing this
+                // panel open.
+                const heapWarnEl = document.getElementById('health-heap-warning');
+                if (heapWarnEl) heapWarnEl.style.display = data.heapNeedsRestart ? 'block' : 'none';
                 const ampEl = document.getElementById('health-amp');
                 if (ampEl) ampEl.textContent = data.ampReady ? 'Ready' : 'Not ready';
                 const offlineEl = document.getElementById('health-offline');
