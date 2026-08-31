@@ -880,6 +880,26 @@ reasoning survives even when the git log scrolls out of context.
   Health's estimate reflects reality instead of the old, now-incorrect
   direct-GPIO model. `EYE_LED_GPIO_VOLTAGE` is kept (still an accurate
   fact about the pin) but no longer feeds the eye-LED power estimate.
+- **r150** - Real watchdog crash, confirmed via Serial Monitor after
+  flashing r149: `Task watchdog got triggered... loopTask (CPU 1) did
+  not reset the watchdog in time... Aborting`, landing consistently at
+  `lastStage = 1` (the crash tracer's `checkBlessingTaskHealth()`-and-
+  earlier group: `server.handleClient()` + `checkWiFiHealth()`). Not
+  caused by r149 itself - that change was pure arithmetic in an unrelated
+  function - and not the r119-121-style loose-connection issue either
+  (that never produced a real backtrace or clean reboot; this did). Root
+  cause: the watchdog was only fed once at the very top of `loop()`,
+  before ANY of stage 1's steps ran - a slow/stalled HTTP client in
+  `server.handleClient()` and a slow `WiFi.reconnect()` (called from
+  `checkWiFiHealth()` when the AP is unreachable) can each individually
+  take a couple of seconds; back to back, in a single loop iteration,
+  their COMBINED time could exceed the 8s watchdog window even though
+  neither call alone was actually stuck forever. `loop()` now calls
+  `esp_task_wdt_reset()` between each stage-1 step instead of only once
+  at the top, bounding each call's own time against the watchdog
+  individually rather than the whole group's total. Doesn't mask a
+  genuinely infinite hang in a single call - only fixes the
+  cumulative-slowness case, which is what the evidence here pointed to.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

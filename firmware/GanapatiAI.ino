@@ -1079,7 +1079,18 @@ void loop() {
   esp_task_wdt_reset();
   lastStage = 1;
   server.handleClient();
+  // r150: was only fed once at the very top of loop() - a slow/stalled
+  // HTTP client in handleClient() and a slow WiFi.reconnect() when the
+  // AP is unreachable can each individually take a couple of seconds;
+  // back to back, their COMBINED time could exceed the 8s watchdog
+  // window even though neither call alone ever actually hung forever -
+  // confirmed on hardware via a real watchdog-triggered reboot
+  // (Task watchdog... loopTask did not reset in time) landing at this
+  // exact stage. Feeding it between each step bounds each call
+  // individually instead of the whole group.
+  esp_task_wdt_reset();
   checkWiFiHealth();
+  esp_task_wdt_reset();
   checkHeapHealth();
   checkBlessingTaskHealth();
   lastStage = 2;
