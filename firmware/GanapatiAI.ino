@@ -3412,9 +3412,16 @@ void getEstimatedPowerMw(uint32_t &totalMw, uint32_t &ledMw, uint32_t &eyeLedMw,
   eyeLedMw = 0;
   if (EYE_LED_CONNECTED) {
     int duty = ledcRead(EYE_LED_PIN);
-    float perBranchMa = (EYE_LED_GPIO_VOLTAGE - EYE_LED_FORWARD_VOLTAGE) / EYE_LED_RESISTOR_OHMS * 1000.0f;
-    float totalMa = perBranchMa * 2.0f * (duty / 255.0f); // 2 LEDs in parallel off the one GPIO
-    eyeLedMw = (uint32_t)(totalMa * EYE_LED_GPIO_VOLTAGE);
+    // r149: the LED branch is now fed from the 5V rail through an NPN
+    // transistor low-side switch (GPIO16 only drives the transistor's
+    // base now) - see this version's CLAUDE.md entry for the wiring.
+    // EYE_LED_FORWARD_VOLTAGE stays the same real-measured 2.91V - a
+    // second independent measurement on this new circuit backed out the
+    // same value, confirming it's a property of the LED, not the old
+    // circuit specifically.
+    float perBranchMa = (EYE_LED_SUPPLY_VOLTAGE - EYE_LED_TRANSISTOR_VCE_SAT - EYE_LED_FORWARD_VOLTAGE) / EYE_LED_RESISTOR_OHMS * 1000.0f;
+    float totalMa = perBranchMa * 2.0f * (duty / 255.0f); // 2 LEDs in parallel, switched together by the one transistor
+    eyeLedMw = (uint32_t)(totalMa * EYE_LED_SUPPLY_VOLTAGE); // drawn from the 5V rail now, not the GPIO/3.3V rail
   }
 
   // currentPlayingTrack != 0 or the amp's own background task both count

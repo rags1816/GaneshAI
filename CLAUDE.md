@@ -851,6 +851,35 @@ reasoning survives even when the git log scrolls out of context.
   duty-corrected 3.875mA as if it were still the raw average), which
   would have produced an incorrect ~2.82V - the fix here is the properly
   worked number, not that first attempt.
+- **r149** - Mouse eye LEDs physically rewired on the real altar per the
+  r146/r147 headroom finding: an NPN transistor (2N2222) now switches
+  the LED branch as a low-side switch fed from the 5V rail, instead of
+  GPIO16 sourcing the LEDs' current directly at 3.3V. Wiring: both
+  LEDs' 100ohm resistors' shared far end (previously GPIO16) now goes to
+  +5V; both LEDs' shared cathode node (previously straight to GND) now
+  goes to the transistor's Collector; transistor Emitter to GND;
+  transistor Base to GPIO16 through a new 1kohm base resistor
+  (`EYE_LED_BASE_RESISTOR_OHMS`). `ledcRead(EYE_LED_PIN)` still reads
+  the correct PWM duty since GPIO16 itself is electrically unchanged -
+  only what it drives changed (a transistor's base instead of the LEDs
+  directly), so no PWM/animation code needed to change at all. Validated
+  on the spare bench rig before touching the live device, per this
+  project's established practice: measured 1.51V across the 100ohm
+  resistor at the same 80%-duty resting glow used for every prior
+  measurement -> 15.1mA average -> 18.875mA on-state (peak) current,
+  essentially the LED's full 20mA rating and a real ~4.85x jump over the
+  old circuit's ~3.9mA - confirming the r146/r147 prediction. Backing
+  out Vf from this second, independent circuit (5V - 0.2V assumed
+  transistor Vce_sat - (18.875mA * 100ohm) = 2.9125V) landed on
+  effectively the same 2.91V already measured on the OLD circuit in
+  r148 - strong confirmation that r148's Vf is a real property of the
+  LED itself, not an artifact of the old wiring, so `EYE_LED_FORWARD_VOLTAGE`
+  is unchanged. `getEstimatedPowerMw()` updated to model the new circuit
+  (new `EYE_LED_SUPPLY_VOLTAGE`/`EYE_LED_TRANSISTOR_VCE_SAT` constants,
+  power now drawn from the 5V rail instead of GPIO/3.3V) so Device
+  Health's estimate reflects reality instead of the old, now-incorrect
+  direct-GPIO model. `EYE_LED_GPIO_VOLTAGE` is kept (still an accurate
+  fact about the pin) but no longer feeds the eye-LED power estimate.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

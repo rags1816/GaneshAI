@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r148"
+#define FIRMWARE_VERSION "2026-08-30-r149"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -170,10 +170,28 @@
 // corrected for the 80% duty -> Vf = 3.3V - (3.875mA * 100ohm) = 2.91V.
 // See this version's CLAUDE.md entry for the full worked numbers,
 // including an earlier arithmetic slip (dividing by duty cycle twice)
-// that this corrects. Re-measure and correct again if a different-spec
-// LED is ever substituted.
+// that this corrects. r149: confirmed to be a real property of the LED
+// itself, not the old circuit - a second, independent measurement on
+// the new 5V+transistor circuit (below) backed out the same 2.91V.
+// Re-measure and correct again if a different-spec LED is substituted.
 #define EYE_LED_FORWARD_VOLTAGE     2.91
-#define EYE_LED_GPIO_VOLTAGE        3.3  // ESP32 GPIO high level
+#define EYE_LED_GPIO_VOLTAGE        3.3  // ESP32 GPIO high level - no longer the eye LEDs' supply as of r149, see below; kept as it's still a true fact about the pin, used for its base-drive role
+
+// r149: the eye LED branch moved off GPIO16-as-power-source onto its own
+// NPN transistor (2N2222) low-side switch fed from the 5V rail, so the
+// LEDs could actually reach a meaningful fraction of their 20mA rating
+// (r146/r147 found only ~2-4mA was possible straight off a 3.3V GPIO,
+// regardless of resistor choice - not enough voltage headroom above the
+// LED's own ~2.9V Vf). GPIO16 now only drives the transistor's base
+// through EYE_LED_BASE_RESISTOR_OHMS - ledcRead(EYE_LED_PIN) still
+// reads the same PWM duty as before, since GPIO16 itself is unchanged,
+// only what it's driving changed. EYE_LED_TRANSISTOR_VCE_SAT is a
+// typical 2N2222 saturation voltage at these low currents, not measured
+// separately - the LED math above already backs out the same Vf via
+// this assumption, which is the real cross-check that it's reasonable.
+#define EYE_LED_SUPPLY_VOLTAGE       5.0
+#define EYE_LED_TRANSISTOR_VCE_SAT   0.2
+#define EYE_LED_BASE_RESISTOR_OHMS   1000
 
 // NeoPixel LEDs
 #define LED_PIN          18   // WS2812B NeoPixel Data Pin
