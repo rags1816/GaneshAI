@@ -1234,7 +1234,7 @@ void handleWebRoutes() {
     unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
     uint32_t estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw;
     getEstimatedPowerMw(estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw);
-    char json[800];
+    char json[900];
     snprintf(json, sizeof(json),
       "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
       "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
@@ -1242,7 +1242,8 @@ void handleWebRoutes() {
       "\"bootCrashedLastRun\":%s,\"bootCrashedStage\":%d,"
       "\"dfPlayerReady\":%s,\"ledConnected\":%s,\"ledEnabled\":%s,"
       "\"pirConnected\":%s,\"pirEnabled\":%s,"
-      "\"estTotalMw\":%lu,\"estLedMw\":%lu,\"estEyeLedMw\":%lu,\"estDfPlayerMw\":%lu}",
+      "\"estTotalMw\":%lu,\"estLedMw\":%lu,\"estEyeLedMw\":%lu,\"estDfPlayerMw\":%lu,"
+      "\"estEspBaseMw\":%d,\"estOledMw\":%d,\"estSensorsMw\":%d}",
       (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
       millis() / 1000, ampReady ? "true" : "false",
@@ -1253,7 +1254,12 @@ void handleWebRoutes() {
       dfPlayerReady ? "true" : "false",
       LED_CONNECTED ? "true" : "false", ledEnabled ? "true" : "false",
       PIR_CONNECTED ? "true" : "false", pirEnabled ? "true" : "false",
-      (unsigned long)estTotalMw, (unsigned long)estLedMw, (unsigned long)estEyeLedMw, (unsigned long)estDfPlayerMw);
+      (unsigned long)estTotalMw, (unsigned long)estLedMw, (unsigned long)estEyeLedMw, (unsigned long)estDfPlayerMw,
+      // r152: fixed datasheet-typical constants, straight from config.h -
+      // exposed here (rather than hardcoded a second time in the
+      // dashboard JS) so config.h stays the single source of truth if
+      // these are ever corrected against real parts.
+      POWER_ESP32_BASE_MW, POWER_OLED_MW, POWER_SENSORS_MW);
     server.send(200, "application/json", json);
   });
 

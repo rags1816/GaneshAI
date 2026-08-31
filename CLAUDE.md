@@ -926,6 +926,27 @@ reasoning survives even when the git log scrolls out of context.
   the existing `estLedMw`/`estEyeLedMw` fields - no firmware/`/api/health`
   change needed for this part. `index.html` resynced from
   `web_dashboard.h` for this dashboard-only change.
+- **r152** - Device Health's power estimate expanded to a full per-
+  component breakdown, per direct request "for the sake of completeness"
+  after explaining what makes up the gap between the LED/eye figures and
+  the total (mostly the ESP32's own Wi-Fi+CPU draw, not the OLED as
+  guessed). `/api/health` gained `estEspBaseMw`/`estOledMw`/
+  `estSensorsMw` - straight passthroughs of the existing
+  `POWER_ESP32_BASE_MW`/`POWER_OLED_MW`/`POWER_SENSORS_MW` constants from
+  config.h (buffer grown 800->900 bytes), so the dashboard doesn't need
+  its own hardcoded copy of numbers that already live in config.h.
+  `estDfPlayerMw` (already exposed since r145) is now also shown. The
+  dashboard's Device Health panel gained a small breakdown line beneath
+  the existing total (ESP32 core+WiFi/OLED/DFPlayer/Sensors/LED ring/Eye
+  LEDs individually) - the main "Est. power draw" line above it is
+  simplified back to just the total. Also directly answered, not
+  changed: the LED ring and eye LED figures will visibly fluctuate
+  between polls since they're read as an instantaneous snapshot of live
+  PWM/pixel state, not a time-averaged value - smoothing that would need
+  the firmware to sample much faster than once per ~10s dashboard poll
+  and keep a running average, a real added complexity not undertaken
+  here since the whole panel is already a software estimate, not a
+  measured value. `index.html` resynced from `web_dashboard.h`.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

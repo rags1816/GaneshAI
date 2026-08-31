@@ -926,6 +926,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                  ring) vs. a fixed datasheet-typical assumption
                  (everything else). -->
             <div>Est. power draw: <span id="health-power" style="color:#fff;">-</span></div>
+            <!-- r152: full component breakdown, for completeness - LED
+                 ring and eyes are real math against live PWM/pixel state
+                 (so these two numbers move as they breathe/pulsate - a
+                 snapshot at whatever instant this panel happens to poll,
+                 not a smoothed average); everything else here is a fixed
+                 datasheet-typical constant from config.h, except
+                 DFPlayer/amp which switches between its idle and playing
+                 constant depending on whether audio is actually going. -->
+            <div style="font-size:10px; opacity:0.75; margin-top:2px;" id="health-power-breakdown"></div>
         </div>
         </details>
 
@@ -4055,8 +4064,22 @@ var QRCode;
                     // just mW/5.0, same division as the total above.
                     const ledMa = Math.round(data.estLedMw / 5.0);
                     const eyeMa = Math.round(data.estEyeLedMw / 5.0);
-                    powerEl.textContent = totalMa + ' mA / ' + (data.estTotalMw / 1000).toFixed(1) + ' W (estimate, LED ' +
-                        ledMa + 'mA/' + data.estLedMw + 'mW + eyes ' + eyeMa + 'mA/' + data.estEyeLedMw + 'mW + rest fixed - not measured)';
+                    powerEl.textContent = totalMa + ' mA / ' + (data.estTotalMw / 1000).toFixed(1) + ' W (estimate - not measured)';
+                }
+                // r152: full breakdown for completeness - see this panel's own
+                // HTML comment above for what's real math (LED/eyes) vs. a
+                // fixed constant (everything else). DFPlayer's own mW value
+                // already reflects idle vs. playing (it's a different fixed
+                // constant either way - see getEstimatedPowerMw()), so no
+                // separate label is added here to avoid a second, possibly
+                // stale playing/idle guess in the dashboard.
+                const breakdownEl = document.getElementById('health-power-breakdown');
+                if (breakdownEl && typeof data.estTotalMw === 'number') {
+                    const ledMa = Math.round(data.estLedMw / 5.0);
+                    const eyeMa = Math.round(data.estEyeLedMw / 5.0);
+                    breakdownEl.textContent = 'ESP32 core+WiFi ' + data.estEspBaseMw + 'mW · OLED ' + data.estOledMw +
+                        'mW · DFPlayer/amp ' + data.estDfPlayerMw + 'mW · Sensors ' + data.estSensorsMw +
+                        'mW · LED ring ' + ledMa + 'mA/' + data.estLedMw + 'mW · Eye LEDs ' + eyeMa + 'mA/' + data.estEyeLedMw + 'mW';
                 }
             }).catch(() => {});
         }
