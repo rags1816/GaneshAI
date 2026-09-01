@@ -1073,6 +1073,31 @@ reasoning survives even when the git log scrolls out of context.
   directly - all five are exclusively reached through one of the five
   `xTaskCreatePinnedToCore()` background tasks, all now on core 0. This
   was a genuine audit, not a reassurance given without checking.
+- **r159** - Backup Wi-Fi network (a phone hotspot) added per direct
+  request, for times the home network is unreachable or undesirable to
+  use (a festival with a crowded/inaccessible router, a home internet
+  outage). `WIFI_SSID_BACKUP`/`WIFI_PASSWORD_BACKUP` in config.h (must be
+  2.4GHz - confirmed with the user, since the ESP32 can't join 5GHz at
+  all). Which network is PREFERRED is stored in flash (`Preferences`
+  library, NVS) rather than RTC memory, specifically so it survives a
+  full power cycle, not just a soft reset - the device may be unplugged/
+  moved during a festival. `setup()`'s Wi-Fi connection now tries the
+  preferred network first, and automatically tries the OTHER known
+  network if the preferred one specifically fails to connect, before
+  finally falling back to the existing AP mode - so a stale/wrong
+  preference can't strand the device offline either. New
+  `/api/control?action=wifiswitch&network=home|backup` sets the
+  preference and restarts to apply it (restart-based rather than a live
+  in-place reconnect, since the device would otherwise need to swap
+  networks mid-response to the very request asking it to switch - reuses
+  the existing, already-hardened boot-time connection logic instead of a
+  second parallel code path). Device Health shows which network is
+  actually connected (`WiFi.SSID()`, not just the preference) and gained
+  two buttons ("Use Home Wi-Fi" / "Use Hotspot") that highlight whichever
+  is currently active. Switching restarts the device and changes its IP
+  address, so the browser loses connection immediately - the physical
+  OLED (which already shows the IP on every boot) is the way to find it
+  again on the new network, same as after any other reboot.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-08-30-r158"
+#define FIRMWARE_VERSION "2026-08-30-r159"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -368,7 +368,15 @@
 
 // Home Wi-Fi Network Settings
 #define WIFI_SSID        "VM3003995_Ext"
-#define WIFI_PASSWORD    "c7kQrnnrdqnf" 
+#define WIFI_PASSWORD    "c7kQrnnrdqnf"
+
+// r159: backup network (phone hotspot) - tried automatically if the
+// preferred network fails to connect at boot, and selectable as the
+// PREFERRED network from the dashboard (see /api/control?action=wifiswitch
+// in GanapatiAI.ino). Must be 2.4GHz - the ESP32 cannot join a 5GHz
+// network at all.
+#define WIFI_SSID_BACKUP     "AndroidAP9715"
+#define WIFI_PASSWORD_BACKUP "21Vihana"
 
 // r154: heap fragmentation / low-memory self-healing thresholds - see
 // checkHeapHealth()/checkScheduledRestart() in GanapatiAI.ino. A restart

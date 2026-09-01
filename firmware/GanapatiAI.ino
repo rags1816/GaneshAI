@@ -18,6 +18,7 @@
 #include "ESP_I2S.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <Preferences.h>
 #include "config.h"
 #include "web_dashboard.h"
 #include "puja_page.h"
@@ -175,6 +176,20 @@ bool motionDetected = false;
 bool wifiStationMode = false;
 unsigned long lastWifiCheck = 0;
 #define WIFI_CHECK_INTERVAL_MS 15000
+
+// r159: second Wi-Fi network (e.g. a phone hotspot) as a backup, for
+// times the home network is unreachable or undesirable to use (a
+// festival with a crowded/inaccessible router, a home internet outage,
+// etc.). Preference stored in NVS flash (Preferences library), not RTC
+// memory - it must survive a full power cycle, not just a soft reset,
+// since the device may be unplugged/moved during a festival. Whichever
+// network is preferred is tried FIRST at boot; if that one specifically
+// fails, the OTHER one is tried automatically before giving up to AP
+// mode - so a wrong/stale preference can't strand the device offline
+// either.
+Preferences wifiPrefs;
+#define WIFI_PREF_NAMESPACE "ganapati"
+#define WIFI_PREF_KEY       "wifiNet"
 
 // Free-heap logging - a data point this firmware has never collected.
 // server.arg() and several offering/prayer parameters use the Arduino
@@ -927,13 +942,23 @@ void setup() {
   ampReady = ampI2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT);
   Serial.println(ampReady ? "STEP 5.5: Amp I2S bus initialized." : "STEP 5.5: Amp FAILED to initialize - continuing without spoken blessings.");
 
-  // 6. Initialize Wi-Fi Connection to Home Router
+  // 6. Initialize Wi-Fi Connection - tries the preferred network first
+  // (persisted in flash, see wifiPrefs above), then automatically tries
+  // the OTHER known network if the preferred one specifically fails,
+  // before finally giving up to AP mode.
+  wifiPrefs.begin(WIFI_PREF_NAMESPACE, false);
+  bool preferBackupWifi = wifiPrefs.getInt(WIFI_PREF_KEY, 0) == 1;
+  const char *firstSsid  = preferBackupWifi ? WIFI_SSID_BACKUP : WIFI_SSID;
+  const char *firstPass  = preferBackupWifi ? WIFI_PASSWORD_BACKUP : WIFI_PASSWORD;
+  const char *secondSsid = preferBackupWifi ? WIFI_SSID : WIFI_SSID_BACKUP;
+  const char *secondPass = preferBackupWifi ? WIFI_PASSWORD : WIFI_PASSWORD_BACKUP;
+
   Serial.print("Connecting to Wi-Fi: ");
-  Serial.println(WIFI_SSID);
-  
+  Serial.println(firstSsid);
+
   u8g2.clearBuffer();
   u8g2.drawStr(5, 20, "Connecting Wi-Fi...");
-  u8g2.drawStr(5, 35, WIFI_SSID);
+  u8g2.drawStr(5, 35, firstSsid);
   u8g2.sendBuffer();
 
   // r156: lets the ESP32's own WiFi driver handle reconnection in its own
@@ -943,7 +968,7 @@ void setup() {
   // main loop task at all, so it can't be the thing stuck inside a stage-1
   // watchdog hang the way the manual call could.
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(firstSsid, firstPass);
   int wRetries = 0;
   while (WiFi.status() != WL_CONNECTED && wRetries < 20) {
     delay(500);
@@ -951,17 +976,40 @@ void setup() {
     wRetries++;
   }
 
+  // r159: the preferred network specifically failed to connect at all -
+  // try the other known network once before giving up to AP mode. This
+  // does NOT change the stored preference - it's a one-boot fallback,
+  // not a silent switch; the device will try the preferred one again
+  // first on its next boot.
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("\nWi-Fi: preferred network unreachable, trying backup: ");
+    Serial.println(secondSsid);
+    u8g2.clearBuffer();
+    u8g2.drawStr(5, 20, "Trying backup Wi-Fi...");
+    u8g2.drawStr(5, 35, secondSsid);
+    u8g2.sendBuffer();
+    WiFi.begin(secondSsid, secondPass);
+    wRetries = 0;
+    while (WiFi.status() != WL_CONNECTED && wRetries < 20) {
+      delay(500);
+      Serial.print(".");
+      wRetries++;
+    }
+  }
+
   IPAddress myIP;
   if (WiFi.status() == WL_CONNECTED) {
     myIP = WiFi.localIP();
     wifiStationMode = true;
     Serial.println("\nWi-Fi Connected!");
+    Serial.print("Network: ");
+    Serial.println(WiFi.SSID());
     Serial.print("IP Address: ");
     Serial.println(myIP);
-    
+
     u8g2.clearBuffer();
     u8g2.drawStr(5, 20, "Wi-Fi Connected!");
-    u8g2.drawStr(5, 35, WIFI_SSID);
+    u8g2.drawStr(5, 35, WiFi.SSID().c_str());
     String ipStr = "IP: " + myIP.toString();
     u8g2.drawStr(5, 50, ipStr.c_str());
     u8g2.sendBuffer();
@@ -1275,9 +1323,15 @@ void handleWebRoutes() {
     unsigned long blessingTaskMs = blessingTaskActive ? (millis() - blessingTaskStartMs) : 0;
     uint32_t estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw;
     getEstimatedPowerMw(estTotalMw, estLedMw, estEyeLedMw, estDfPlayerMw);
-    char json[1000];
+    char json[1050];
+    // r159: WiFi.SSID() is only meaningful once actually connected -
+    // an empty string otherwise, which the dashboard already handles
+    // fine (wifiConnected:false takes precedence in the UI).
+    String currentSsid = WiFi.SSID();
+    bool onBackupWifi = currentSsid == WIFI_SSID_BACKUP;
     snprintf(json, sizeof(json),
-      "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
+      "{\"wifiConnected\":%s,\"wifiRSSI\":%d,\"wifiSSID\":\"%s\",\"wifiIsBackup\":%s,"
+      "\"freeHeap\":%lu,\"minFreeHeap\":%lu,"
       "\"maxAllocHeap\":%lu,\"heapNeedsRestart\":%s,"
       "\"uptimeSec\":%lu,\"ampReady\":%s,\"blessingTaskActive\":%s,\"blessingTaskMs\":%lu,"
       "\"offlineFallbackCount\":%lu,\"lastOfflineFallbackAgoSec\":%ld,"
@@ -1287,6 +1341,7 @@ void handleWebRoutes() {
       "\"estTotalMw\":%lu,\"estLedMw\":%lu,\"estEyeLedMw\":%lu,\"estDfPlayerMw\":%lu,"
       "\"estEspBaseMw\":%d,\"estOledMw\":%d,\"estSensorsMw\":%d}",
       (WiFi.status() == WL_CONNECTED) ? "true" : "false", WiFi.RSSI(),
+      currentSsid.c_str(), onBackupWifi ? "true" : "false",
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
       (unsigned long)ESP.getMaxAllocHeap(), heapConditionCritical ? "true" : "false",
       millis() / 1000, ampReady ? "true" : "false",
@@ -1364,6 +1419,21 @@ void handleWebRoutes() {
       // self-heal, so it doesn't need to wait for idle.
       Serial.println("CONTROL: manual restart requested from dashboard.");
       server.send(200, "text/plain", "Restarting...");
+      delay(300);
+      ESP.restart();
+    } else if (action == "wifiswitch") {
+      // r159: stores which network to try FIRST on the next boot, then
+      // restarts to apply it - simpler and safer than reconnecting live
+      // while the web server is mid-response, and reuses the same
+      // battle-tested boot-time connection/fallback logic rather than a
+      // separate live-switch code path. Persisted in flash (NVS), so it
+      // survives a full power cycle, not just a soft reset.
+      String network = server.arg("network");
+      int prefValue = (network == "backup") ? 1 : 0;
+      wifiPrefs.putInt(WIFI_PREF_KEY, prefValue);
+      Serial.printf("CONTROL: Wi-Fi preference set to %s, restarting to apply...\n",
+                    prefValue == 1 ? "backup hotspot" : "home network");
+      server.send(200, "text/plain", "Switching network and restarting...");
       delay(300);
       ESP.restart();
     }

@@ -906,6 +906,17 @@
         <summary class="section-title">&#129649; Device Health</summary>
         <div style="background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 10px; margin-bottom: 12px; font-size: 11px; color: #a8b2d1; line-height: 1.9;">
             <div>Wi-Fi: <span id="health-wifi" style="color:#fff;">-</span></div>
+            <!-- r159: shows which physical network the device actually
+                 connected to (home router vs. the phone-hotspot backup) -
+                 see WIFI_SSID_BACKUP in config.h and the wifiswitch
+                 control below. Buttons restart the device to apply a
+                 switch (see /api/control?action=wifiswitch in
+                 GanapatiAI.ino for why it's restart-based, not live). -->
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span>Network: <span id="health-wifi-network" style="color:#fff;">-</span></span>
+                <button id="btn-wifi-home" style="padding:2px 8px; font-size:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#a8b2d1; border-radius:6px; cursor:pointer;" onclick="switchWifiNetwork('home')">Use Home Wi-Fi</button>
+                <button id="btn-wifi-backup" style="padding:2px 8px; font-size:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#a8b2d1; border-radius:6px; cursor:pointer;" onclick="switchWifiNetwork('backup')">Use Hotspot</button>
+            </div>
             <div>Uptime: <span id="health-uptime" style="color:#fff;">-</span></div>
             <div>Free memory: <span id="health-heap" style="color:#fff;">-</span></div>
             <!-- r154: heapNeedsRestart reflects real fragmentation (largest
@@ -3374,6 +3385,18 @@ var QRCode;
             sendESPControl('restart');
         }
 
+        // r159: switching networks means the device gets a NEW IP address
+        // on the other network - this browser tab will lose its connection
+        // to the device immediately once it restarts, since it's still
+        // pointed at the old IP. Check the physical OLED for the new IP
+        // once it reconnects, same as any other reboot.
+        function switchWifiNetwork(network) {
+            if (!isPhysicalESP) return;
+            const label = network === 'backup' ? 'the phone hotspot' : 'the home Wi-Fi';
+            if (!confirm(`Switch to ${label} and restart? This browser will lose connection - check the physical OLED for the new IP address once it reconnects.`)) return;
+            sendESPControl('wifiswitch', `&network=${network}`);
+        }
+
         function onMousePadDown() {
             mouseDownAt = Date.now();
             evaluateCloseHold();
@@ -4060,6 +4083,19 @@ var QRCode;
                     wifiEl.textContent = data.wifiConnected
                         ? ('Connected (' + data.wifiRSSI + ' dBm - ' + wifiQuality + ')')
                         : 'Disconnected';
+                }
+                // r159: shows the actual connected network and highlights
+                // whichever "Use X" button matches it, so it's obvious
+                // which one is active without reading the SSID text.
+                const netEl = document.getElementById('health-wifi-network');
+                if (netEl) netEl.textContent = data.wifiConnected ? (data.wifiSSID || '-') : '-';
+                const homeBtnEl = document.getElementById('btn-wifi-home');
+                const backupBtnEl = document.getElementById('btn-wifi-backup');
+                if (homeBtnEl && backupBtnEl && data.wifiConnected) {
+                    const activeStyle = 'background:rgba(0,255,150,0.15); border:1px solid rgba(0,255,150,0.5); color:#0f6;';
+                    const inactiveStyle = 'background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#a8b2d1;';
+                    homeBtnEl.style.cssText = 'padding:2px 8px; font-size:10px; border-radius:6px; cursor:pointer;' + (data.wifiIsBackup ? inactiveStyle : activeStyle);
+                    backupBtnEl.style.cssText = 'padding:2px 8px; font-size:10px; border-radius:6px; cursor:pointer;' + (data.wifiIsBackup ? activeStyle : inactiveStyle);
                 }
                 const uptimeEl = document.getElementById('health-uptime');
                 if (uptimeEl) uptimeEl.textContent = formatUptime(data.uptimeSec);
