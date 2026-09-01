@@ -1200,8 +1200,35 @@ reasoning survives even when the git log scrolls out of context.
   worst case. Both timeouts run entirely on the core-0 background tasks
   (r157/r158), not the watchdog-monitored main loop, so widening them
   carries no crash risk.
-
-## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
+- **r164** - Real, user-identified gap in the puja-portal race window
+  documented (not fixed) in r162: a devotee's offering is queued
+  IMMEDIATELY with raw text, and the AI translation can take up to 25s
+  to land - if a priest approves inside that window (a real risk once
+  live, with a crowded queue and devotees submitting via both the wish
+  pad and the QR code at once), the altar speaks the raw untranslated
+  text in the wrong-language voice. Direct request: no more silent
+  tradeoff, a real fix, and multiple simultaneous offerings must each
+  track their own translation state independently, not a global block.
+  New `translating` flag on the queued item itself: `true` from the
+  moment it's queued (`puja.html`'s `newRequest`, always - `requestAiBlessing()`
+  is called unconditionally there; the dashboard's own Virtual Puja panel
+  only when it typed text needs a translation call at all - `translating:
+  text.length > 0`), cleared by `upgradeOfferingText()` the moment the AI
+  call either succeeds OR fails/times out - never left permanently stuck.
+  `renderQueue()` in `web_dashboard.h`/`index.html` shows a disabled
+  "Translating..." button in place of Approve for exactly that one item
+  while its flag is true - Reject stays available throughout, and every
+  OTHER item in the queue is completely unaffected, so a crowded live
+  queue keeps moving. `approveQueueItem()` also re-checks the flag itself
+  as defense in depth against a stale render. Applied identically to all
+  three puja pages (`puja.html`/`backend/hosting/puja.html`/
+  `firmware/puja_page.h`) and both dashboard copies. The puja pages'
+  hardcoded footer label was also bumped (r117 -> r164) since this is the
+  first change to their actual content since r117 - see this file's
+  duplicated-file-discipline section for why that label doesn't update
+  itself. `backend/hosting/puja.html` needs its own manual
+  `firebase deploy --only hosting` to go live - a git push alone does not
+  deploy it.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

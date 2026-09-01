@@ -3173,7 +3173,14 @@ var QRCode;
                 name: name,
                 offering: selectedOffering,
                 prayer: text,
-                lang: selectedLang
+                lang: selectedLang,
+                // r164: same race-window fix as puja.html - only true when
+                // there's actually a translation call about to be made
+                // (requestPujaAiUpgrade() below, gated on non-empty text);
+                // an empty-prayer offering has nothing to wait on, since
+                // the device already generates a fresh live blessing for
+                // that case, so it starts immediately approvable.
+                translating: text.length > 0
             };
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             localQueue.push(newRequest);
@@ -3236,10 +3243,20 @@ var QRCode;
                     return { blessingText, blessingMood };
                 })
                 .then(({ blessingText, blessingMood }) => {
-                    if (blessingText) upgradeOfferingText(requestId, blessingText, blessingMood);
+                    // r164: always call this now, even if blessingText came
+                    // back empty - it's the only place that clears
+                    // `translating`, and this item's Approve button must
+                    // never stay disabled forever just because the reply
+                    // happened to be blank.
+                    upgradeOfferingText(requestId, blessingText, blessingMood);
                 })
                 .catch(err => {
                     console.warn('AI blessing translation failed or timed out - offering stays with the raw typed text:', err);
+                    // r164: clear `translating` on failure/timeout too - the
+                    // offering keeps its raw typed text (same as before this
+                    // fix existed) but becomes approvable again instead of
+                    // staying stuck disabled forever.
+                    upgradeOfferingText(requestId, null, '');
                 })
                 .finally(() => clearTimeout(timeoutId));
         }
@@ -3248,12 +3265,20 @@ var QRCode;
         // offering that's already been queued - both in this browser's
         // local queue and the shared online one, so the priest sees (and
         // an approval speaks) the translated version whenever it's ready.
+        // r164: blessingText may be null/empty (a failed or empty-reply
+        // call) - in that case the prayer/mood are left exactly as they
+        // were, but `translating` is still always cleared, since this is
+        // the only place that happens and an item must never stay
+        // permanently un-approvable.
         function upgradeOfferingText(requestId, blessingText, blessingMood) {
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             const localItem = localQueue.find(item => item.id === requestId);
             if (localItem) {
-                localItem.prayer = blessingText;
-                localItem.mood = blessingMood || '';
+                if (blessingText) {
+                    localItem.prayer = blessingText;
+                    localItem.mood = blessingMood || '';
+                }
+                localItem.translating = false;
                 localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
                 localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
                 renderQueue();
@@ -3264,8 +3289,11 @@ var QRCode;
                     if (!Array.isArray(onlineQueue)) return;
                     const onlineItem = onlineQueue.find(item => item.id === requestId);
                     if (!onlineItem) return;
-                    onlineItem.prayer = blessingText;
-                    onlineItem.mood = blessingMood || '';
+                    if (blessingText) {
+                        onlineItem.prayer = blessingText;
+                        onlineItem.mood = blessingMood || '';
+                    }
+                    onlineItem.translating = false;
                     return relayWriteQueue(onlineQueue);
                 })
                 .catch(err => console.warn("Could not upgrade relayed offering text with AI reply:", err));
@@ -3693,7 +3721,9 @@ var QRCode;
                                 ${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}
                             </div>
                             <div class="queue-item-actions">
-                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                ${item.translating
+                                    ? `<button class="btn-approve" disabled style="opacity:0.5; cursor:not-allowed;">⏳ Translating...</button>`
+                                    : `<button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>`}
                                 <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
                             </div>
                         `;
@@ -3723,7 +3753,9 @@ var QRCode;
                             <div style="font-size: 8px; color: var(--accent-teal); font-weight: bold; text-align: left; margin: 2px 0;">From: ${devoteeName}</div>
                             <div class="queue-item-text">${item.prayer !== "" ? `"${item.prayer}"` : "(No wish text)"}</div>
                             <div class="queue-item-actions">
-                                <button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>
+                                ${item.translating
+                                    ? `<button class="btn-approve" disabled style="opacity:0.5; cursor:not-allowed;">⏳ Translating...</button>`
+                                    : `<button class="btn-approve" onclick="approveQueueItem('${item.id}')">✨ Approve & Offer</button>`}
                                 <button class="btn-reject" onclick="rejectQueueItem('${item.id}')">❌ Reject</button>
                             </div>
                         `;
@@ -3780,6 +3812,18 @@ var QRCode;
             // a real second bell+blessing on the physical device for the
             // same offering - see processingQueueIds above.
             if (processingQueueIds.has(id)) return;
+
+            // r164: defense in depth - renderQueue() already disables this
+            // button while translating, but guard here too in case of a
+            // stale render (e.g. a poll lands between the click and this
+            // running). Prevents speaking raw untranslated text.
+            const precheckQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            const precheckItem = precheckQueue.find(item => item.id === id);
+            if (precheckItem && precheckItem.translating) {
+                alert("This offering's translation is still in progress - please wait a moment and try again.");
+                return;
+            }
+
             processingQueueIds.add(id);
 
             // Act locally FIRST and immediately - a priest tapping Approve

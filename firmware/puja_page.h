@@ -373,7 +373,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-28-r117</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-30-r164</div>
     </div>
 
     <script>
@@ -742,7 +742,17 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 // Carried through to the priest queue so the altar's own
                 // speaker can speak the eventual AI blessing in the same
                 // language the devotee picked, not always English.
-                lang: lang
+                lang: lang,
+                // r164: real fix for the race window where a priest could
+                // approve before the AI translation below lands, speaking
+                // raw untranslated text. requestAiBlessing() is ALWAYS
+                // called below (even for an empty wish box), so this
+                // always starts true and is cleared by upgradeOfferingText()
+                // once that call succeeds OR fails/times out - never stuck.
+                // The dashboard's Priest Queue disables THIS item's own
+                // Approve button while true, without blocking any other
+                // offering in the queue.
+                translating: true
             };
 
             const submitBtn = document.getElementById('submit-btn');
@@ -812,10 +822,20 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                         audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e));
                     }
 
-                    if (blessingText) upgradeOfferingText(requestId, blessingText, blessingMood);
+                    // r164: always call this now, even if blessingText came
+                    // back empty - it's the only place that clears
+                    // `translating`, and a priest's Approve button for this
+                    // item must never stay disabled forever just because
+                    // the reply happened to be blank.
+                    upgradeOfferingText(requestId, blessingText, blessingMood);
                 })
                 .catch(err => {
                     console.warn('AI blessing generation failed or timed out, offering already submitted with the typed wish as-is:', err);
+                    // r164: clear `translating` on failure/timeout too - the
+                    // offering keeps its raw typed text (same as before this
+                    // fix existed) but becomes approvable again instead of
+                    // staying stuck disabled forever.
+                    upgradeOfferingText(requestId, null, '');
                 })
                 .finally(() => clearTimeout(timeoutId));
         }
@@ -824,12 +844,20 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // offering that's already been submitted and relayed - both in
         // this browser's local queue and the shared online one, so the
         // priest sees the nicer version whenever it's ready.
+        // r164: blessingText may be null/empty (a failed or empty-reply
+        // call) - in that case the prayer/mood are left exactly as they
+        // were, but `translating` is still always cleared, since this is
+        // the only place that happens and an item must never stay
+        // permanently un-approvable.
         function upgradeOfferingText(requestId, blessingText, blessingMood) {
             let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
             const localItem = localQueue.find(item => item.id === requestId);
             if (localItem) {
-                localItem.prayer = blessingText;
-                localItem.mood = blessingMood || '';
+                if (blessingText) {
+                    localItem.prayer = blessingText;
+                    localItem.mood = blessingMood || '';
+                }
+                localItem.translating = false;
                 localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
                 localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
             }
@@ -839,8 +867,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     if (!Array.isArray(onlineQueue)) return;
                     const onlineItem = onlineQueue.find(item => item.id === requestId);
                     if (!onlineItem) return;
-                    onlineItem.prayer = blessingText;
-                    onlineItem.mood = blessingMood || '';
+                    if (blessingText) {
+                        onlineItem.prayer = blessingText;
+                        onlineItem.mood = blessingMood || '';
+                    }
+                    onlineItem.translating = false;
                     return relayWriteQueue(onlineQueue);
                 })
                 .catch(err => console.warn('Could not upgrade relayed offering text with AI reply:', err));
