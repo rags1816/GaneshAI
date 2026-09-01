@@ -1417,7 +1417,10 @@ void handleWebRoutes() {
         return;
       }
       micTestRunning = true;
-      BaseType_t created = xTaskCreatePinnedToCore(micTestTaskFn, "micTest", 4096, NULL, 1, NULL, 1);
+      // r157: moved to core 0, same reasoning/fix as the three blessing
+      // tasks - this was the same core-1-vs-main-loop pattern, just on a
+      // manual diagnostic route instead of the everyday devotee flow.
+      BaseType_t created = xTaskCreatePinnedToCore(micTestTaskFn, "micTest", 4096, NULL, 1, NULL, 0);
       if (created != pdPASS) {
         micTestRunning = false;
         server.send(500, "text/plain", "Failed to start mic test task.");
@@ -1441,7 +1444,8 @@ void handleWebRoutes() {
       micTestRunning = true;
       blessingTaskActive = true;
       blessingTaskStartMs = millis();
-      BaseType_t created = xTaskCreatePinnedToCore(micRecordPlaybackTaskFn, "micPlayback", 8192, NULL, 1, NULL, 1);
+      // r157: moved to core 0, same fix as above.
+      BaseType_t created = xTaskCreatePinnedToCore(micRecordPlaybackTaskFn, "micPlayback", 8192, NULL, 1, NULL, 0);
       if (created != pdPASS) {
         micTestRunning = false;
         blessingTaskActive = false;

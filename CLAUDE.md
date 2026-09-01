@@ -1057,6 +1057,22 @@ reasoning survives even when the git log scrolls out of context.
   genuinely stronger, code-verified finding than r155/r156's
   pattern-matched guesses - if this was the real cause all along, it
   should now be fixed outright rather than just given more margin.
+- **r158** - Direct follow-up after being asked plainly whether any other
+  such issues were still pending: rather than just answer from memory, did
+  a real sweep of the whole .ino for every `xTaskCreatePinnedToCore()`
+  call and every network call site (`WiFiClientSecure`/`HTTPClient`), not
+  just the three already fixed in r157. Found two more instances of the
+  EXACT same core-1 pattern: the `/api/test?mic=1`/`?micplay=1`
+  diagnostic routes' `micTestTaskFn`/`micRecordPlaybackTaskFn` tasks were
+  also pinned to core 1. Lower real-world risk than the r157 three (these
+  are manual diagnostic-only routes, never part of normal devotee
+  interaction), but the same bug shape, so fixed the same way - moved to
+  core 0. Also traced every call site of `postAndStreamAudioToAmp()`/
+  `fetchBlessingImage()` (the actual TLS/HTTP calls) and confirmed none
+  of them are ever invoked synchronously from `loop()` or a web handler
+  directly - all five are exclusively reached through one of the five
+  `xTaskCreatePinnedToCore()` background tasks, all now on core 0. This
+  was a genuine audit, not a reassurance given without checking.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
