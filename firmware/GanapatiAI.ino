@@ -2188,7 +2188,15 @@ void updateStateMachine() {
       // stalled scroll) from holding the display forever.
       {
         bool offeringMinElapsed = (now - stateTimer > stateDuration);
-        bool offeringHardCap    = (now - stateTimer > stateDuration + 20000);
+        // r163: widened from +20000 to +55000 - fetchBlessingImage() and
+        // postAndStreamAudioToAmp() run sequentially in the same
+        // background task, and both now have a 25s timeout each (see
+        // their own comments), so a genuine worst case is up to ~50s of
+        // real network time before blessingTaskActive clears. The old
+        // 32s total hard cap could have cut the display off - and
+        // resumed an interrupted mantra - while the amp was still
+        // legitimately trying to speak.
+        bool offeringHardCap    = (now - stateTimer > stateDuration + 55000);
         // Also wait for the amp's background task to finish speaking
         // (blessingTaskActive) before resuming the interrupted mantra on
         // the DFPlayer - the display's own timer/scroll can easily finish
@@ -2616,10 +2624,17 @@ void fetchBlessingImage(const String &text, const String &lang) {
 
   WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(10000);
+  // r163: was 10000 - real hardware log showed a -11 (HTTPC_ERROR_READ_TIMEOUT,
+  // a client-side giveup, not a server error) landing almost exactly at
+  // 10s. puja.html already learned the hard way (r86) that these backend
+  // calls can legitimately take up to ~20s+ under real conditions
+  // (Claude + Google TTS + a server-side reverb DSP pass) and widened
+  // ITS OWN timeout to 25s for exactly this reason - this firmware's
+  // timeout was less than half that proven-necessary budget.
+  client.setTimeout(25000);
 
   HTTPClient https;
-  https.setTimeout(10000);
+  https.setTimeout(25000);
   if (!https.begin(client, "https://us-central1-ganapatiai.cloudfunctions.net/renderTextImage")) {
     Serial.println("IMAGE: https.begin() failed");
     return;
@@ -2766,10 +2781,14 @@ bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
 
   WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(10000);
+  // r163: widened from 10000 to match puja.html's own proven 25s budget
+  // for this exact endpoint - see fetchBlessingImage()'s comment above
+  // for the full reasoning. Confirmed on hardware: a real -11
+  // (HTTPC_ERROR_READ_TIMEOUT) landed at ~10.8s on this exact call.
+  client.setTimeout(25000);
 
   HTTPClient https;
-  https.setTimeout(10000);
+  https.setTimeout(25000);
   if (!https.begin(client, url)) {
     Serial.println("AMP: https.begin() failed");
     return false;

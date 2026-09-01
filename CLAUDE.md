@@ -1177,6 +1177,29 @@ reasoning survives even when the git log scrolls out of context.
   before its own AI translation lands gets spoken untranslated - is a
   known, deliberate reliability-first tradeoff already documented in this
   project's history, not changed here. `index.html` resynced.
+- **r163** - Real bug confirmed via a live hardware log immediately after
+  r162: a Marathi dashboard offering returned `IMAGE: backend returned
+  HTTP -11` and `AMP: backend returned HTTP -11` - not a real HTTP status
+  at all, but the ESP32 HTTPClient library's own `HTTPC_ERROR_READ_TIMEOUT`
+  code, timed at ~10.8s into the call. Both `fetchBlessingImage()` and
+  `postAndStreamAudioToAmp()` had an explicit 10-second timeout
+  (`client.setTimeout(10000)`/`https.setTimeout(10000)`) - real defensive
+  coding, but too short: `puja.html` already learned (r86) that this
+  exact backend call can legitimately take up to ~20s+ under real
+  conditions (Claude + Google TTS + a server-side reverb DSP pass) and
+  widened ITS OWN timeout to 25s for that reason. The firmware's timeout
+  was less than half that already-proven budget. Both widened to 25000ms
+  to match. Since `fetchBlessingImage()`/`postAndStreamAudioToAmp()` run
+  sequentially in the same background task, a genuine worst case is now
+  up to ~50s combined before `blessingTaskActive` clears - the offering
+  display's own hard cap (`GanapatiAI.ino`, `updateStateMachine()`'s
+  `STATE_FEET_ACTIVE` case) was `stateDuration + 20000` (32s total),
+  which could have cut the display short - and resumed an interrupted
+  mantra - while the amp was still legitimately trying to speak. Widened
+  to `stateDuration + 55000` (67s total) to comfortably cover the new
+  worst case. Both timeouts run entirely on the core-0 background tasks
+  (r157/r158), not the watchdog-monitored main loop, so widening them
+  carries no crash risk.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
