@@ -191,6 +191,23 @@ Preferences wifiPrefs;
 #define WIFI_PREF_NAMESPACE "ganapati"
 #define WIFI_PREF_KEY       "wifiNet"
 
+// r160: runtime (not just boot-time) failover to the other known network.
+// r159's fallback only ran once in setup() - if the preferred network
+// drops WHILE the device is already up and running (the common real
+// case, not "happened to reboot exactly during an outage"),
+// WiFi.setAutoReconnect(true) just keeps retrying that SAME dead network
+// forever and never tries the other one on its own. Direct feedback: a
+// phone can't run its own Wi-Fi client connection and its hotspot at the
+// same time, so the realistic sequence is home drops -> user notices ->
+// user turns hotspot ON some time later - the device needs to notice
+// that too, without needing a manual restart. wifiCurrentlyTargetingBackup
+// is kept in sync with whichever network WiFi.begin() was last called
+// with (both in setup() and in wifiFailoverTaskFn() below).
+unsigned long wifiDisconnectedSinceMs = 0;
+bool wifiFailoverInProgress = false;
+bool wifiCurrentlyTargetingBackup = false;
+#define WIFI_FAILOVER_MS 120000UL // 2 minutes continuously disconnected before trying the other network
+
 // Free-heap logging - a data point this firmware has never collected.
 // server.arg() and several offering/prayer parameters use the Arduino
 // String class, which is a known, well-documented source of gradual
@@ -968,6 +985,7 @@ void setup() {
   // main loop task at all, so it can't be the thing stuck inside a stage-1
   // watchdog hang the way the manual call could.
   WiFi.setAutoReconnect(true);
+  wifiCurrentlyTargetingBackup = preferBackupWifi;
   WiFi.begin(firstSsid, firstPass);
   int wRetries = 0;
   while (WiFi.status() != WL_CONNECTED && wRetries < 20) {
@@ -988,6 +1006,7 @@ void setup() {
     u8g2.drawStr(5, 20, "Trying backup Wi-Fi...");
     u8g2.drawStr(5, 35, secondSsid);
     u8g2.sendBuffer();
+    wifiCurrentlyTargetingBackup = !preferBackupWifi;
     WiFi.begin(secondSsid, secondPass);
     wRetries = 0;
     while (WiFi.status() != WL_CONNECTED && wRetries < 20) {
@@ -1648,6 +1667,42 @@ void handleWebRoutes() {
 // separate real watchdog crashes at this exact lastStage=1 boundary
 // (see r150/r155's CLAUDE.md entries), so removing the call from here
 // altogether is the actual fix, not just more timeout margin.
+// r160: the actual runtime failover - lives on its own task (core 0),
+// same discipline as r157/r158's blessing/mic tasks, so a slow/retrying
+// WiFi.begin() call here can never be the thing blocking the main loop's
+// watchdog the way the old direct WiFi.reconnect() call could.
+void wifiFailoverTaskFn(void *pvParameters) {
+  bool tryBackup = !wifiCurrentlyTargetingBackup;
+  const char *ssid = tryBackup ? WIFI_SSID_BACKUP : WIFI_SSID;
+  const char *pass = tryBackup ? WIFI_PASSWORD_BACKUP : WIFI_PASSWORD;
+  Serial.printf("WIFI: still disconnected after %lus - trying the other known network: %s\n",
+                WIFI_FAILOVER_MS / 1000, ssid);
+  WiFi.disconnect();
+  WiFi.begin(ssid, pass);
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+    vTaskDelay(pdMS_TO_TICKS(500));
+    retries++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiCurrentlyTargetingBackup = tryBackup;
+    wifiDisconnectedSinceMs = 0;
+    Serial.printf("WIFI: failover succeeded - now connected to %s\n", WiFi.SSID().c_str());
+  } else {
+    // Still down on the other network too (e.g. the hotspot isn't turned
+    // on yet). Reset the clock rather than retrying every 15s - the next
+    // attempt (toggling back) happens after another full
+    // WIFI_FAILOVER_MS, so once the hotspot IS turned on, the device
+    // picks it up within that same window without needing a manual
+    // restart - the whole point, given a phone can't run its own Wi-Fi
+    // connection and its hotspot at the same time.
+    wifiDisconnectedSinceMs = millis();
+    Serial.println("WIFI: failover attempt also failed - will try again after another wait.");
+  }
+  wifiFailoverInProgress = false;
+  vTaskDelete(NULL);
+}
+
 void checkWiFiHealth() {
   if (!wifiStationMode) return;
   unsigned long now = millis();
@@ -1655,7 +1710,15 @@ void checkWiFiHealth() {
   lastWifiCheck = now;
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WIFI: connection lost - auto-reconnect will handle it in the background.");
+    if (wifiDisconnectedSinceMs == 0) {
+      wifiDisconnectedSinceMs = now;
+      Serial.println("WIFI: connection lost - auto-reconnect will try the same network first.");
+    } else if (!wifiFailoverInProgress && (now - wifiDisconnectedSinceMs >= WIFI_FAILOVER_MS)) {
+      wifiFailoverInProgress = true;
+      xTaskCreatePinnedToCore(wifiFailoverTaskFn, "wifiFailover", 4096, NULL, 1, NULL, 0);
+    }
+  } else {
+    wifiDisconnectedSinceMs = 0;
   }
 }
 

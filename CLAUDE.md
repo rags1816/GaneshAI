@@ -1098,6 +1098,28 @@ reasoning survives even when the git log scrolls out of context.
   address, so the browser loses connection immediately - the physical
   OLED (which already shows the IP on every boot) is the way to find it
   again on the new network, same as after any other reboot.
+- **r160** - Real gap closed after direct follow-up: r159's fallback only
+  ran once at boot - if the preferred network dropped WHILE the device
+  was already up and running (the realistic case, not "happened to
+  reboot exactly during an outage"), `WiFi.setAutoReconnect(true)` just
+  kept retrying that SAME dead network forever and never tried the other
+  one on its own, requiring a manual power-cycle. Direct constraint
+  raised: a phone can't run its own Wi-Fi connection and act as a
+  hotspot at the same time, so the realistic sequence is home drops ->
+  user notices -> user turns the hotspot on some time later - the device
+  needs to notice that on its own too. `checkWiFiHealth()` now tracks how
+  long it's been continuously disconnected; past `WIFI_FAILOVER_MS`
+  (2 minutes), a new one-shot `wifiFailoverTaskFn()` tries the OTHER
+  known network - on its own background task pinned to core 0, same
+  discipline as r157/r158's fix, so a slow/retrying `WiFi.begin()` here
+  can never become the same class of main-loop watchdog hang that was
+  already fixed. If that attempt also fails (hotspot not turned on yet),
+  it resets the clock and tries again after another full wait, toggling
+  back and forth - so once the hotspot IS turned on, the device picks it
+  up within one failover window on its own, no manual restart needed.
+  Does NOT change the persisted preference (r159's dashboard buttons
+  still own that) - this is a temporary runtime recovery, not a
+  permanent switch.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
