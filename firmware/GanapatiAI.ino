@@ -2661,7 +2661,20 @@ String jsonEscape(const String &s) {
 // TTS formats its WAV header. Bounded by deadlineMs so a stalled/odd
 // response can never hang forever - the same unbounded-wait mistake that
 // caused tonight's earlier DFPlayer crash, not repeated here.
-bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
+// r170: outDataSize (optional) receives the WAV "data" subchunk's own
+// declared byte count - the 4 bytes right after the "data" marker, which
+// this function used to read past and discard. That number is the real,
+// exact length of the audio payload Google TTS actually sent, straight
+// from the file format itself - independent of whether the HTTP/TLS
+// connection ever signals its own end cleanly. See its use in
+// postAndStreamAudioToAmp() for why that distinction turned out to be a
+// real, evidenced bug: multiple real hardware logs showed real speech
+// consistently ending ~17-21s in, then the connection just going quiet
+// without closing, so the streaming loop's old own no-more-data guess
+// (a stall timeout) had to wait out its FULL window every single time,
+// not just occasionally - real spoken audio done at ~18s, but the
+// firmware not resuming the interrupted mantra until ~20s later.
+bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs, uint32_t *outDataSize = NULL) {
   uint8_t window[4] = {0, 0, 0, 0};
   while (millis() < deadlineMs) {
     if (!stream->available()) {
@@ -2683,6 +2696,11 @@ bool skipToWavData(WiFiClient *stream, unsigned long deadlineMs) {
         } else {
           delay(5);
         }
+      }
+      if (got == 4 && outDataSize != NULL) {
+        // WAV chunk sizes are little-endian.
+        *outDataSize = (uint32_t)sizeBytes[0] | ((uint32_t)sizeBytes[1] << 8) |
+                       ((uint32_t)sizeBytes[2] << 16) | ((uint32_t)sizeBytes[3] << 24);
       }
       return got == 4;
     }
@@ -2902,27 +2920,38 @@ bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
   }
 
   WiFiClient *stream = https.getStreamPtr();
-  if (!skipToWavData(stream, millis() + 8000)) {
+  uint32_t expectedDataSize = 0;
+  if (!skipToWavData(stream, millis() + 8000, &expectedDataSize)) {
     Serial.println("AMP: could not find WAV data chunk, aborting playback");
     https.end();
     return false;
   }
 
-  Serial.println("AMP: playing spoken blessing...");
+  Serial.printf("AMP: playing spoken blessing... (expecting %u bytes of audio)\n", expectedDataSize);
   uint8_t buf[1024];
   int bytesPlayed = 0;
   unsigned long lastDataMs = millis();
-  // r165: widened from 8000 to 20000 - confirmed on hardware (real log:
-  // streaming started fine, played 572612 real bytes, then went quiet
-  // for 8+s and got cut off here mid-blessing, well before the audio
-  // should have naturally finished) that a genuine mid-stream gap can
-  // legitimately exceed 8s - same class of finding as r163's 10s->25s
-  // widening of the connect/response timeout, just for the byte-to-byte
-  // gap inside an already-started stream instead of the initial
-  // connection. A live festival's Wi-Fi is expected to be busier than
-  // this test, so this needs real headroom, not the tightest value that
-  // happened to work once.
+  // r170: real root cause found across several logged tests, not another
+  // timeout guess - real spoken content consistently finished ~17-21s in,
+  // but the underlying connection never signaled its own end cleanly
+  // (https.connected() kept reporting true with no new bytes), so the
+  // old no-more-data stall guess had to wait out its FULL window
+  // (8000ms, then 20000ms after r165's widening) EVERY single time
+  // before resuming an interrupted mantra - not an occasional worst
+  // case, the normal case. The WAV header itself already declares the
+  // real audio length (expectedDataSize, from skipToWavData() above) -
+  // that's the ACTUAL end of the real audio, independent of whatever
+  // the connection does afterward. Stopping the instant that many bytes
+  // have been played makes completion exact instead of a timeout guess.
+  // The old stall check is kept as a safety net only, for the case where
+  // expectedDataSize couldn't be parsed (0) or the connection dies
+  // before reaching it - same 20000ms r165 already proved necessary for
+  // a genuine mid-stream gap, just no longer the normal path.
   while (https.connected() || stream->available()) {
+    if (expectedDataSize > 0 && (uint32_t)bytesPlayed >= expectedDataSize) {
+      Serial.println("AMP: all real audio bytes received, playback complete");
+      break;
+    }
     size_t avail = stream->available();
     if (avail == 0) {
       if (millis() - lastDataMs > 20000) {
@@ -2933,6 +2962,10 @@ bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
       continue;
     }
     size_t toRead = avail < sizeof(buf) ? avail : sizeof(buf);
+    if (expectedDataSize > 0) {
+      uint32_t remaining = expectedDataSize - (uint32_t)bytesPlayed;
+      if (toRead > remaining) toRead = remaining;
+    }
     int n = stream->readBytes(buf, toRead);
     if (n <= 0) break;
     ampI2S.write(buf, n);

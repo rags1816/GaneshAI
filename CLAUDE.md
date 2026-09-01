@@ -1344,6 +1344,29 @@ reasoning survives even when the git log scrolls out of context.
   number - both are real possibilities the diagnostic can't distinguish
   on its own, a human confirming which file is actually supposed to be
   there is still needed.
+- **r170** - Two real, separate findings from continued hardware testing
+  of the same repro. (1) Track 5 measured identically on TWO independent
+  tests after r169's "fix" (43440ms, then 43428ms - within 12ms of each
+  other) - strong evidence the newly-uploaded 0005.mp3 never actually
+  took effect on the SD card the DFPlayer is reading (a common gotcha:
+  the module needs a clean eject/reinsert to re-read its file table).
+  Not a firmware issue and not changed here - needs the upload verified
+  at the source before the next test. (2) A real, now well-evidenced
+  root cause for the "long pause after the wish blessing" report: across
+  every captured test, real spoken audio consistently finished ~17-21s
+  in, but the underlying HTTPS connection never signaled its own end
+  cleanly (`https.connected()` kept reporting true with no new bytes) -
+  so the stream's no-more-data stall guard had to wait out its FULL
+  window (8s, then r165's widened 20s) before resuming the interrupted
+  mantra, EVERY time, not as an occasional worst case. Fixed at the
+  actual source instead of tuning the timeout a third time:
+  `skipToWavData()` now parses and returns the WAV header's own declared
+  "data" subchunk size (previously read past and discarded) -
+  `postAndStreamAudioToAmp()` uses that real, exact audio length to stop
+  the instant all genuine audio bytes have been received, rather than
+  guessing from connection behavior. The old stall timeout stays as a
+  safety net only, for the rare case the WAV size can't be parsed or the
+  connection dies early - no longer the normal completion path.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase
