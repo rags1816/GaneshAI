@@ -1278,6 +1278,36 @@ reasoning survives even when the git log scrolls out of context.
   `offeringHardCap` (r163) on the wish/offering display's total window,
   so this doesn't risk a runaway hang - only gives a genuine mid-stream
   gap more room before being declared dead.
+- **r167** - Direct, specific pushback after r166: the user confirmed by
+  ear (knows the actual recordings) that a resumed feet mantra stopped
+  well before its real end, and the same happened on a mouse-back resume
+  too - not the wish blessing's own audio, the RESUMED MANTRA itself. A
+  second captured log (same repro) showed the state timer again running
+  the full stored duration (55372ms of 55350ms) while the user's own ears
+  say the real audio ended earlier - proving the state timer completing
+  on schedule is NOT proof the DFPlayer was still actually making sound.
+  Root cause of *why* still isn't confirmed - the honest gap is that this
+  firmware has never once read the DFPlayer module's own "track finished"
+  event; every duration in mantraTracks[]/mouseChantTracks[] is a
+  hand-typed number nobody can re-verify from Serial alone, and dfPlay()
+  on resume could equally be failing to cleanly restart playback after
+  the module sat idle through a long wish blessing. Rather than guess at
+  which and patch another number, added real diagnostics first:
+  dfLastPlayCommandMs/dfLastPlayCommandTrack capture when a track is
+  actually commanded, and new checkDfPlayerEvents() (polled from loop())
+  logs the module's own unsolicited DFPlayerPlayFinished/DFPlayerError
+  events with the real elapsed time since that command - diagnostic only,
+  no state-machine behavior changed yet. The next captured log will show
+  either a real "finished" event well short of the stored duration
+  (confirms stale duration, an easy fix) or no event at all despite audio
+  audibly stopping (points at the resume's dfPlay() call itself, a
+  different fix) - real evidence either way, not another guess. If this
+  specific DFPlayer clone doesn't reliably send the event at all, that's
+  itself useful information, not a dead end. **Compile-check before
+  flashing**: DFPlayerPlayFinished/DFPlayerError are the standard
+  DFRobotDFPlayerMini constant names, but if the installed library
+  version names them differently, Arduino IDE will flag it immediately at
+  verify time - a one-line fix, not a logic problem.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

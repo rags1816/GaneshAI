@@ -109,10 +109,51 @@ DFRobotDFPlayerMini myDFPlayer;
 // entirely when the DFPlayer was never confirmed present, the same way
 // PIR_CONNECTED/TOUCH_*_CONNECTED already gate other optional hardware.
 bool dfPlayerReady = false;
+// r167: diagnostic only, changes no behavior yet - see checkDfPlayerEvents()
+// below. Real report: a resumed mantra (after a wish-pad interruption)
+// audibly stopped well before its stored duration - confirmed by the user
+// against the actual recording, not just the state timer. This firmware
+// has NEVER read the DFPlayer's own "track finished" event - every
+// duration in mantraTracks[]/mouseChantTracks[] is a hand-typed number
+// nobody can re-verify from Serial alone. Logging the module's real event
+// (if this specific clone sends it reliably - not guaranteed on cheap
+// clones, which is presumably why the original code never depended on it)
+// turns "is the stored duration stale, or did dfPlay() itself fail to
+// restart cleanly on resume" from a guess into a fact on the next capture.
+unsigned long dfLastPlayCommandMs = 0;
+int dfLastPlayCommandTrack = 0;
 void dfStop() { if (dfPlayerReady) myDFPlayer.stop(); }
-void dfPlay(int track) { if (dfPlayerReady) myDFPlayer.playMp3Folder(track); }
+void dfPlay(int track) {
+  if (!dfPlayerReady) return;
+  myDFPlayer.playMp3Folder(track);
+  dfLastPlayCommandMs = millis();
+  dfLastPlayCommandTrack = track;
+}
 void dfSetVolume(int v) { if (dfPlayerReady) myDFPlayer.volume(v); }
 int dfReadFileCounts() { return dfPlayerReady ? myDFPlayer.readFileCounts() : 0; }
+
+// r167: logs the DFPlayer's own unsolicited "finished"/error events - see
+// dfLastPlayCommandMs's comment above for why. DFPlayerPlayFinished/
+// DFPlayerError are this library's standard readType() constants; if this
+// doesn't compile, the installed DFRobotDFPlayerMini version names them
+// differently - check its header for the exact constant and this is a
+// one-line fix, not a logic problem.
+void checkDfPlayerEvents() {
+  if (!dfPlayerReady || !myDFPlayer.available()) return;
+  uint8_t type = myDFPlayer.readType();
+  int value = myDFPlayer.read();
+  unsigned long sinceCommand = millis() - dfLastPlayCommandMs;
+  if (type == DFPlayerPlayFinished) {
+    Serial.printf("DFPLAYER: real 'finished' event for track %d, %lums after dfPlay(%d) was sent\n",
+                  value, sinceCommand, dfLastPlayCommandTrack);
+  } else if (type == DFPlayerError) {
+    Serial.printf("DFPLAYER: real error event code %d, %lums after dfPlay(%d) was sent\n",
+                  value, sinceCommand, dfLastPlayCommandTrack);
+  } else {
+    Serial.printf("DFPLAYER: event type=%d value=%d, %lums after dfPlay(%d) was sent\n",
+                  type, value, sinceCommand, dfLastPlayCommandTrack);
+  }
+}
 
 // I2S amp (MAX98357A) - speaks the AI-generated blessing text through the
 // altar's own speaker when a priest approves an offering (see
@@ -1235,6 +1276,7 @@ void loop() {
   checkHeapHealth();
   checkBlessingTaskHealth();
   checkScheduledRestart();
+  checkDfPlayerEvents(); // r167: diagnostic only - see its own comment
   lastStage = 2;
   checkSensors();
   lastStage = 3;
