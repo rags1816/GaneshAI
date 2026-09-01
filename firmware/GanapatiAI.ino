@@ -39,6 +39,26 @@
 RTC_NOINIT_ATTR uint32_t stageMagic;
 RTC_NOINIT_ATTR int lastStage;
 
+// r161: REAL bug found on hardware - stageMagic is set once at boot and
+// never cleared again, so the crash tracer could not tell a genuine
+// watchdog panic apart from a perfectly healthy, INTENTIONAL restart
+// (checkScheduledRestart()'s heap self-heal, the manual Restart Device
+// button, or a Wi-Fi network switch) - all three just called
+// ESP.restart() directly, leaving stageMagic == CRASH_TRACER_MAGIC, so
+// the NEXT boot always reported "Crashed near stage N" for N = whatever
+// lastStage happened to be at that moment, even though nothing crashed.
+// Confirmed on hardware: a heap self-heal restart (logged as "waited for
+// a safe idle moment, nothing was interrupted") was immediately followed
+// by a "Crashed near stage 1" report, which is exactly this bug, not a
+// real crash. Every INTENTIONAL restart must call this first instead of
+// ESP.restart() directly, so the crash tracer only ever fires for a
+// genuine, unplanned reset.
+void intentionalRestart() {
+  stageMagic = 0;
+  delay(300);
+  ESP.restart();
+}
+
 // ==========================================
 // Object Instances & Globals
 // ==========================================
@@ -1438,8 +1458,7 @@ void handleWebRoutes() {
       // self-heal, so it doesn't need to wait for idle.
       Serial.println("CONTROL: manual restart requested from dashboard.");
       server.send(200, "text/plain", "Restarting...");
-      delay(300);
-      ESP.restart();
+      intentionalRestart();
     } else if (action == "wifiswitch") {
       // r159: stores which network to try FIRST on the next boot, then
       // restarts to apply it - simpler and safer than reconnecting live
@@ -1453,8 +1472,7 @@ void handleWebRoutes() {
       Serial.printf("CONTROL: Wi-Fi preference set to %s, restarting to apply...\n",
                     prefValue == 1 ? "backup hotspot" : "home network");
       server.send(200, "text/plain", "Switching network and restarting...");
-      delay(300);
-      ESP.restart();
+      intentionalRestart();
     }
     server.send(200, "text/plain", "OK");
   });
@@ -1761,8 +1779,7 @@ void checkScheduledRestart() {
                       !blessingTaskActive && currentPlayingTrack == 0;
   if (!idleAndSafe) return;
   Serial.println("HEAP: restarting now to clear heap fragmentation/low memory - waited for a safe idle moment, nothing was interrupted.");
-  delay(300);
-  ESP.restart();
+  intentionalRestart();
 }
 
 // Safety net for blessingTaskActive getting stuck true forever - see its

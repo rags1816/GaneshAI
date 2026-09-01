@@ -1120,6 +1120,31 @@ reasoning survives even when the git log scrolls out of context.
   Does NOT change the persisted preference (r159's dashboard buttons
   still own that) - this is a temporary runtime recovery, not a
   permanent switch.
+- **r161** - Real bug found while investigating a live log the user
+  captured: an approved offering's live blessing failed (`IMAGE: backend
+  returned HTTP 500`, `AMP: backend returned HTTP 500`), correctly fell
+  back to a local offline blessing track, then `checkScheduledRestart()`
+  (r154) correctly restarted the device once idle to clear a flagged
+  heap fragmentation condition ("waited for a safe idle moment, nothing
+  was interrupted") - and the VERY NEXT boot reported "Crashed near
+  stage 1" anyway, even though nothing crashed. Root cause: `stageMagic`
+  is set once at boot and never cleared again, so the crash tracer
+  cannot tell a genuine watchdog panic apart from a perfectly healthy,
+  intentional restart - all three `ESP.restart()` call sites
+  (`checkScheduledRestart()`'s heap self-heal, the manual Restart Device
+  button, and a Wi-Fi network switch) left `stageMagic ==
+  CRASH_TRACER_MAGIC` behind them, so the next boot always reported a
+  false "crash" at whatever `lastStage` happened to be at that moment.
+  This likely explains a real portion of the "stage 1 crashes" chased
+  across r150-r158 - some may never have been crashes at all, just this
+  reporting bug mislabeling the device's own healthy maintenance
+  restarts. New `intentionalRestart()` (clears `stageMagic` to 0, then
+  restarts) now used by all three call sites instead of calling
+  `ESP.restart()` directly, so the crash tracer only ever fires for a
+  genuine, unplanned reset going forward. The backend's HTTP 500s
+  themselves (both `renderTextImage` and `generateBlessing`) are a
+  separate, real, still-open issue on the Cloud Functions side - not
+  something this firmware fix addresses.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
