@@ -1261,6 +1261,23 @@ reasoning survives even when the git log scrolls out of context.
   ("WISH PAD: touched while state=...", "OFFERING: display done after
   ...ums..., resumeTrack=...", "MANTRA: duration elapsed...") are the
   next diagnostic step if it still happens after reflashing.
+- **r166** - The requested Serial log from r165's exact scenario (feet
+  mantra interrupted by the wish pad) confirmed r165's own fix is
+  correct - the resumed track (5, real length 55350ms) played for
+  55493ms before returning to standby, matching to within 143ms - and
+  surfaced a real, separate bug: the wish pad's own spoken blessing got
+  cut off mid-sentence after 25.8s of genuine streaming ("AMP: stream
+  stalled, stopping playback", 572612 real bytes played first). Root
+  cause: `postAndStreamAudioToAmp()`'s streaming loop has its own
+  8-second no-new-data stall watchdog, separate from and tighter than
+  the 25s connect/response timeout r163 already widened - a real
+  mid-stream gap exceeded 8s and got the blessing cut off before Google's
+  stream had actually finished sending it. Widened 8000ms -> 20000ms,
+  same class of fix as r163, given a live festival's Wi-Fi is expected to
+  be busier than this test. Already bounded by the existing 61s
+  `offeringHardCap` (r163) on the wish/offering display's total window,
+  so this doesn't risk a runaway hang - only gives a genuine mid-stream
+  gap more room before being declared dead.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

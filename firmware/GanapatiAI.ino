@@ -2864,10 +2864,20 @@ bool postAndStreamAudioToAmp(const String &url, const String &jsonBody, String *
   uint8_t buf[1024];
   int bytesPlayed = 0;
   unsigned long lastDataMs = millis();
+  // r165: widened from 8000 to 20000 - confirmed on hardware (real log:
+  // streaming started fine, played 572612 real bytes, then went quiet
+  // for 8+s and got cut off here mid-blessing, well before the audio
+  // should have naturally finished) that a genuine mid-stream gap can
+  // legitimately exceed 8s - same class of finding as r163's 10s->25s
+  // widening of the connect/response timeout, just for the byte-to-byte
+  // gap inside an already-started stream instead of the initial
+  // connection. A live festival's Wi-Fi is expected to be busier than
+  // this test, so this needs real headroom, not the tightest value that
+  // happened to work once.
   while (https.connected() || stream->available()) {
     size_t avail = stream->available();
     if (avail == 0) {
-      if (millis() - lastDataMs > 8000) {
+      if (millis() - lastDataMs > 20000) {
         Serial.println("AMP: stream stalled, stopping playback");
         break;
       }
