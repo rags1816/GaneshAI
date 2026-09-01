@@ -936,6 +936,13 @@ void setup() {
   u8g2.drawStr(5, 35, WIFI_SSID);
   u8g2.sendBuffer();
 
+  // r156: lets the ESP32's own WiFi driver handle reconnection in its own
+  // background context instead of this code calling the blocking-prone
+  // WiFi.reconnect() from inside loop() (see checkWiFiHealth() - that
+  // manual call is REMOVED now that this is on). This doesn't run on the
+  // main loop task at all, so it can't be the thing stuck inside a stage-1
+  // watchdog hang the way the manual call could.
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   int wRetries = 0;
   while (WiFi.status() != WL_CONNECTED && wRetries < 20) {
@@ -1559,6 +1566,14 @@ void handleWebRoutes() {
 // alternative (permanently undetected until manual power-cycle). Only
 // acts if this device connected in station mode at boot - the AP
 // fallback path is left alone on purpose, see wifiStationMode's comment.
+// r156: no longer calls WiFi.reconnect() itself - setup() now turns on
+// WiFi.setAutoReconnect(true), which handles reconnection in the WiFi
+// driver's own background context, off the main loop task entirely.
+// This function is now just a visibility log - a genuinely stuck
+// WiFi.reconnect() call on THIS task was the leading suspect for two
+// separate real watchdog crashes at this exact lastStage=1 boundary
+// (see r150/r155's CLAUDE.md entries), so removing the call from here
+// altogether is the actual fix, not just more timeout margin.
 void checkWiFiHealth() {
   if (!wifiStationMode) return;
   unsigned long now = millis();
@@ -1566,8 +1581,7 @@ void checkWiFiHealth() {
   lastWifiCheck = now;
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WIFI: connection lost - attempting reconnect...");
-    WiFi.reconnect();
+    Serial.println("WIFI: connection lost - auto-reconnect will handle it in the background.");
   }
 }
 

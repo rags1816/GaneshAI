@@ -1017,6 +1017,25 @@ reasoning survives even when the git log scrolls out of context.
   actual panic backtrace from the original crash (only the aftermath and
   a user-triggered manual restart were captured this time) to pin down
   the exact call before considering this closed.
+- **r156** - The panic backtrace for r155's crash was never actually
+  recovered (Serial Monitor's limited scrollback lost it) despite
+  several attempts - honestly, the exact root cause was never confirmed,
+  only pattern-matched against r150's earlier crash at the same
+  `lastStage=1` location. Rather than keep widening the watchdog timeout
+  speculatively, removed the leading suspect entirely: `checkWiFiHealth()`
+  called `WiFi.reconnect()` directly from the main loop task whenever
+  disconnected - a known-blocking-prone pattern on ESP32, and the most
+  likely single culprit for a stage-1 hang given both crashes' proximity
+  to heavy network/TLS activity. `setup()` now calls
+  `WiFi.setAutoReconnect(true)` right after the initial `WiFi.begin()`,
+  which makes the WiFi driver reconnect automatically in its own
+  background context - `checkWiFiHealth()` no longer calls
+  `WiFi.reconnect()` at all, just logs when a disconnect is seen. This
+  removes the risky call from the main loop task entirely rather than
+  giving it more time to potentially still hang, which is a stronger fix
+  than r155's timeout widening if this was indeed the cause - r155's
+  15s watchdog stays in place regardless, as a safety net for whatever
+  else might land in that stage.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
