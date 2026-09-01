@@ -2849,7 +2849,17 @@ void speakBlessingOnAmpAsync(const String &text, const String &lang) {
   BlessingTaskParams *params = new BlessingTaskParams{text, lang};
   blessingTaskActive = true;
   blessingTaskStartMs = millis();
-  BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 1);
+  // r157: moved from core 1 to core 0 - core 1 is where the Arduino
+  // framework's main loop() runs by default (touch pads, OLED, LED ring,
+  // server.handleClient()), so this task was competing for the SAME
+  // core's CPU time as the main loop, not running in parallel with it as
+  // intended. Core 0 is where ESP-IDF's own Wi-Fi driver already runs,
+  // the standard place for a background network/TLS task in ESP32
+  // Arduino projects specifically to avoid starving loop() of CPU time
+  // during a heavy TLS handshake - a real, plausible contributor to the
+  // r150/r155/r156 stage-1 watchdog crashes (both of which happened
+  // right as a blessing's HTTPS call was active).
+  BaseType_t created = xTaskCreatePinnedToCore(speakBlessingTaskFn, "blessingAmp", 8192, params, 1, NULL, 0);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
     delete params;
@@ -2884,7 +2894,10 @@ void speakOfferingFallbackBlessingOnAmpAsync(const String &name, const String &o
   OfferingFallbackTaskParams *params = new OfferingFallbackTaskParams{name, offeringType, lang};
   blessingTaskActive = true;
   blessingTaskStartMs = millis();
-  BaseType_t created = xTaskCreatePinnedToCore(speakOfferingFallbackTaskFn, "offeringFallback", 8192, params, 1, NULL, 1);
+  // r157: moved to core 0 - see speakBlessingOnAmpAsync()'s comment above
+  // for why (same reasoning, same fix, applied to all three background
+  // blessing tasks).
+  BaseType_t created = xTaskCreatePinnedToCore(speakOfferingFallbackTaskFn, "offeringFallback", 8192, params, 1, NULL, 0);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
     delete params;
@@ -2919,7 +2932,11 @@ void speakGenericBlessingOnAmpAsync(const String &lang) {
   GenericBlessingTaskParams *params = new GenericBlessingTaskParams{lang};
   blessingTaskActive = true;
   blessingTaskStartMs = millis();
-  BaseType_t created = xTaskCreatePinnedToCore(speakGenericBlessingTaskFn, "wishPadBlessing", 8192, params, 1, NULL, 1);
+  // r157: moved to core 0 - same reasoning as speakBlessingOnAmpAsync()'s
+  // comment above. This is the wish pad's own blessing task, and both
+  // r155/r156's crashes happened right after a wish-pad blessing, making
+  // this specific task the most direct suspect of the three.
+  BaseType_t created = xTaskCreatePinnedToCore(speakGenericBlessingTaskFn, "wishPadBlessing", 8192, params, 1, NULL, 0);
   if (created != pdPASS) {
     Serial.println("AMP: failed to create blessing playback task");
     delete params;

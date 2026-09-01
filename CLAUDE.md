@@ -1036,6 +1036,27 @@ reasoning survives even when the git log scrolls out of context.
   than r155's timeout widening if this was indeed the cause - r155's
   15s watchdog stays in place regardless, as a safety net for whatever
   else might land in that stage.
+- **r157** - Real, verified (not speculative) contributor found while
+  answering a direct follow-up question about what else could cause a
+  stage-1 crash: all three background blessing tasks
+  (`speakBlessingTaskFn`/`speakOfferingFallbackTaskFn`/
+  `speakGenericBlessingTaskFn`, created via `xTaskCreatePinnedToCore()`)
+  were pinned to CORE 1 - the same core the Arduino framework's main
+  `loop()` runs on by default (touch pads, OLED, LED ring,
+  `server.handleClient()`). They were never running in parallel with the
+  main loop as likely intended - they were time-slicing the SAME core at
+  the SAME priority, meaning a blessing's CPU-heavy TLS handshake could
+  genuinely starve the main loop of CPU time (or contend for the
+  Wi-Fi/lwIP stack's internal locks) long enough to prevent it from
+  feeding the watchdog - a real, concrete mechanism for exactly the
+  r150/r155/r156 stage-1 crash pattern (both real crashes happened right
+  as a blessing's HTTPS call was active), not just a coincidence of
+  timing. All three moved to CORE 0 - the core ESP-IDF's own Wi-Fi
+  driver already runs on, the standard place for a background network
+  task in ESP32 Arduino projects specifically to avoid this. This is a
+  genuinely stronger, code-verified finding than r155/r156's
+  pattern-matched guesses - if this was the real cause all along, it
+  should now be fixed outright rather than just given more margin.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 
