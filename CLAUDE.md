@@ -1330,6 +1330,20 @@ reasoning survives even when the git log scrolls out of context.
   close to the live date - the mouse-back report from the same
   conversation still needs its own r167-instrumented capture to name
   which specific track is actually stale there.
+- **r169 - REVERTED r168** - the real root cause of the 43440ms reading
+  was a wrong 0005.mp3 file sitting on the SD card, not a stale stored
+  duration - user confirmed and has now uploaded the correct file.
+  r167's diagnostic itself was accurate (it genuinely measured that
+  wrong file's real length); it just wasn't measuring the file everyone
+  assumed it was. `mantraTracks[]` track 5 reverted 43440ms -> 55350ms,
+  the original value, which was correct all along once matched to the
+  correct recording. r167's real completion-event diagnostics stay in
+  place (useful for the still-open mouse-back report and any future
+  drift), and r168's own lesson stands: this class of mismatch can be a
+  genuinely wrong/stale SD card file, not only a genuinely wrong stored
+  number - both are real possibilities the diagnostic can't distinguish
+  on its own, a human confirming which file is actually supposed to be
+  there is still needed.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

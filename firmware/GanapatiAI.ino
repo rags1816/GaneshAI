@@ -424,11 +424,13 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
   {4, 27360},  // Ganapathimantra2.mp3 (27s)
-  {5, 43440}, // r168: real duration from the DFPlayer's own hardware
-              // "finished" event (r167 diagnostic), not a guess - the
-              // stored 55350ms was stale (real file is shorter now,
-              // matching the same drift already found on tracks 6/10/14).
-              // Ganeshmantra3.mp3
+  {5, 55350}, // r169: REVERTED r168 - the real root cause was a wrong
+              // 0005.mp3 file sitting on the SD card, not a stale stored
+              // duration. r167's "finished" event correctly measured that
+              // wrong file's real length (43440ms) - the diagnostic itself
+              // was accurate, the file it was measuring wasn't the
+              // intended recording. User has now uploaded the correct
+              // 0005.mp3; 55350ms was right all along. Ganeshmantra3.mp3
   {6, 114000}, // Ganeshmantra4.mp3 - r142: corrected to real length (1:54), confirmed by user
   {7, 99600},  // Ganeshmantra5.mp3 (99s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
