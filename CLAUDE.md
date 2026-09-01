@@ -1145,6 +1145,38 @@ reasoning survives even when the git log scrolls out of context.
   themselves (both `renderTextImage` and `generateBlessing`) are a
   separate, real, still-open issue on the Cloud Functions side - not
   something this firmware fix addresses.
+- **r162** - Three real, code-audit-confirmed bugs fixed after a background
+  Claude Code session did a thorough static review of the wish pad, puja
+  portal, dashboard, and Device Health code paths at the user's request
+  ("do your own thorough checks"). (1) The dashboard's Virtual Puja &
+  Prayers panel (`submitPuja()` in `web_dashboard.h`) never translated a
+  typed prayer at all - selecting a non-English Active Language only ever
+  changed which TTS VOICE read the text, not the words themselves, unlike
+  `puja.html`'s real form (which calls `generateBlessing` before queueing).
+  New `requestPujaAiUpgrade()`/`upgradeOfferingText()` mirror puja.html's
+  own `requestAiBlessing()`/`upgradeOfferingText()` pattern exactly: queue
+  immediately with the raw text (same reliability-first reasoning - never
+  block a submission on the AI call), then swap in the translated text/mood
+  once the 25s-budgeted call lands. Skipped when the prayer box is empty,
+  since `triggerPersonalizedOffering()` already generates a fresh, live,
+  correctly-translated blessing for that case. (2) `"sa"` (this dashboard's
+  own UI code for "Sanskrit/Hindi") was reaching the backend completely
+  unmapped from this panel specifically - `LANGUAGE_CONFIG` has no `"sa"`
+  entry, so it silently fell back to English, even though the wish pad's
+  own equivalent path (`triggerWishPadBlessing()` in `GanapatiAI.ino`)
+  already correctly maps this to `"hi"`. New `backendLangCode()` JS helper
+  applies the same mapping wherever this panel sends `lang` to the device.
+  (3) The OLED's no-image fallback rendering (`drawOLED()` in
+  `GanapatiAI.ino`) had a safe "no font available, show an English notice
+  instead of garbage" branch for Sindhi/Farsi, but Urdu/Thai/Chinese -
+  added in the very same r102 session - never got the same treatment,
+  so real Arabic/Thai/CJK UTF-8 text would render blank/garbled with the
+  Latin-only `logisoso20` font in this rare fallback path. Extended the
+  same safe branch to cover all five languages. A fourth finding - a real
+  ~25s race window in `puja.html` itself, where an offering approved
+  before its own AI translation lands gets spoken untranslated - is a
+  known, deliberate reliability-first tradeoff already documented in this
+  project's history, not changed here. `index.html` resynced.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

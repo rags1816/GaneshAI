@@ -1617,6 +1617,19 @@ var QRCode;
         // in GanapatiAI.ino).
         const LANG_TO_CODE = { en: 0, sa: 1, mr: 3, ta: 2 };
         const CODE_TO_LANG = { 0: "en", 1: "sa", 2: "ta", 3: "mr" };
+        // r162: "sa" is this dashboard's own UI code for "Sanskrit/Hindi" -
+        // it is NOT a real backend LANGUAGE_CONFIG key. triggerWishPadBlessing()
+        // in GanapatiAI.ino already maps its own numeric selectedLang (1) to
+        // the real "hi" key before speaking - this dashboard-side helper does
+        // the same translation for the two other places "sa" was reaching
+        // the backend unmapped (this panel's own offering submissions),
+        // where it was silently falling back to English (LANGUAGE_CONFIG has
+        // no "sa" entry). Real bug confirmed via code audit - "Sanskrit/Hindi"
+        // had zero effect on this panel's spoken language before this fix.
+        function backendLangCode(code) {
+            return code === "sa" ? "hi" : code;
+        }
+        const GENERATE_BLESSING_URL = "https://us-central1-ganapatiai.cloudfunctions.net/generateBlessing";
         const THEME_ORDER = ["tue", "mon", "wed", "thu", "fri", "sat", "sun"];
 
         // How long AMBIENT stays awake before returning to STANDBY. Must be
@@ -3178,9 +3191,84 @@ var QRCode;
                 })
                 .catch(err => console.warn("Background relay sync failed for new offering (still added locally):", err));
 
+            // r162: real bug found via code audit - this panel queued the
+            // raw typed prayer with no translation step at all, unlike
+            // puja.html (which calls generateBlessing before queueing).
+            // Selecting a non-English language here only ever changed
+            // which VOICE read the text aloud - the words themselves stayed
+            // exactly as typed. Queue immediately with the raw text first
+            // (same reliability-first reasoning as puja.html - never make
+            // the devotee/priest wait on this to submit), then upgrade the
+            // queued item in place once the AI translation lands, same
+            // pattern as puja.html's requestAiBlessing()/upgradeOfferingText().
+            // Skipped when the prayer box is empty - triggerPersonalizedOffering()
+            // on the device already generates a fresh, correctly-translated
+            // blessing live for that case (speakOfferingFallbackBlessingOnAmp()).
+            if (text.length > 0) {
+                requestPujaAiUpgrade(newRequest.id, name, selectedOffering, text, backendLangCode(selectedLang));
+            }
+
             // Clear input after submission
             textInput.value = "";
             nameInput.value = "";
+        }
+
+        // r162: same pattern as puja.html's requestAiBlessing() - calls the
+        // real AI blessing endpoint to translate/compose the prayer into
+        // the target language, then swaps it into the already-queued item
+        // once it lands. 25s budget matches puja.html's own (see its
+        // comment: r86's server-side reverb pass made the old 15s too
+        // tight). Never blocks the initial submit - this fires after the
+        // item is already queued.
+        function requestPujaAiUpgrade(requestId, name, offering, prayer, lang) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
+            fetch(GENERATE_BLESSING_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, offering: offering, prayer: prayer, lang: lang }),
+                signal: controller.signal
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error('blessing generation status ' + res.status);
+                    const blessingText = decodeURIComponent(res.headers.get('X-Blessing-Text') || '');
+                    const blessingMood = res.headers.get('X-Blessing-Mood') || '';
+                    return { blessingText, blessingMood };
+                })
+                .then(({ blessingText, blessingMood }) => {
+                    if (blessingText) upgradeOfferingText(requestId, blessingText, blessingMood);
+                })
+                .catch(err => {
+                    console.warn('AI blessing translation failed or timed out - offering stays with the raw typed text:', err);
+                })
+                .finally(() => clearTimeout(timeoutId));
+        }
+
+        // Swaps the raw typed prayer for the AI-translated reply on an
+        // offering that's already been queued - both in this browser's
+        // local queue and the shared online one, so the priest sees (and
+        // an approval speaks) the translated version whenever it's ready.
+        function upgradeOfferingText(requestId, blessingText, blessingMood) {
+            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
+            const localItem = localQueue.find(item => item.id === requestId);
+            if (localItem) {
+                localItem.prayer = blessingText;
+                localItem.mood = blessingMood || '';
+                localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
+                localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
+                renderQueue();
+            }
+
+            relayReadQueue()
+                .then(onlineQueue => {
+                    if (!Array.isArray(onlineQueue)) return;
+                    const onlineItem = onlineQueue.find(item => item.id === requestId);
+                    if (!onlineItem) return;
+                    onlineItem.prayer = blessingText;
+                    onlineItem.mood = blessingMood || '';
+                    return relayWriteQueue(onlineQueue);
+                })
+                .catch(err => console.warn("Could not upgrade relayed offering text with AI reply:", err));
         }
 
         // Squeaky Talk-Back Output
@@ -3678,7 +3766,10 @@ var QRCode;
                 // this existed. Sentiment-aware LED color: see MOODS in
                 // backend/functions/index.js and moodColorsFor() in
                 // GanapatiAI.ino.
-                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(item.lang || 'en')}&mood=${encodeURIComponent(item.mood || '')}`;
+                // r162: backendLangCode() maps this dashboard's own "sa"
+                // (Sanskrit/Hindi) UI code to the real "hi" backend key -
+                // see its own comment above for why this was needed.
+                const params = `&name=${encodeURIComponent(item.name)}&offering=${encodeURIComponent(item.offering)}&prayer=${encodeURIComponent(item.prayer)}&lang=${encodeURIComponent(backendLangCode(item.lang || 'en'))}&mood=${encodeURIComponent(item.mood || '')}`;
                 sendESPControl('offering', params);
             }
         }

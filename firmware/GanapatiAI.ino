@@ -3997,8 +3997,15 @@ void drawOLED() {
     scrollFont = u8g2_font_notosansgurmukhi16_t;
   } else if (strcmp(scrollTextLang, "bn") == 0) {
     scrollFont = u8g2_font_notosansbengali16_t;
-  } else if (strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0) {
-    displayText = OLED_NO_FONT_MSG; // not in the dropdown yet, but stay safe if ever selected
+  } else if (strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0 ||
+             strcmp(scrollTextLang, "ur") == 0 || strcmp(scrollTextLang, "th") == 0 ||
+             strcmp(scrollTextLang, "zh") == 0) {
+    // r162: Urdu/Thai/Chinese were added in the same r102 session as
+    // Sindhi/Farsi but never got this same safe fallback - real Arabic/
+    // Thai/CJK text was being drawn with the Latin-only logisoso20 font
+    // in this rare no-image fallback path, rendering blank/garbled
+    // instead of the safe English notice sd/fa correctly get.
+    displayText = OLED_NO_FONT_MSG;
   }
   u8g2.setFont(scrollFont);
 
