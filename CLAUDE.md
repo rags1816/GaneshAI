@@ -1308,6 +1308,28 @@ reasoning survives even when the git log scrolls out of context.
   DFRobotDFPlayerMini constant names, but if the installed library
   version names them differently, Arduino IDE will flag it immediately at
   verify time - a one-line fix, not a logic problem.
+- **r168** - r167's diagnostics gave a real answer on the first capture,
+  not a guess: right after the resumed `dfPlay(5)`, the DFPlayer's own
+  hardware "finished" event fired 43440ms later - 11.9s before the
+  state machine's stale 55350ms timer caught up, matching exactly the
+  silent gap the user heard and correctly identified as the mantra
+  stopping early. `mantraTracks[]`'s track 5 (Ganeshmantra3.mp3)
+  corrected 55350ms -> 43440ms, from that real measured event, not
+  another guess - same class of drift already found and fixed on tracks
+  6/10/14, just not caught on track 5 until this diagnostic existed.
+  Not yet done, flagged for a follow-up: the same "finished" event
+  stream showed the ORIGINAL interrupted track 5's stop only got
+  reported 5.4s late (arriving while the bell was already playing,
+  under a DIFFERENT track's value) - the event stream can lag/queue, so
+  before using it to drive the state machine directly (letting the
+  device react to the REAL end of a track instead of a stored number
+  for every touch, not just this one case), that lag needs careful
+  handling so a delayed event from a previous track can never be
+  mistaken for the current one's completion. Deliberately not attempted
+  in the same change as this evidenced, low-risk single-value fix, this
+  close to the live date - the mouse-back report from the same
+  conversation still needs its own r167-instrumented capture to name
+  which specific track is actually stale there.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

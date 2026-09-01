@@ -424,7 +424,11 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
   {1, 19121},  // Ganapathimantrai.mp3 (Vakratundaya - actual measured length, was overestimated at 24s)
   {2, 28390},  // Ganpathimantra1.mp3 (28s)
   {4, 27360},  // Ganapathimantra2.mp3 (27s)
-  {5, 55350},  // Ganeshmantra3.mp3 (55s)
+  {5, 43440}, // r168: real duration from the DFPlayer's own hardware
+              // "finished" event (r167 diagnostic), not a guess - the
+              // stored 55350ms was stale (real file is shorter now,
+              // matching the same drift already found on tracks 6/10/14).
+              // Ganeshmantra3.mp3
   {6, 114000}, // Ganeshmantra4.mp3 - r142: corrected to real length (1:54), confirmed by user
   {7, 99600},  // Ganeshmantra5.mp3 (99s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
