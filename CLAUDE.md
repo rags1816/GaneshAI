@@ -997,6 +997,26 @@ reasoning survives even when the git log scrolls out of context.
   priest/admin can restart deliberately at a convenient moment - e.g.
   before a festival's heavy multi-day run - rather than only ever
   waiting on the automatic condition. `index.html` resynced.
+- **r155** - A SECOND real watchdog crash confirmed on hardware, in the
+  exact same place r150 already targeted (`lastStage=1`, the
+  `server.handleClient()`/`checkWiFiHealth()` group) - this time right
+  after a wish-pad blessing's live HTTPS/TLS call to the Firebase
+  backend finished. r150 fixed the case where several stage-1 calls
+  TOGETHER exceeded the watchdog window; this crash means at least one
+  of them (most likely `WiFi.reconnect()`, or the WebServer library's own
+  internal client-read handling) can still block past 8 seconds
+  entirely on its own, which feeding the watchdog BETWEEN calls can't
+  help with - a busier Wi-Fi/TLS stack right after a heavy HTTPS
+  transaction makes a slower reconnect more likely. Widened the
+  watchdog from 8000ms to 15000ms (`WATCHDOG_TIMEOUT_MS` in
+  `GanapatiAI.ino`'s `setupWatchdog()`) as an immediate, safe interim
+  hardening while root-causing exactly which call is the real offender -
+  gives real slow-but-not-infinite cases enough headroom without masking
+  a genuinely infinite hang, which would still eventually be caught,
+  just later. Not yet confirmed as a full fix - still waiting on the
+  actual panic backtrace from the original crash (only the aftermath and
+  a user-triggered manual restart were captured this time) to pin down
+  the exact call before considering this closed.
 
 ## Duplicated files - THE #1 SOURCE OF BUGS IN THIS REPO
 

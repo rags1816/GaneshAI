@@ -1070,8 +1070,21 @@ void setup() {
   // is only for the very first init) - this is what actually applies the
   // intended settings. Falls back to init() + add() in case some other
   // environment genuinely hasn't initialized it yet.
+  // r155: widened from 8000ms after a SECOND real watchdog crash on
+  // hardware, landing at the exact same lastStage=1 boundary r150 already
+  // targeted (server.handleClient() + checkWiFiHealth()'s WiFi.reconnect())
+  // - this time right after a wish-pad blessing's live HTTPS/TLS call to
+  // the Firebase backend. r150 fixed the case where several stage-1 calls
+  // TOGETHER exceeded 8s; feeding the watchdog between them can't help if
+  // one single call (most likely WiFi.reconnect(), or the WebServer
+  // library's own internal client-read timeout) blocks past 8s entirely
+  // on its own - which a busier Wi-Fi/TLS stack right after a heavy HTTPS
+  // transaction makes more likely. 15s gives real slow-but-not-infinite
+  // cases (a sluggish reconnect, a slow client) enough room, while a
+  // truly infinite hang is still eventually caught, just later.
+  #define WATCHDOG_TIMEOUT_MS 15000
   esp_task_wdt_config_t twdt_config = {
-    .timeout_ms = 8000,
+    .timeout_ms = WATCHDOG_TIMEOUT_MS,
     .idle_core_mask = 0,
     .trigger_panic = true,
   };
@@ -1089,7 +1102,7 @@ void setup() {
   // protection (worse than before the r64 fix, not better). Must run on
   // every path, not just the fallback.
   esp_task_wdt_add(NULL);
-  Serial.printf("WATCHDOG: reconfigure() returned %d - now actually 8000ms, idle tasks NOT monitored.\n", wdtErr);
+  Serial.printf("WATCHDOG: reconfigure() returned %d - now actually %dms, idle tasks NOT monitored.\n", wdtErr, WATCHDOG_TIMEOUT_MS);
 }
 
 // ==========================================
