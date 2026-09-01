@@ -1229,6 +1229,38 @@ reasoning survives even when the git log scrolls out of context.
   itself. `backend/hosting/puja.html` needs its own manual
   `firebase deploy --only hosting` to go live - a git push alone does not
   deploy it.
+- **r165** - Two real bugs found by tracing the resume-after-interruption
+  code path end to end, after a direct report: a feet (or mouse-back)
+  mantra interrupted by a wish-pad touch would resume then abruptly cut
+  to standby, and the wish pad's own display text visibly overlapped the
+  resumed mantra. (1) Display overlap, confirmed: `setSystemState()`
+  never touches `scrollText` for `STATE_FEET_ACTIVE`/`STATE_MANTRA_ACTIVE`,
+  so a resumed mantra kept showing the wish pad's leftover "Your silent
+  prayer is heard" text (or an approved offering's "[OFFERING] ..." line)
+  for one full scroll pass before the ambient rotation finally replaced
+  it. The resume path now sets a fresh `[BLESSING] ...` line immediately,
+  same pattern Aarti's own resume text already used. (2) A real, separate
+  bug in `currentPlayingTrack`: `playOfflineBlessingFallback()` (r110)
+  legitimately overwrites this shared global with whatever fallback track
+  it played - correct for its own purpose, but it could also silently
+  clobber the track number of a mantra that a wish-pad/offering
+  interruption was mid-pause on, so a resume could restart the WRONG
+  track under the original mantra's timer (short fallback audio, long
+  leftover state duration - a real, if different, mismatch from the
+  reported symptom). New `offeringPausedTrack` global, captured alongside
+  the existing `offeringPausedState`/`offeringPausedDurationMs` pair at
+  the moment of interruption in both `triggerPersonalizedOffering()` and
+  `triggerWishPadBlessing()`, and used (not `currentPlayingTrack`) at
+  resume time - immune to being overwritten by anything that runs during
+  the interruption window. Traced the full resume timing logic
+  exhaustively and it correctly replays the interrupted track's FULL
+  original duration from a fresh timer - not yet confirmed on hardware
+  whether these two fixes fully account for the reported "abrupt to
+  standby", since that exact mechanism couldn't be conclusively pinned
+  down from static code reading alone; the three existing Serial lines
+  ("WISH PAD: touched while state=...", "OFFERING: display done after
+  ...ums..., resumeTrack=...", "MANTRA: duration elapsed...") are the
+  next diagnostic step if it still happens after reflashing.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

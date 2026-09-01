@@ -340,6 +340,20 @@ bool offeringDisplayActive = false;
 bool offeringInterrupted = false;
 SystemState offeringPausedState = STATE_STANDBY;
 unsigned long offeringPausedDurationMs = 0;
+// r165: which DFPlayer track to resume - captured alongside
+// offeringPausedState/DurationMs at the moment a mantra is interrupted,
+// rather than trusting currentPlayingTrack to still hold it by the time
+// we resume. Real bug found on hardware: if the wish pad's own live
+// blessing call fails partway through and falls back to
+// playOfflineBlessingFallback(), THAT function legitimately overwrites
+// the shared currentPlayingTrack global with the fallback track's own
+// number (correct for its own purpose - Device Health/getCurrentScene()
+// use currentPlayingTrack as "is audio playing" proxy) - but that
+// silently clobbered the interrupted mantra's track number too, so a
+// resume could restart the WRONG track under the original mantra's
+// timer. offeringPausedTrack is immune to this since nothing else ever
+// writes it.
+int offeringPausedTrack = 0;
 
 // r126: triggerWishPadBlessing() deliberately reuses STATE_FEET_ACTIVE's
 // existing display-lock/interruption timing rather than adding a whole
@@ -2228,12 +2242,20 @@ void updateStateMachine() {
           scrollPassComplete = true;
           Serial.printf("OFFERING: display done after %lums (cap hit: %s), offeringInterrupted=%s, resumeTrack=%d, resumeState=%s\n",
                         now - stateTimer, offeringHardCap ? "yes" : "no",
-                        offeringInterrupted ? "true" : "false", currentPlayingTrack, stateName(offeringPausedState));
+                        offeringInterrupted ? "true" : "false", offeringPausedTrack, stateName(offeringPausedState));
           if (offeringInterrupted) {
             offeringInterrupted = false;
             dfStop();
             delay(100); // was 50ms - some DFPlayer Mini clones drop a command sent too soon after stop()
-            dfPlay(currentPlayingTrack);
+            // r165: resume the track captured at pause time, not
+            // currentPlayingTrack - see offeringPausedTrack's declaration
+            // comment for the real bug this fixes (a background offline-
+            // fallback play could silently overwrite currentPlayingTrack
+            // during the interruption). Also re-sync currentPlayingTrack
+            // itself, since other code (Device Health/getCurrentScene())
+            // reads it as "what's playing now".
+            dfPlay(offeringPausedTrack);
+            currentPlayingTrack = offeringPausedTrack;
             // Resuming into Aarti specifically: restore its fixed display
             // text, since it was overwritten by the offering's "[OFFERING]
             // ..." line and (unlike Ambient/Mantra/Feet) Aarti doesn't
@@ -2241,6 +2263,19 @@ void updateStateMachine() {
             if (offeringPausedState == STATE_AARTI) {
               strlcpy(scrollText, "   \xE2\x9C\xA8 A moment of Aarti \xE2\x9C\xA8   ", sizeof(scrollText));
       strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
+            } else {
+              // r165: real display-overlap bug, confirmed by direct report -
+              // without this, a resumed feet/mouse-back mantra kept showing
+              // the wish pad's own leftover "Your silent prayer is heard"
+              // text (or an approved offering's "[OFFERING] ..." line) for
+              // one full scroll pass before the ambient rotation below
+              // finally replaced it, since setSystemState() itself never
+              // touches scrollText for FEET_ACTIVE/MANTRA_ACTIVE. Show a
+              // fresh blessing immediately instead of leaving stale text
+              // from whatever just interrupted this mantra on screen.
+              int r = random(0, 26);
+              snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
+              strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
             }
             setSystemState(offeringPausedState, offeringPausedDurationMs);
           } else {
@@ -3246,9 +3281,10 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
     // whole track's time again, regardless of how far in it was when
     // this offering interrupted it.
     offeringPausedDurationMs = stateDuration;
+    offeringPausedTrack = currentPlayingTrack; // r165: see its own declaration comment
   }
   Serial.printf("OFFERING: approved while state=%s, offeringInterrupted=%s, pausedTrack=%d, fullDurationMs=%lu\n",
-                stateName(currentState), offeringInterrupted ? "true" : "false", currentPlayingTrack, offeringPausedDurationMs);
+                stateName(currentState), offeringInterrupted ? "true" : "false", offeringPausedTrack, offeringPausedDurationMs);
   dfStop();
   offeringDisplayActive = true;
   delay(50);
@@ -3336,6 +3372,7 @@ void triggerWishPadBlessing() {
   if (offeringInterrupted) {
     offeringPausedState = currentState;
     offeringPausedDurationMs = stateDuration;
+    offeringPausedTrack = currentPlayingTrack; // r165: see its own declaration comment
   }
   Serial.printf("WISH PAD: touched while state=%s, offeringInterrupted=%s\n",
                 stateName(currentState), offeringInterrupted ? "true" : "false");
