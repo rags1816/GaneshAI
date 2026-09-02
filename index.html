@@ -1939,13 +1939,13 @@ var QRCode;
             { file: "Ganapathimantra2.mp3", duration: 27360, dfTrack: 4 },
             { file: "Ganeshmantra3.mp3", duration: 55350, dfTrack: 5 },
             { file: "Ganeshmantra4.mp3", duration: 114000, dfTrack: 6 },
-            { file: "Ganeshmantra5.mp3", duration: 99600, dfTrack: 7 },
+            { file: "Ganeshmantra5.mp3", duration: 8000, dfTrack: 7 }, // r173: corrected from 99600 (stale) - real length 8s
             { file: "Ganeshmantra6.mp3", duration: 60160, dfTrack: 8 },
             { file: "Ganeshmantra9.mp3", duration: 48800, dfTrack: 11 },
             { file: "Ganeshmantra10.mp3", duration: 27380, dfTrack: 12 },
             { file: "Ganeshmantra11.mp3", duration: 79280, dfTrack: 13 },
             { file: "Ganeshmantra12.mp3", duration: 102000, dfTrack: 14 },
-            { file: "Ganeshmantra13.mp3", duration: 28400, dfTrack: 15 },
+            { file: "Ganeshmantra13.mp3", duration: 57000, dfTrack: 15 }, // r173: corrected from 28400 (stale) - real length 57s
             { file: "0033.mp3", duration: 13000, dfTrack: 33 },
             { file: "0034.mp3", duration: 13000, dfTrack: 34 },
             { file: "0036.mp3", duration: 14000, dfTrack: 36 },
@@ -1981,7 +1981,7 @@ var QRCode;
         // Playing lookup below so a manually-played Song (via Play Track)
         // still syncs correctly instead of leaving the panel stale.
         const songTracksJS = [
-            { file: "0009.mp3", duration: 136700, dfTrack: 9 },
+            { file: "0009.mp3", duration: 182000, dfTrack: 9 }, // r173: corrected from 136700/2:16.7 (stale) - real length 3:02
             { file: "0028.mp3", duration: 127000, dfTrack: 28 },
             { file: "0029.mp3", duration: 253000, dfTrack: 29 },
             { file: "0032.mp3", duration: 186000, dfTrack: 32 },
@@ -2007,15 +2007,15 @@ var QRCode;
             { track: 4,  label: "4 - Feet mantra", duration: 27360 },
             { track: 5,  label: "5 - Feet mantra", duration: 55350 },
             { track: 6,  label: "6 - Feet mantra", duration: 114000 },
-            { track: 7,  label: "7 - Feet mantra", duration: 99600 },
+            { track: 7,  label: "7 - Feet mantra", duration: 8000 },
             { track: 8,  label: "8 - Feet mantra", duration: 60160 },
-            { track: 9,  label: "9 - Song (long, 2:16, manual only)", duration: 136700 },
+            { track: 9,  label: "9 - Song (long, 3:02, manual only)", duration: 182000 },
             { track: 10, label: "10 - Aarti part 2 (after 16)", duration: 125520 },
             { track: 11, label: "11 - Feet mantra", duration: 48800 },
             { track: 12, label: "12 - Feet mantra", duration: 27380 },
             { track: 13, label: "13 - Feet mantra", duration: 79280 },
             { track: 14, label: "14 - Feet mantra", duration: 102000 },
-            { track: 15, label: "15 - Feet mantra", duration: 28400 },
+            { track: 15, label: "15 - Feet mantra", duration: 57000 },
             { track: 16, label: "16 - Aarti part 1 (feet's last touch)", duration: 206000 },
             { track: 17, label: "17 - Mouse-back chant", duration: 12000 },
             { track: 18, label: "18 - Offline blessing", duration: 19000 },

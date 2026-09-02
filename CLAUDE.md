@@ -1440,6 +1440,21 @@ reasoning survives even when the git log scrolls out of context.
   needed to accommodate it, since feetDisplayLocked/stateDuration were
   always independent of each other and setSystemState() already clears
   the display lock the moment a state ends, however short.
+- **r174** - Real, self-caused gap found immediately after r173 shipped:
+  the dashboard's own JS mirrors of the track catalog
+  (`mantraTracks`/`songTracksJS`/`allPlayableTracks` in `web_dashboard.h`)
+  were never updated alongside r173's firmware-side corrections to tracks
+  7/9/15 - confirmed on hardware as the Play Track dropdown still showing
+  track 7's old 1:40 instead of 8s even after r173 was flashed, exactly
+  the same class of two-copies-drift this project has hit before (r132,
+  r136, r142). All 6 stale references (2 per track: the JS array entry
+  and the Play Track dropdown label/duration) corrected in
+  `web_dashboard.h`, including track 9's dropdown label text itself
+  ("2:16" -> "3:02"); `index.html` resynced byte-for-byte from the
+  updated `INDEX_HTML` literal and diff-verified identical. `firmware/
+  GanapatiAI.ino`'s own `mantraTracks[]`/`songTracks[]` (the actual
+  playback source of truth) were already correct from r173 - only the
+  dashboard's separate display copy was stale.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase
