@@ -1367,6 +1367,66 @@ reasoning survives even when the git log scrolls out of context.
   guessing from connection behavior. The old stall timeout stays as a
   safety net only, for the rare case the WAV size can't be parsed or the
   connection dies early - no longer the normal completion path.
+- **r171** - V2-adjacent: the deeper DFPlayer fix flagged as a follow-up in
+  r168/r170 - a plain feet/mouse-back mantra (or a manually-played track,
+  or the temple-reopening welcome mantra) now ends the instant the
+  DFPlayer's own hardware reports it's genuinely done, instead of always
+  waiting out a stored duration that can drift from whatever's actually
+  on the SD card - the same class of bug chased one track at a time
+  (5, and before it 6/10/14) now self-corrects per touch instead of
+  needing a human to notice and fix a number. Explicitly built around the
+  two real risks found while chasing track 5 tonight, not ignored: (1)
+  the event can arrive LATE, queued behind a later command - confirmed on
+  hardware (an interrupted track's own stop was reported 5.4s after a
+  completely different command had already been sent) - guarded by
+  requiring the event to be newer than the most recent dfPlay() AND at
+  least DF_FINISH_GUARD_MS (3s) after it, since no real mantra/chant is
+  anywhere near that short. (2) the event's reported value doesn't match
+  the commanded track number (asked for 5, got told "15" back, same
+  clone) - so this never matches by value, only by timing plausibility
+  while a new `dfWaitingForFinish` flag says a plain mantra's completion
+  is genuinely being tracked right now. That flag is deliberately true
+  ONLY at the handful of "natural completion is the only thing that
+  should end this" sites (triggerMantra/triggerFeetMantra, the
+  offering/wish-pad resume path, playTrackManually, the temple-reopening
+  welcome mantra) and explicitly false everywhere else (the wish pad's
+  own bell+blessing window, an approved offering's bell, Aarti - its
+  own two-part timer logic deliberately untouched by this - and the raw
+  `/api/test?track=` diagnostic), so a stray or delayed event during any
+  of those can never be misread as a different mantra's completion. The
+  stored duration is completely unchanged as the outer ceiling - if no
+  event ever arrives (a clone that doesn't send them reliably, or a
+  genuinely lost byte), behavior is IDENTICAL to before this change.
+  **Not yet confirmed on real hardware** - this is a careful, reasoned
+  implementation addressing both risks found tonight, but touches core
+  state-transition logic used by every touch type, so it needs its own
+  real test pass (feet alone, mouse-back alone, both with a wish-pad
+  interruption, an approved offering) before being trusted for the live
+  festival - same discipline this whole r165-r170 chain only trusted
+  once real Serial evidence backed each claim.
+- **r172** - Direct follow-up request: the mouse eyes should never go
+  fully dark ("he never sleeps"), but sit noticeably dimmer specifically
+  while the temple is genuinely `STATE_TEMPLE_CLOSED` (not STANDBY -
+  that's just the normal idle-between-touches state and keeps its usual
+  80% resting glow), and real PIR motion nearby while closed should get
+  a visual acknowledgment. New `EYE_LED_CLOSED_BRIGHTNESS` (~10%, same
+  level as the existing breathing dip's low point) is applied the moment
+  `setSystemState()` enters `STATE_TEMPLE_CLOSED`, layered on top of the
+  existing unconditional `settleEyeLedToBase()` call. New
+  `triggerClosedAcknowledgeGlow()`/`updateEyeLedClosedGlow()` (non-blocking,
+  polled from `loop()` like every other eye-LED animation in this file -
+  never a blocking delay on the watchdog-subscribed main loop) fire a
+  brief rise/hold/fall pulse up to the normal 80% level and back down to
+  the closed-dim level, triggered by real PIR motion specifically while
+  `currentState == STATE_TEMPLE_CLOSED`, on its own `EYE_LED_CLOSED_GLOW_COOLDOWN_MS`
+  (15s) debounce separate from STANDBY's own PIR-wake debounce. r128's
+  actual design decision - only a real touch ever reopens a closed
+  temple, PIR alone does not - is completely unchanged: this reads PIR
+  through its own dedicated branch and never sets `motionDetected` (the
+  flag STANDBY's wake logic consumes), so it can only ever affect the
+  eye LED, never the state machine. Not yet confirmed on hardware - a
+  first reasoned guess at the pulse shape/cooldown, easy to retune once
+  seen on the physical fiber runs.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

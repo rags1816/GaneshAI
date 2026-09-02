@@ -7,7 +7,7 @@
 // boot log prints it, so the Serial Monitor is the definitive proof of
 // what's actually flashed on the board, independent of any download or
 // browser-cache issue on the file-sync side.
-#define FIRMWARE_VERSION "2026-09-01-r170"
+#define FIRMWARE_VERSION "2026-09-02-r172"
 
 // ==========================================
 // Hardware Pin Definitions
@@ -133,6 +133,23 @@
 // cycle - halved so the 80%->10%->80% dip reads as a clear pulse instead
 // of a slow drift. Raise this back toward 3000 if it now feels too fast.
 #define EYE_LED_BREATH_PERIOD_MS     1500
+
+// r171: direct request - the guardian "never sleeps", so the eyes should
+// never go fully off, but should sit noticeably dimmer while the temple
+// is genuinely CLOSED (not just STANDBY between touches - see
+// setSystemState()'s use of this), with a brief brightening pulse in
+// response to real PIR motion nearby while closed - purely a visual
+// acknowledgment, no bell/mantra/state change (r128's "only a touch
+// actually reopens the closed temple" design is unchanged). Reuses the
+// same ~10% low point already established for the breathing dip.
+#define EYE_LED_CLOSED_BRIGHTNESS         26   // ~10%, matches EYE_LED_BREATH_LOW_BRIGHTNESS
+#define EYE_LED_CLOSED_GLOW_PEAK_MS       700  // rise time up to EYE_LED_BASE_BRIGHTNESS
+#define EYE_LED_CLOSED_GLOW_HOLD_MS       500  // hold at peak
+#define EYE_LED_CLOSED_GLOW_FALL_MS       700  // fall back to EYE_LED_CLOSED_BRIGHTNESS
+// Real PIR sensors pick up ambient motion continuously - without a
+// cooldown, someone lingering nearby would retrigger the glow every loop
+// pass. 15s is a first guess, easy to retune once seen on hardware.
+#define EYE_LED_CLOSED_GLOW_COOLDOWN_MS   15000UL
 
 // r145: power draw ESTIMATE assumptions - this board has no current/power
 // sensor at all, so none of this is measured. The LED ring figure is

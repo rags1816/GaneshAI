@@ -122,6 +122,34 @@ bool dfPlayerReady = false;
 // restart cleanly on resume" from a guess into a fact on the next capture.
 unsigned long dfLastPlayCommandMs = 0;
 int dfLastPlayCommandTrack = 0;
+// r171: applies the real completion event to end a plain feet/mouse-back
+// mantra (or a manually-played track, or the temple-reopening welcome
+// mantra) the instant the DFPlayer genuinely reports it's done, instead
+// of always waiting out a stored duration that can drift from whatever
+// is actually on the SD card - the same class of bug just chased one
+// track at a time (5, and before it 6/10/14). Two real risks found
+// tonight, both guarded against, not ignored: (1) the event can arrive
+// LATE, queued behind a later command - confirmed on hardware (an
+// interrupted track's own stop was reported 5.4s after a completely
+// different command had already been sent) - guarded by requiring the
+// event to be newer than the most recent dfPlay() AND at least
+// DF_FINISH_GUARD_MS after it (no real mantra/chant is anywhere near
+// that short). (2) the event's reported value doesn't match the
+// commanded track number (asked for 5, got told "15" back, same clone) -
+// so this never tries to match by value, only by timing plausibility
+// while dfWaitingForFinish says we're genuinely tracking one. That flag
+// is true ONLY at the small set of "plain mantra now playing, natural
+// completion is the only thing that should end it" sites - explicitly
+// left/set false everywhere else (the wish pad's own bell+blessing
+// window, an approved offering's bell, Aarti, the raw /api/test?track=
+// diagnostic) - so a stray or delayed event during any of those can
+// never be misread as this one's completion. The stored duration is
+// completely unchanged as the outer ceiling - if no event ever arrives
+// (a clone that doesn't send them reliably, or a genuinely lost byte),
+// behavior is IDENTICAL to before this change.
+#define DF_FINISH_GUARD_MS 3000UL
+unsigned long dfLastFinishedEventMs = 0;
+bool dfWaitingForFinish = false;
 void dfStop() { if (dfPlayerReady) myDFPlayer.stop(); }
 void dfPlay(int track) {
   if (!dfPlayerReady) return;
@@ -146,6 +174,7 @@ void checkDfPlayerEvents() {
   if (type == DFPlayerPlayFinished) {
     Serial.printf("DFPLAYER: real 'finished' event for track %d, %lums after dfPlay(%d) was sent\n",
                   value, sinceCommand, dfLastPlayCommandTrack);
+    dfLastFinishedEventMs = millis(); // r171: interpreted in updateStateMachine(), not here - see dfWaitingForFinish's comment
   } else if (type == DFPlayerError) {
     Serial.printf("DFPLAYER: real error event code %d, %lums after dfPlay(%d) was sent\n",
                   value, sinceCommand, dfLastPlayCommandTrack);
@@ -557,6 +586,16 @@ int bootCrashedStage = 0;
 bool eyeLedBreathingActive = false;
 unsigned long eyeLedBreathingStartMs = 0;
 
+// r171: separate state for the temple-closed dim glow + PIR acknowledgment
+// pulse - see EYE_LED_CLOSED_BRIGHTNESS's config.h comment and
+// triggerClosedAcknowledgeGlow()/updateEyeLedClosedGlow() below. Never
+// active at the same time as eyeLedBreathingActive in practice (nothing
+// breathes while the temple is closed), but kept as its own flag rather
+// than reusing that one so the two animations can never be confused.
+bool eyeLedClosedGlowActive = false;
+unsigned long eyeLedClosedGlowStartMs = 0;
+unsigned long lastClosedGlowTrigger = 0;
+
 // Customization & Settings
 int blessingCounter = 0;
 int currentBrightness = DEFAULT_BRIGHT;
@@ -825,6 +864,8 @@ void playMoodClosurePulse(const char *mood);
 void updateEyeLedBreathing();
 void settleEyeLedToBase();
 void updateEyeLedBlessingBreathing();
+void triggerClosedAcknowledgeGlow();
+void updateEyeLedClosedGlow();
 void getEstimatedPowerMw(uint32_t &totalMw, uint32_t &ledMw, uint32_t &eyeLedMw, uint32_t &dfPlayerMw);
 
 // ==========================================
@@ -1291,6 +1332,7 @@ void loop() {
   animateLeds();
   updateEyeLedBlessingBreathing();
   updateEyeLedBreathing();
+  updateEyeLedClosedGlow(); // r171: see its own comment
   lastStage = 5;
   drawOLED();
   delay(10);
@@ -1631,6 +1673,7 @@ void handleWebRoutes() {
       dfStop();
       delay(50);
       dfPlay(n);
+      dfWaitingForFinish = false; // r171: raw diagnostic, no state-machine tracking - see its own declaration comment
       snprintf(msg, sizeof(msg), "Playing mp3 folder track %d", n);
       Serial.println(msg);
       server.send(200, "text/plain", msg);
@@ -1951,6 +1994,19 @@ void checkSensors() {
     }
   }
 
+  // r171: PIR-while-closed gets a visual acknowledgment (the eye glow
+  // pulse), deliberately NOT motionDetected - that flag is only ever
+  // consumed by STANDBY's own wake logic above, and r128's design
+  // decision that only a real touch reopens a closed temple stays
+  // unchanged here. Own separate debounce timer so this can never
+  // interact with STANDBY's wake debounce.
+  if (pirEnabled && currentState == STATE_TEMPLE_CLOSED) {
+    if (pirConfirmed && (now - lastClosedGlowTrigger > EYE_LED_CLOSED_GLOW_COOLDOWN_MS)) {
+      triggerClosedAcknowledgeGlow();
+      lastClosedGlowTrigger = now;
+    }
+  }
+
   // Touch pads: EDGE-triggered (fires once on untouched -> touched), not
   // level-triggered. Reading "is the pin HIGH?" meant a pad that stayed
   // HIGH - a devotee resting a hand on it, a TP223 in self-locking mode,
@@ -2060,6 +2116,18 @@ void checkSensors() {
 // ==========================================
 void updateStateMachine() {
   unsigned long now = millis();
+
+  // r171: see dfWaitingForFinish's own declaration comment for the full
+  // reasoning and the two real risks guarded against here. Computed once
+  // per pass so a single consistent value is used below - only ever
+  // consulted inside STATE_MANTRA_ACTIVE and STATE_FEET_ACTIVE's plain
+  // (non-offering) branch, since dfWaitingForFinish is explicitly false
+  // everywhere else (Aarti, the wish pad's own bell+blessing window, an
+  // approved offering's bell, the raw diagnostic route) regardless of
+  // event timing.
+  bool dfRealFinish = dfWaitingForFinish &&
+                       dfLastFinishedEventMs > dfLastPlayCommandMs &&
+                       (dfLastFinishedEventMs - dfLastPlayCommandMs) > DF_FINISH_GUARD_MS;
 
   // If 12 seconds have passed since a Feet or Mouse Back touch, unlock and
   // let the blessing rotation immediately show a fresh one (rather than
@@ -2218,9 +2286,13 @@ void updateStateMachine() {
       // One whole mantra done, nobody touched again - go back to sleep.
       // Only PIR (from STANDBY) or a fresh touch wakes things up again;
       // AMBIENT is no longer the automatic landing state after a mantra.
-      if (now - stateTimer > stateDuration) {
-        Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
-                      now - stateTimer, stateDuration);
+      // r171: dfRealFinish ends it the instant the DFPlayer genuinely
+      // reports done, without waiting out the rest of a possibly-stale
+      // stored duration - see its own comment for the guards behind it.
+      if (now - stateTimer > stateDuration || dfRealFinish) {
+        Serial.printf("MANTRA: duration elapsed (%lums of %lums)%s - back to standby\n",
+                      now - stateTimer, stateDuration, dfRealFinish ? " [real DFPlayer finish]" : "");
+        dfWaitingForFinish = false;
         dfStop();
         setSystemState(STATE_STANDBY);
       }
@@ -2268,7 +2340,13 @@ void updateStateMachine() {
         // never hold the display hostage forever.
         bool offeringDone = offeringMinElapsed &&
                              ((scrollPassComplete && !blessingTaskActive) || offeringHardCap);
-        bool plainDone    = (now - stateTimer > stateDuration);
+        // r171: dfRealFinish only ever applies here, never to offeringDone
+        // above - a plain feet mantra (or one resumed after an
+        // interruption) can end the instant the DFPlayer genuinely
+        // reports it's done, but the wish/offering's own display is
+        // governed by blessingTaskActive/scrollPassComplete instead,
+        // unrelated to the DFPlayer entirely.
+        bool plainDone    = (now - stateTimer > stateDuration) || dfRealFinish;
 
       if (offeringDisplayActive ? offeringDone : plainDone) {
         if (offeringDisplayActive) {
@@ -2324,16 +2402,25 @@ void updateStateMachine() {
               int r = random(0, 26);
               snprintf(scrollText, sizeof(scrollText), "   [BLESSING] %s   ", oledChildBlessingsList[r]);
               strlcpy(scrollTextLang, "en", sizeof(scrollTextLang));
+              // r171: this resume IS a plain feet/mouse-back mantra
+              // (Aarti's own branch above never reaches here) - track its
+              // real completion instead of only the stored duration.
+              dfWaitingForFinish = true;
             }
             setSystemState(offeringPausedState, offeringPausedDurationMs);
           } else {
+            dfWaitingForFinish = false;
             dfStop();
             setSystemState(STATE_STANDBY);
           }
         } else {
           // One whole mantra done, nobody touched again - go back to sleep.
-          Serial.printf("MANTRA: duration elapsed (%lums of %lums) - back to standby\n",
-                        now - stateTimer, stateDuration);
+          // r171: dfRealFinish (folded into plainDone above) ends it the
+          // instant the DFPlayer genuinely reports done - see its own
+          // comment for the guards behind it.
+          Serial.printf("MANTRA: duration elapsed (%lums of %lums)%s - back to standby\n",
+                        now - stateTimer, stateDuration, dfRealFinish ? " [real DFPlayer finish]" : "");
+          dfWaitingForFinish = false;
           dfStop();
           setSystemState(STATE_STANDBY);
         }
@@ -2451,6 +2538,16 @@ void setSystemState(SystemState newState, unsigned long duration) {
   // this fade now steps toward base in whichever direction is needed,
   // instead of only ever fading downward.
   settleEyeLedToBase();
+  // r171: the temple being genuinely CLOSED dims the eyes further than
+  // the normal resting glow settleEyeLedToBase() just set - "he never
+  // sleeps" (never fully off), but noticeably dimmer while closed, per
+  // direct request. A fresh close also cancels any acknowledgment glow
+  // already in progress, so the very next frame reflects the new state
+  // cleanly rather than finishing a stale pulse.
+  if (newState == STATE_TEMPLE_CLOSED && EYE_LED_CONNECTED) {
+    eyeLedClosedGlowActive = false;
+    ledcWrite(EYE_LED_PIN, EYE_LED_CLOSED_BRIGHTNESS);
+  }
   // Every fresh state entry starts a fresh scroll pass for whatever text
   // was just set - the blessing rotation below must not fire again until
   // THIS text has had its own chance to fully scroll across the screen.
@@ -2577,6 +2674,7 @@ void triggerMantra() {
   }
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
+  dfWaitingForFinish = true; // r171: see its own declaration comment
   lastTouchWasMouseBack = true; // r142: feeds triggerAarti()'s alt-track pick
 
   mouseStep = (mouseStep + 1) % NUM_MOUSE_SEQUENCE;
@@ -2619,6 +2717,7 @@ void triggerFeetMantra() {
   setSystemState(STATE_FEET_ACTIVE, duration);
   currentPlayingTrack = dfTrack;
   dfPlay(dfTrack);
+  dfWaitingForFinish = true; // r171: see its own declaration comment
   lastTouchWasMouseBack = false; // r142: feeds triggerAarti()'s alt-track pick
 
   feetStep = (feetStep + 1) % NUM_FEET_SEQUENCE;
@@ -3341,6 +3440,12 @@ void micRecordPlaybackTaskFn(void *pvParameters) {
 // speakBlessingOnAmp() above).
 void triggerPersonalizedOffering(String name, String offeringType, String prayer, String lang, String mood) {
   blessingCounter++;
+  // r171: this touch starts a DIFFERENT completion-tracking flow (bell +
+  // AI blessing, governed by offeringDisplayActive/blessingTaskActive) -
+  // explicitly stop treating any DFPlayer 'finished' event as this
+  // mantra's own completion for the duration of it. Set true again below
+  // only if there's actually something to resume afterward.
+  dfWaitingForFinish = false;
 
   // If a mantra OR the Aarti chant is actively playing, remember it so it
   // can resume once the 12-second offering display finishes - both which
@@ -3459,6 +3564,10 @@ void triggerPersonalizedOffering(String name, String offeringType, String prayer
 // etc.) so a wish-pad touch mid-mantra pauses and resumes exactly like an
 // offering approval does.
 void triggerWishPadBlessing() {
+  // r171: see the matching comment in triggerPersonalizedOffering() -
+  // this touch's own bell+blessing has nothing to do with the DFPlayer's
+  // completion tracking.
+  dfWaitingForFinish = false;
   offeringInterrupted = (currentState == STATE_MANTRA_ACTIVE || currentState == STATE_FEET_ACTIVE || currentState == STATE_AARTI);
   if (offeringInterrupted) {
     offeringPausedState = currentState;
@@ -3539,9 +3648,11 @@ void playTrackManually(int n) {
   setSystemState(STATE_FEET_ACTIVE, duration);
   currentPlayingTrack = n;
   dfPlay(n);
+  dfWaitingForFinish = true; // r171: see its own declaration comment - reuses STATE_FEET_ACTIVE's plain-completion path, same as a real feet touch
 }
 
 void triggerAarti() {
+  dfWaitingForFinish = false; // r171: Aarti's own two-part timer logic is deliberately untouched by this
   // Fired by the dashboard's manual "Close Temple" button (?action=close,
   // via triggerAartiThenClose() below) or directly via ?action=aarti
   // (dashboard button or manual test) - in every case this just needs to
@@ -3634,6 +3745,7 @@ void openTempleFromClosed() {
   delay(50);
   dfPlay(mantraTracks[0].dfTrack);
   currentPlayingTrack = mantraTracks[0].dfTrack;
+  dfWaitingForFinish = true; // r171: see its own declaration comment
 
   blessingCounter++;
   feetDisplayTimer = millis();
@@ -3824,6 +3936,44 @@ void settleEyeLedToBase() {
     eyeLedBreathingActive = false;
   }
   ledcWrite(EYE_LED_PIN, EYE_LED_BASE_BRIGHTNESS);
+}
+
+// r171: PIR-while-closed acknowledgment - r128's design decision that
+// only a real touch actually reopens the closed temple is unchanged;
+// this just gives real nearby motion a visual response instead of
+// nothing at all. One-shot, non-blocking (polled from loop() via
+// updateEyeLedClosedGlow() below) so it can never stall the
+// watchdog-subscribed main loop the way a blocking fade would - same
+// discipline as every other background animation in this file.
+void triggerClosedAcknowledgeGlow() {
+  if (!EYE_LED_CONNECTED) return;
+  eyeLedClosedGlowActive = true;
+  eyeLedClosedGlowStartMs = millis();
+  Serial.println("EYE: PIR motion while closed - acknowledgment glow");
+}
+
+// Non-blocking rise/hold/fall pulse from EYE_LED_CLOSED_BRIGHTNESS up to
+// EYE_LED_BASE_BRIGHTNESS and back down - called every loop() pass
+// alongside updateEyeLedBreathing(), which this never touches or
+// conflicts with (breathing is never active while the temple is closed).
+void updateEyeLedClosedGlow() {
+  if (!EYE_LED_CONNECTED || !eyeLedClosedGlowActive) return;
+  unsigned long elapsed = millis() - eyeLedClosedGlowStartMs;
+  const int lo = EYE_LED_CLOSED_BRIGHTNESS;
+  const int hi = EYE_LED_BASE_BRIGHTNESS;
+  if (elapsed < EYE_LED_CLOSED_GLOW_PEAK_MS) {
+    float t = elapsed / (float)EYE_LED_CLOSED_GLOW_PEAK_MS;
+    ledcWrite(EYE_LED_PIN, lo + (int)((hi - lo) * t));
+  } else if (elapsed < EYE_LED_CLOSED_GLOW_PEAK_MS + EYE_LED_CLOSED_GLOW_HOLD_MS) {
+    ledcWrite(EYE_LED_PIN, hi);
+  } else if (elapsed < EYE_LED_CLOSED_GLOW_PEAK_MS + EYE_LED_CLOSED_GLOW_HOLD_MS + EYE_LED_CLOSED_GLOW_FALL_MS) {
+    unsigned long fallElapsed = elapsed - EYE_LED_CLOSED_GLOW_PEAK_MS - EYE_LED_CLOSED_GLOW_HOLD_MS;
+    float t = fallElapsed / (float)EYE_LED_CLOSED_GLOW_FALL_MS;
+    ledcWrite(EYE_LED_PIN, hi - (int)((hi - lo) * t));
+  } else {
+    ledcWrite(EYE_LED_PIN, lo);
+    eyeLedClosedGlowActive = false;
+  }
 }
 
 // r151: eyes now also breathe for the duration of any REAL spoken AI
