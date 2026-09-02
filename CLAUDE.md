@@ -1427,6 +1427,19 @@ reasoning survives even when the git log scrolls out of context.
   eye LED, never the state machine. Not yet confirmed on hardware - a
   first reasoned guess at the pulse shape/cooldown, easy to retune once
   seen on the physical fiber runs.
+- **r173** - Full-catalog spot check (prompted by writing the Devotee/
+  Admin Guide docs, which listed every stored duration in one place for
+  the first time) surfaced 3 more real stale durations, same class as
+  tracks 5/6/10/14 before - confirmed by the user listening to each file
+  directly (content correct, only the stored number was wrong, unlike
+  track 5's actual wrong-file case). `mantraTracks[]` track 7 corrected
+  99600ms -> 8000ms, track 15 corrected 28400ms -> 57000ms; `songTracks[]`
+  track 9 corrected 136700ms (2:16.7) -> 182000ms (3:02). Track 7 at 8s is
+  now the shortest track in either rotation by a wide margin - confirmed
+  intentional by the user, not a leftover fragment; no code changes
+  needed to accommodate it, since feetDisplayLocked/stateDuration were
+  always independent of each other and setSystemState() already clears
+  the display lock the moment a state ends, however short.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

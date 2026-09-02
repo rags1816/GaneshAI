@@ -461,13 +461,17 @@ MantraTrack mantraTracks[NUM_TRACKS] = {
               // intended recording. User has now uploaded the correct
               // 0005.mp3; 55350ms was right all along. Ganeshmantra3.mp3
   {6, 114000}, // Ganeshmantra4.mp3 - r142: corrected to real length (1:54), confirmed by user
-  {7, 99600},  // Ganeshmantra5.mp3 (99s)
+  {7, 8000},   // r173: corrected from 99600ms - stale stored duration,
+               // content confirmed correct by direct listening/measurement.
+               // Ganeshmantra5.mp3 (real length 8s)
   {8, 60160},  // Ganeshmantra6.mp3 (60s)
   {11, 48800}, // Ganeshmantra9.mp3 (48s)
   {12, 27380}, // Ganeshmantra10.mp3 (27s)
   {13, 79280}, // Ganeshmantra11.mp3 (79s)
   {14, 102000},// Ganeshmantra12.mp3 - r131: intentionally re-recorded shorter (1:42), confirmed by user
-  {15, 28400}, // Ganeshmantra13.mp3 (28s)
+  {15, 57000}, // r173: corrected from 28400ms - stale stored duration,
+               // content confirmed correct by direct listening/measurement.
+               // Ganeshmantra13.mp3 (real length 57s)
   {33, 13000}, // r142: new (0:13)
   {34, 13000}, // r142: new (0:13)
   {36, 14000}, // r142: new (0:14)
@@ -531,7 +535,10 @@ const int mouseChantSequence[NUM_MOUSE_SEQUENCE] = {
 // dashboard's Play Track control.
 const int NUM_SONG_TRACKS = 5;
 MantraTrack songTracks[NUM_SONG_TRACKS] = {
-  {9, 136700},  // feet's former track 9 (2:16) - moved out of mantraTracks[]
+  {9, 182000},  // r173: corrected from 136700ms (2:16.7) - stale stored
+                // duration, content confirmed correct by direct
+                // listening/measurement. Real length 3:02. Feet's former
+                // track 9 - moved out of mantraTracks[]
   {28, 127000}, // mouse-back's former track 28 (2:07) - moved out of mouseChantTracks[]
   {29, 253000}, // mouse-back's former track 29 (4:13) - moved out of mouseChantTracks[]
   {32, 186000}, // new (3:06)
