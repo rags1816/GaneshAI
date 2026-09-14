@@ -342,13 +342,29 @@ unsigned long pendingWakeAt = 0;
 // Per-pad debounce state for the edge-triggered touch handling in
 // checkSensors(). "Stable" is the level a pad has actually held for
 // TOUCH_SETTLE_MS; brief bounces from a rough solder joint never reach it.
-#define TOUCH_SETTLE_MS 60
+// r175: raised 60 -> 250ms during the live festival. Real Serial log
+// showed the feet pad (GPIO27) firing on its own every 2-5s - five
+// "touches" in 12s, each one cutting the current mantra and starting
+// the next - with nobody near it (the wish and mouse-back pads were
+// reported doing the same). 60ms was short enough for an electrical
+// glitch (crowded venue, PA system, loud speaker draw on the shared 5V
+// rail, damp/fresh paint near a capacitive pad) to pass as a touch. A
+// real finger holds a TTP223 output HIGH for hundreds of ms to seconds,
+// so 250ms costs a devotee nothing noticeable but rejects most noise.
+// Won't help if the line is genuinely being HELD high for long
+// stretches (moisture, a power sag) - the "held for Xms" release log
+// added alongside this tells those two cases apart.
+#define TOUCH_SETTLE_MS 250
 bool feetLastRead = false, feetStable = false;
 bool backLastRead = false, backStable = false;
 unsigned long feetChangedAt = 0, backChangedAt = 0;
 bool wishPadLastRead = false, wishPadStable = false;
 unsigned long wishPadChangedAt = 0;
 unsigned long lastWishPadTrigger = 0;
+// r175: when each pad's stable level went HIGH, so the release edge can
+// report how long it was actually held - a real touch is hundreds of ms
+// or more; a noise glitch that still cleared TOUCH_SETTLE_MS is short.
+unsigned long feetPressedAt = 0, backPressedAt = 0, wishPadPressedAt = 0;
 
 // Separate, UNGATED tracking of the wish pad's raw pin - ignores
 // WISH_PAD_CONNECTED/wishPadEnabled entirely, unlike wishPadRead above.
@@ -2045,7 +2061,17 @@ void checkSensors() {
   // here, rather than queuing it, matches the same "skip this one" choice
   // speakBlessingOnAmpAsync() already makes for a colliding AMP request -
   // the devotee can just touch again once the blessing finishes.
+  // r175: release-edge diagnostics - how long each pad was actually held.
+  // Separate ifs, ahead of the press handling, so the press branches'
+  // own control flow below is untouched. See TOUCH_SETTLE_MS's comment.
+  if (feetEdge && !feetStable) {
+    Serial.printf("TOUCH: feet pad released - held %lums\n", now - feetPressedAt);
+  }
+  if (backEdge && !backStable) {
+    Serial.printf("TOUCH: mouse-back pad released - held %lums\n", now - backPressedAt);
+  }
   if (feetEdge && feetStable) {
+    feetPressedAt = now;
     if (blessingTaskActive) {
       Serial.println("TOUCH: feet pad pressed but a blessing is speaking - ignoring so it doesn't play over it");
     } else if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
@@ -2058,6 +2084,7 @@ void checkSensors() {
       feetTouchCount++;
     }
   } else if (backEdge && backStable) {
+    backPressedAt = now;
     if (blessingTaskActive) {
       Serial.println("TOUCH: mouse-back pad pressed but a blessing is speaking - ignoring so it doesn't play over it");
     } else if (now - lastTouchTrigger > TOUCH_DEBOUNCE) {
@@ -2090,7 +2117,11 @@ void checkSensors() {
 
   bool wishPadRead = WISH_PAD_CONNECTED && wishPadEnabled && (digitalRead(WISH_PAD_PIN) == HIGH);
   bool wishPadEdge = settleTouch(wishPadRead, wishPadLastRead, wishPadChangedAt, wishPadStable, now);
+  if (wishPadEdge && !wishPadStable) {
+    Serial.printf("TOUCH: wish pad released - held %lums\n", now - wishPadPressedAt); // r175: see TOUCH_SETTLE_MS's comment
+  }
   if (wishPadEdge && wishPadStable) {
+    wishPadPressedAt = now;
     // Same !blessingTaskActive gate as the feet/back touches above -
     // triggerWishPadBlessing() itself unconditionally restarts the bell
     // and display even though speakGenericBlessingOnAmpAsync() already

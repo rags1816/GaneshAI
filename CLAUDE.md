@@ -1455,6 +1455,46 @@ reasoning survives even when the git log scrolls out of context.
   GanapatiAI.ino`'s own `mantraTracks[]`/`songTracks[]` (the actual
   playback source of truth) were already correct from r173 - only the
   dashboard's separate display copy was stale.
+- **r175 - LIVE FESTIVAL HOTFIX** - reported on the festival's first day
+  as "the wish pad and mouse pad trigger on their own" and "mantras
+  switch in the last 2-3 seconds". The captured Serial log showed the
+  real mechanism, and it was the FEET pad (GPIO27), not the wish pad:
+  five `TOUCH: feet pad pressed` lines in 12 seconds, 2-5s apart, each
+  one cutting the current mantra and starting the next (6->2->4->7->33)
+  with nobody near it - phantom triggering, and the "mantras end early"
+  symptom is those interruptions, not tracks ending. The spacing
+  matches `TOUCH_DEBOUNCE` (2000ms) almost exactly: each phantom lands
+  as soon as the debounce reopens. Cause is environmental, new since
+  testing (crowded venue, PA system, loud speaker draw on the shared 5V
+  rail, and the idol freshly painted two days earlier - metallic gold
+  acrylic contains conductive flakes and uncured paint holds moisture,
+  both of which shift a TTP223 capacitive pad's baseline); the PIR line
+  logging `NOISE` verdicts in the same capture points at a shared
+  electrical cause rather than one bad pad. Firmware-side mitigation:
+  `TOUCH_SETTLE_MS` raised 60 -> 250ms - a pad must now read HIGH for a
+  quarter second before it counts, which a real finger always clears
+  and a noise glitch rarely does; applies to all three pads since they
+  share `settleTouch()`. Deliberately NOT the whole fix - it can't help
+  if the line is genuinely HELD high (moisture, a power sag during a
+  loud passage), so each pad now also logs `released - held Xms` on its
+  release edge to tell short glitches (settle helps) from long holds
+  (fix the physical cause) on the next capture. The reported "wish
+  blessing and mantra playing together" wasn't in the captured window;
+  the feet/back/wish handlers all already drop a touch while a blessing
+  is speaking (r99), so the likeliest mechanism is a phantom wish touch
+  mid-mantra whose `dfStop()` the DFPlayer didn't honor before the bell
+  - a consequence of the same noise storm, expected to stop with it,
+  and worth its own log if it doesn't. Live fallback without any
+  reflash: the dashboard's per-pad Settings toggles disable a
+  misbehaving pad on the physical device immediately. Also confirmed
+  from this same log, in passing: r171's real-completion mechanism is
+  inert on this hardware - the mantra ended on the plain timer ("13003ms
+  of 13000ms", no "[real DFPlayer finish]" tag), and every real end-of-
+  track event this clone has ever sent arrived as `type=11` through the
+  generic branch, never matching `DFPlayerPlayFinished`, so
+  `dfLastFinishedEventMs` is never set and behavior is identical to
+  pre-r171 exactly as its fallback was designed - it is not a suspect
+  for the early cutoffs.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase
