@@ -1519,6 +1519,27 @@ reasoning survives even when the git log scrolls out of context.
   (manual choice wins, Claude reads any script). A separate "I will
   speak in" dropdown would make that a first-class flow - offered, not
   yet built.
+- **r177** - The "I will speak my wish in (for the mic)" dropdown from
+  r176's answer, built on direct request the same evening. New
+  `speak-lang-select` on all three puja copies, placed directly above
+  the wish box, defaulting to "Same as reply language" (which keeps the
+  pre-r177 behavior byte-for-byte: `startSpeechInput()` falls through to
+  `lang-select` when it's blank). When a spoken language IS picked, the
+  mic listens in that language and the blessing is still written and
+  spoken in "Bappa's Reply Language" - Claude reads any script, so a
+  Bengali prayer with an English reply works with no backend change.
+  Picking a spoken language also sets `langManuallySet` (new
+  `onSpeakLangChange()`), so `autoDetectLanguage()` no longer flips the
+  reply dropdown to match the spoken script - with both dropdowns
+  visible, the reply choice is deliberate and the detected script would
+  only ever contradict it. Headless-verified (Playwright): default mic
+  code follows the reply language, an explicit pick overrides it, and a
+  Bengali-script wish no longer changes the reply selection afterwards.
+  The mic itself still cannot auto-detect - a devotee who leaves this on
+  "Same as reply" and speaks a different language gets the same
+  phonetic nonsense as before; the dropdown is the fix, not a detector.
+  Web copies go live via push + `firebase deploy --only hosting`; no
+  reflash.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

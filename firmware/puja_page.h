@@ -332,6 +332,37 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 </select>
             </div>
 
+            <!-- r177: the language the devotee will SPEAK into the mic,
+                 separate from the reply language above. The browser's speech
+                 recognizer cannot auto-detect - it must be told one language
+                 up front, and it forces whatever it hears into that
+                 language's vocabulary (confirmed live: dropdown Tamil, spoke
+                 Marathi -> Tamil-script nonsense). "Same as reply language"
+                 keeps the pre-r177 behavior exactly. Picking a different
+                 spoken language here also marks the reply language as a
+                 deliberate choice (langManuallySet), so autoDetectLanguage()
+                 doesn't flip the reply to match the spoken script - the two
+                 dropdowns together say exactly what the devotee wants. -->
+            <div class="form-group">
+                <label for="speak-lang-select">I will speak my wish in (for the mic)</label>
+                <select id="speak-lang-select" class="select-input" onchange="onSpeakLangChange()">
+                    <option value="" selected>Same as reply language</option>
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="mr">Marathi</option>
+                    <option value="ta">Tamil</option>
+                    <option value="te">Telugu</option>
+                    <option value="pa">Punjabi</option>
+                    <option value="gu">Gujarati</option>
+                    <option value="ml">Malayalam</option>
+                    <option value="bn">Bengali</option>
+                    <option value="ur">Urdu</option>
+                    <option value="th">Thai</option>
+                    <option value="zh">Chinese (Mandarin)</option>
+                    <option value="ms">Malay</option>
+                </select>
+            </div>
+
             <!-- 4. Free Text wish/prayer - type it, or tap the mic to speak it -->
             <div class="form-group">
                 <label for="wish-input">Personal Prayer Wish (Max 20 words)</label>
@@ -373,7 +404,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r176</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r177</div>
     </div>
 
     <script>
@@ -494,6 +525,16 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const lang = document.getElementById('lang-select').value;
             const wishInput = document.getElementById('wish-input');
             wishInput.dir = RTL_LANGS.has(lang) ? 'rtl' : 'ltr';
+        }
+
+        // r177: an explicit spoken-language pick means the devotee has
+        // thought about languages - treat the reply dropdown as deliberate
+        // from then on so auto-detect never overrides it. Choosing "Same as
+        // reply language" again does not undo that (a manual choice stays
+        // a manual choice, same as touching the reply dropdown itself).
+        function onSpeakLangChange() {
+            const speakLangSelect = document.getElementById('speak-lang-select');
+            if (speakLangSelect && speakLangSelect.value) langManuallySet = true;
         }
 
         function autoDetectLanguage() {
@@ -657,7 +698,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             const langSelect = document.getElementById('lang-select');
             const wishInput = document.getElementById('wish-input');
 
-            speechLangCode = SPEECH_LANG_MAP[langSelect.value] || 'en-IN';
+            // r177: the mic listens in the SPOKEN language if one is picked,
+            // otherwise in the reply language (pre-r177 behavior).
+            const speakLangSelect = document.getElementById('speak-lang-select');
+            const spokenLang = (speakLangSelect && speakLangSelect.value) ? speakLangSelect.value : langSelect.value;
+            speechLangCode = SPEECH_LANG_MAP[spokenLang] || 'en-IN';
             speechAccumulatedText = '';
             speechStopRequested = false;
             speechSecondsLeft = SPEECH_TIMEOUT_MS / 1000;
