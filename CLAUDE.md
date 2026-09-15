@@ -1540,6 +1540,13 @@ reasoning survives even when the git log scrolls out of context.
   phonetic nonsense as before; the dropdown is the fix, not a detector.
   Web copies go live via push + `firebase deploy --only hosting`; no
   reflash.
+- **r178** - One-line hint under r177's spoken-language dropdown on all
+  three puja copies: "Pick your language first, then tap the mic." -
+  per direct request after r177 went live, so devotees see the one
+  instruction the mic genuinely needs instead of relying on a helper at
+  the venue. Text-only, no logic change; footer bumped to r178. Web
+  copies go live via push + `firebase deploy --only hosting`; the
+  firmware-served copy is bumped for sync only.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

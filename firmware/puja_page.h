@@ -361,6 +361,11 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="zh">Chinese (Mandarin)</option>
                     <option value="ms">Malay</option>
                 </select>
+                <!-- r178: the one instruction the mic genuinely needs - it
+                     cannot detect a language on its own, so the choice has
+                     to happen BEFORE tapping. Sits right under the dropdown
+                     so it's read on the way down to the mic button. -->
+                <div style="font-size:13px; color:var(--text-muted); margin-top:6px;">🎤 Pick your language first, then tap the mic.</div>
             </div>
 
             <!-- 4. Free Text wish/prayer - type it, or tap the mic to speak it -->
@@ -404,7 +409,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r177</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r178</div>
     </div>
 
     <script>
