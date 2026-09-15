@@ -373,7 +373,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-08-30-r164</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r176</div>
     </div>
 
     <script>
@@ -889,8 +889,12 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
 
-                    // Safety check: Cap queue size at 5 items to fit IIS 1024-character path limit
-                    if (onlineQueue.length >= 5) {
+                    // Queue cap (r176: 5 -> 15). The old "IIS 1024-character path limit"
+                    // reason was a fossil from a URL-based relay that no longer
+                    // exists - today this is a plain JSON PUT to Firebase RTDB,
+                    // so the only real limit is how long the last devotee waits
+                    // (each approval takes ~30-60s to play). Priest controls it.
+                    if (onlineQueue.length >= 15) {
                         alert("Bappa is currently receiving many offerings. Please wait a few moments for the Priest to present them, then try again!");
                         submitBtn.disabled = false;
                         return;

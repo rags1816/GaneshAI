@@ -1495,6 +1495,30 @@ reasoning survives even when the git log scrolls out of context.
   `dfLastFinishedEventMs` is never set and behavior is identical to
   pre-r171 exactly as its fallback was designed - it is not a suspect
   for the early cutoffs.
+- **r176** - Priest queue cap raised 5 -> 15 on all three puja page
+  copies, per direct request during the live festival ("I will control
+  and caveat it"). The cap's own comment claimed it existed "to fit an
+  IIS 1024-character path limit" - a fossil from an earlier relay design
+  where the queue travelled inside a URL; today `relayWriteQueue()` is a
+  plain JSON PUT to Firebase RTDB and nothing else in the system (the
+  dashboard renders every item in a scrolling list; the ESP32 never
+  reads the queue at all) enforces a count. The only real cost of a
+  bigger queue is the last devotee's wait (~30-60s per approval, so a
+  full 15 is 10-15 minutes), which the priest now manages manually. Web
+  copies only need a push + `firebase deploy --only hosting` - no
+  reflash mid-festival (the ESP32-served copy is bumped for discipline,
+  not urgency). Also answered, not changed: the puja page's mic
+  transcribes in whatever "Bappa's Reply Language" says at the moment
+  the mic is tapped (`speechLangCode = SPEECH_LANG_MAP[langSelect.value]`),
+  it does NOT translate - a user test (dropdown Tamil, spoke Marathi)
+  produced Tamil-script text, which is the recognizer forcing Marathi
+  sounds into the nearest Tamil words, not a translation. Speaking in
+  one language and getting the blessing in another works today only via
+  the text path: pick the SPOKEN language first, tap the mic, then
+  switch the dropdown to the desired reply language before Submit
+  (manual choice wins, Claude reads any script). A separate "I will
+  speak in" dropdown would make that a first-class flow - offered, not
+  yet built.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase
@@ -1568,11 +1592,17 @@ afterthought, or vice versa - they need to be identical.**
 - Shared offering queue lives in Firebase Realtime Database at
   `https://ganapatiai-default-rtdb.europe-west1.firebasedatabase.app/ganesha_queue.json`
   (public read/write, plain JSON, no auth) - both puja pages and the
-  dashboard read/write it directly from the browser. Capped at 5 items
-  client-side (`puja.html`'s `proceedWithOffering()`) to fit an IIS path
-  length limit; a full queue silently blocks new submissions until a
-  priest approves/rejects existing ones from a dashboard, which is what
-  actually removes items from it.
+  dashboard read/write it directly from the browser. Capped at 15 items
+  client-side (`puja.html`'s `proceedWithOffering()`, was 5 until r176 -
+  the old "IIS path length limit" reason was a fossil from a URL-based
+  relay that no longer exists; the only real limit now is devotee wait
+  time, ~30-60s per approval); a full queue shows an alert and blocks new
+  submissions until a priest approves/rejects existing ones from a
+  dashboard, which is what actually removes items from it. Known,
+  pre-existing race: every phone does a read-append-write of the whole
+  array, so two submissions inside the same ~1s window can overwrite each
+  other (last writer wins) - a per-item Firebase push would fix it,
+  post-festival.
 
 ## Firmware
 
