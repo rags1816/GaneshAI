@@ -1566,6 +1566,28 @@ reasoning survives even when the git log scrolls out of context.
   devotee-facing "Your Visit to GanapatiAI" doc, both as Claude Docs.
   Text-only page change; footer bumped to r179; web copies go live via
   push + `firebase deploy --only hosting`; firmware bumped for sync.
+- **r180** - Real privacy gap closed, found while answering "how come the
+  devotee's phone keeps a copy?" after r179: `proceedWithOffering()` on
+  the puja page appended every offering to the PHONE's own localStorage
+  (`ganesha_puja_queue`, a leftover same-device tab-test path) and
+  `upgradeOfferingText()` updated it with the translated blessing, but
+  nothing on the puja page ever removed it - only the dashboard clears
+  that key, and only on the priest's own device. So every prayer typed on
+  a phone sat in that phone's browser storage indefinitely, invisible but
+  present. On a shared phone kept at the altar for devotees this would
+  have accumulated every prayer, and a dashboard opened on that same
+  phone would have merged the stale local items back in as pending even
+  after they were approved via Firebase. Removed both localStorage writes
+  from all three puja copies - the Firebase queue is now the only copy,
+  which makes the r179 privacy line true for the phone as well. New
+  `clearLegacyLocalQueue()` runs once at page load (try/catch, storage
+  can be blocked in private browsing) to wipe what r164-r179 left behind
+  on phones that already used the page. Headless-verified: a seeded
+  legacy copy is gone after reload, footer/privacy line present, both
+  functions still defined. The dashboard's own localStorage use (its
+  Virtual Puja panel and approve/reject cleanup) is untouched - that is
+  the priest's device. Web copies go live via push + `firebase deploy
+  --only hosting`; firmware bumped for sync.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

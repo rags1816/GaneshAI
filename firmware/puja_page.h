@@ -413,7 +413,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-17-r179</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-17-r180</div>
     </div>
 
     <script>
@@ -449,6 +449,18 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 .catch(err => console.warn('Could not check festival_active flag, leaving the form open:', err));
         }
         checkFestivalActive();
+
+        // r180: one-time cleanup of the local copy versions before r180 kept
+        // on this phone (see proceedWithOffering). Wrapped in try/catch -
+        // storage can be blocked in private browsing, and this must never
+        // stop the page from loading.
+        function clearLegacyLocalQueue() {
+            try {
+                localStorage.removeItem('ganesha_puja_queue');
+                localStorage.removeItem('ganesha_puja_queue_trigger');
+            } catch (e) { /* storage unavailable - nothing to clear */ }
+        }
+        clearLegacyLocalQueue();
 
         function relayReadQueue() {
             return fetch(`${RELAY_QUEUE_URL}?_t=${Date.now()}`)
@@ -904,18 +916,8 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // the only place that happens and an item must never stay
         // permanently un-approvable.
         function upgradeOfferingText(requestId, blessingText, blessingMood) {
-            let localQueue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
-            const localItem = localQueue.find(item => item.id === requestId);
-            if (localItem) {
-                if (blessingText) {
-                    localItem.prayer = blessingText;
-                    localItem.mood = blessingMood || '';
-                }
-                localItem.translating = false;
-                localStorage.setItem('ganesha_puja_queue', JSON.stringify(localQueue));
-                localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
-            }
-
+            // r180: no local copy any more (see proceedWithOffering) - the
+            // Firebase queue is the only place the offering lives.
             relayReadQueue()
                 .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) return;
@@ -932,13 +934,17 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         }
 
         function proceedWithOffering(newRequest, submitBtn) {
-            // 1. Read, append, and save back to shared localStorage namespace (same-device tab test)
-            let queue = JSON.parse(localStorage.getItem('ganesha_puja_queue') || '[]');
-            queue.push(newRequest);
-            localStorage.setItem('ganesha_puja_queue', JSON.stringify(queue));
-            localStorage.setItem('ganesha_puja_queue_trigger', Date.now().toString());
-
-            // 2. Wireless Sync to Network Relay for multi-device sync
+            // r180: the offering used to ALSO be appended to this phone's own
+            // localStorage ('ganesha_puja_queue') for a same-device tab test,
+            // and nothing on this page ever removed it - so every prayer
+            // typed on a phone stayed in that phone's browser storage
+            // indefinitely, invisible but present. On a shared phone at the
+            // altar that meant every devotee's prayer accumulated on it, and
+            // a dashboard opened on that same phone would have merged them
+            // back in as pending. Removed: the Firebase queue is the only
+            // copy, and the r179 privacy line above the Submit button is
+            // now true for the phone as well. clearLegacyLocalQueue() below
+            // wipes what earlier versions left behind.
             relayReadQueue()
                 .then(onlineQueue => {
                     if (!Array.isArray(onlineQueue)) onlineQueue = [];
