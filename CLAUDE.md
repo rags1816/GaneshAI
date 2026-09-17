@@ -1560,10 +1560,13 @@ reasoning survives even when the git log scrolls out of context.
   only; the INMP441 mic pins are reserved in config.h but read by no
   code; speech-to-text is the phone browser's own (Google's service on
   Chrome/Android), so no voice audio ever reaches this system. Also
-  written up this session, outside the repo: a "GanapatiAI Visitor
-  Overview" doc (features, how the parts connect, AI/agentic features
-  honestly labelled, GDPR, puja-form field-to-blessing table) and a
-  devotee-facing "Your Visit to GanapatiAI" doc, both as Claude Docs.
+  written up this session as Claude Docs and exported to Word in
+  `docs/`: `GanapatiAI_Visitor_Overview.docx` (features, how the parts
+  connect, AI/agentic features honestly labelled, GDPR with the full
+  data-lifetime table, how to check Firebase automated backups, the
+  puja-form field-to-blessing table) and the devotee-facing
+  `GanapatiAI_Your_Visit.docx` ("what" only, no mechanics). The live
+  Claude Docs are the editing masters; re-export after any change.
   Text-only page change; footer bumped to r179; web copies go live via
   push + `firebase deploy --only hosting`; firmware bumped for sync.
 - **r180** - Real privacy gap closed, found while answering "how come the
