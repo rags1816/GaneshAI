@@ -1547,6 +1547,25 @@ reasoning survives even when the git log scrolls out of context.
   the venue. Text-only, no logic change; footer bumped to r178. Web
   copies go live via push + `firebase deploy --only hosting`; the
   firmware-served copy is bumped for sync only.
+- **r179** - Privacy/intent line above the puja page's Submit button on
+  all three copies, per direct request after a GDPR discussion (hosting
+  confirmed as UK): what the prayer is used for, that the priest only
+  offers it to Bappa, and that it is removed from the queue and not kept
+  once offered. Wording is deliberately "not kept by us" rather than
+  "not stored anywhere" - the devotee's own phone keeps a localStorage
+  copy of what they submitted, and Google retains Cloud Functions logs
+  ~30 days (our code logs only the first ~60 chars of Claude's reply for
+  mood debugging, never the prayer text). Confirmed while answering the
+  "is the devotee's voice stored?" question: the altar receives text
+  only; the INMP441 mic pins are reserved in config.h but read by no
+  code; speech-to-text is the phone browser's own (Google's service on
+  Chrome/Android), so no voice audio ever reaches this system. Also
+  written up this session, outside the repo: a "GanapatiAI Visitor
+  Overview" doc (features, how the parts connect, AI/agentic features
+  honestly labelled, GDPR, puja-form field-to-blessing table) and a
+  devotee-facing "Your Visit to GanapatiAI" doc, both as Claude Docs.
+  Text-only page change; footer bumped to r179; web copies go live via
+  push + `firebase deploy --only hosting`; firmware bumped for sync.
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

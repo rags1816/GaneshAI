@@ -389,6 +389,10 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                 <label for="phone-playback-opt-in" style="margin:0; font-size:13px; color:var(--text-muted);">🔊 Also let me hear it on my phone right now</label>
             </div>
 
+            <!-- r179: what the prayer is used for, and that it is not kept once
+                 offered - added after the GDPR discussion so the devotee reads it
+                 right before pressing Send. Wording is deliberately plain. -->
+            <div style="font-size:12px; color:var(--text-muted); margin:6px 0 10px; line-height:1.45;">🙏 Your prayer is used only to present your offering to Bappa and to write your blessing. The priest offers it to Bappa and nothing more. Once offered, it is removed from the queue and is not kept by us.</div>
             <button id="submit-btn" class="btn-submit" onclick="submitPuja()">✨ Send Offering to Bappa ✨</button>
         </div>
 
@@ -409,7 +413,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-15-r178</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-17-r179</div>
     </div>
 
     <script>
