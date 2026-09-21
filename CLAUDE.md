@@ -1591,6 +1591,34 @@ reasoning survives even when the git log scrolls out of context.
   Virtual Puja panel and approve/reject cleanup) is untouched - that is
   the priest's device. Web copies go live via push + `firebase deploy
   --only hosting`; firmware bumped for sync.
+- **r181** - Kannada added as the 14th puja-page language, per direct
+  request. Every place a language touches, in one commit: (1) all three
+  puja copies - `kn` in BOTH dropdowns (reply language and r177's
+  spoken-language pick), a Kannada-block entry in `SCRIPT_RANGES`
+  (U+0C80-U+0CFF) so a typed Kannada wish auto-selects the reply
+  language, `kn: 'kn-IN'` in `SPEECH_LANG_MAP` for the phone mic, and
+  Noto Sans Kannada added to the Google Fonts link and the body
+  font-family stack so the script renders on the phone; (2) backend -
+  `LANGUAGE_CONFIG.kn` (Claude instruction + `kn-IN-Wavenet-B`, male
+  like every other entry; Kannada has a Wavenet tier on Google's list,
+  not yet heard on hardware - a 502 naming the voice means fall back to
+  `kn-IN-Standard-B`) and `SCRIPT_FONTS.kn` -> new
+  `fonts/NotoSansKannada-Regular.ttf` (135KB static Regular from the
+  notofonts project; the Google Fonts repo only ships the 640KB variable
+  file) for the OLED bitmap render; (3) firmware - `kn` added to
+  `drawOLED()`'s no-image safe-notice branch alongside ur/th/zh, since
+  `indic_fonts.h` has no u8g2 Kannada font and the real path is the
+  backend bitmap anyway; `FIRMWARE_VERSION` bumped. Verified here: the
+  font file has 91 Kannada codepoints with GSUB/GPOS shaping tables, and
+  headless Chromium rendered sample Kannada text with it correctly;
+  `index.js` syntax-checked (cannot be required locally without the
+  deploy machine's node_modules). Not verified: the actual Google voice
+  and the first live Kannada blessing on the altar. Deploy: hosting AND
+  functions (`firebase deploy --only functions --project ganapatiai`,
+  Node 20) - the font file and the new LANGUAGE_CONFIG entry both live in
+  the functions bundle; reflash optional (fallback branch + version
+  only). The dashboard's own 4-option Active Language for the wish pad
+  is unchanged. Devotee/Visitor docs still say "13 languages".
 
 Several pages exist as multiple near-identical copies because the same
 HTML/JS has to be served from more than one place (GitHub Pages, Firebase

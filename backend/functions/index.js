@@ -70,6 +70,9 @@ const SCRIPT_FONTS = {
   pa: {file: "NotoSansGurmukhi-Regular.ttf", family: "GanapatiGurmukhi"},
   ml: {file: "NotoSansMalayalam-Regular.ttf", family: "GanapatiMalayalam"},
   bn: {file: "NotoSansBengali-Regular.ttf", family: "GanapatiBengali"},
+  // r181: Kannada - static Regular from the notofonts project (the Google
+  // Fonts repo only ships the variable [wdth,wght] file, which is 640KB).
+  kn: {file: "NotoSansKannada-Regular.ttf", family: "GanapatiKannada"},
   // Urdu, Farsi, and Sindhi all share the Arabic script - one font
   // covers all three. Farsi/Sindhi have been in LANGUAGE_CONFIG for a
   // while but were NEVER in this map at all (confirmed while adding
@@ -272,6 +275,14 @@ const LANGUAGE_CONFIG = {
   bn: {
     claudeInstruction: "Reply entirely in Bengali (Bengali script), from start to finish, never switching to English.",
     voice: {languageCode: "bn-IN", name: "bn-IN-Wavenet-B", ssmlGender: "MALE"},
+  },
+  kn: {
+    claudeInstruction: "Reply entirely in Kannada (Kannada script), from start to finish, never switching to English.",
+    // r181: Kannada has Wavenet A/B on Google's list like the other Indic
+    // languages here; B is the male voice, matching every other entry.
+    // Untested on hardware at the time of adding - a 502 naming the voice
+    // means fall back to kn-IN-Standard-B.
+    voice: {languageCode: "kn-IN", name: "kn-IN-Wavenet-B", ssmlGender: "MALE"},
   },
   gu: {
     claudeInstruction: "Reply entirely in Gujarati (Gujarati script), from start to finish, never switching to English.",

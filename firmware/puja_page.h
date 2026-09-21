@@ -35,7 +35,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
          today. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&family=Noto+Sans+Tamil&family=Noto+Sans+Telugu&family=Noto+Sans+Gujarati&family=Noto+Sans+Gurmukhi&family=Noto+Sans+Malayalam&family=Noto+Sans+Bengali&family=Noto+Sans+Arabic&family=Noto+Sans+Thai&family=Noto+Sans+SC&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&family=Noto+Sans+Tamil&family=Noto+Sans+Telugu&family=Noto+Sans+Gujarati&family=Noto+Sans+Gurmukhi&family=Noto+Sans+Malayalam&family=Noto+Sans+Bengali&family=Noto+Sans+Kannada&family=Noto+Sans+Arabic&family=Noto+Sans+Thai&family=Noto+Sans+SC&display=swap" rel="stylesheet">
 
     <style>
         :root {
@@ -52,7 +52,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Malayalam', 'Noto Sans Bengali', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans SC', sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Malayalam', 'Noto Sans Bengali', 'Noto Sans Kannada', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans SC', sans-serif;
             margin: 0;
             padding: 15px;
             display: flex;
@@ -311,6 +311,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="gu">Gujarati</option>
                     <option value="ml">Malayalam</option>
                     <option value="bn">Bengali</option>
+                    <option value="kn">Kannada</option>
                     <option value="ur">Urdu</option>
                     <option value="th">Thai</option>
                     <option value="zh">Chinese (Mandarin)</option>
@@ -356,6 +357,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                     <option value="gu">Gujarati</option>
                     <option value="ml">Malayalam</option>
                     <option value="bn">Bengali</option>
+                    <option value="kn">Kannada</option>
                     <option value="ur">Urdu</option>
                     <option value="th">Thai</option>
                     <option value="zh">Chinese (Mandarin)</option>
@@ -413,7 +415,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
              drift apart during testing. Inside .puja-card on purpose - the
              body is a flex container centering ONE child, so a sibling div
              out here sits beside the card instead of below it. -->
-        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-17-r180</div>
+        <div style="text-align:center; font-size:10px; opacity:0.5; padding-top:8px;">Puja page: 2026-09-21-r181</div>
     </div>
 
     <script>
@@ -515,6 +517,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             { lang: 'pa', re: /[਀-੿]/ },
             { lang: 'ml', re: /[ഀ-ൿ]/ },
             { lang: 'bn', re: /[ঀ-৿]/ },
+            { lang: 'kn', re: /[\u0C80-\u0CFF]/ },
             // Arabic block also covers Farsi/Sindhi - can't tell them
             // apart from script alone either, same as Hindi/Marathi above.
             // Defaults to Urdu since that's the only one of the three
@@ -580,7 +583,7 @@ const char PUJA_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // telling the devotee to type instead rather than failing silently.
         const SPEECH_LANG_MAP = {
             en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', ta: 'ta-IN',
-            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN', bn: 'bn-IN',
+            te: 'te-IN', pa: 'pa-IN', gu: 'gu-IN', ml: 'ml-IN', bn: 'bn-IN', kn: 'kn-IN',
             // Web Speech API's own BCP-47 codes, not the same code scheme
             // Google Cloud TTS uses for the actual spoken reply (ur-IN vs
             // this API's own ur-IN is the same here, but zh-CN is this

@@ -4334,7 +4334,10 @@ void drawOLED() {
     scrollFont = u8g2_font_notosansbengali16_t;
   } else if (strcmp(scrollTextLang, "sd") == 0 || strcmp(scrollTextLang, "fa") == 0 ||
              strcmp(scrollTextLang, "ur") == 0 || strcmp(scrollTextLang, "th") == 0 ||
-             strcmp(scrollTextLang, "zh") == 0) {
+             strcmp(scrollTextLang, "zh") == 0 || strcmp(scrollTextLang, "kn") == 0) {
+    // r181: Kannada added with no u8g2 font in indic_fonts.h - the real
+    // path is the backend's rendered bitmap; this is only the no-image
+    // fallback, same safe notice as Urdu/Thai/Chinese.
     // r162: Urdu/Thai/Chinese were added in the same r102 session as
     // Sindhi/Farsi but never got this same safe fallback - real Arabic/
     // Thai/CJK text was being drawn with the Latin-only logisoso20 font
